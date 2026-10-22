@@ -5,8 +5,12 @@ extends Reference
 #
 #   serialize(parts, meta)   pure: reshapes plain Dictionaries/Arrays into the
 #                            schema below (tested headlessly with a fixture)
-#   file_name(run_id, seq)   "<run_id>-<seq:03>.json"
-#   write(dir, run_id, seq, data)  writes <dir>/<file_name>, returns the path
+#   file_name(run_id, seq, clock)  "<run_id>-<seq:03>.json"; with no open run
+#                            (run_id "norun") "norun-<YYYYMMDD-HHMMSS>-<seq:03>.json"
+#                            so exports from different sessions never collide
+#   write(dir, run_id, seq, data, clock)  writes <dir>/<file_name>, returns the path
+#   effective_plan_id(loaded, character_id)  the plan in effect: the plan file's
+#                            plan_id when it is for this character, else "builtin"
 #                            ("" on failure, with a push_warning)
 #   collect(player_index)    game side: builds `parts` from RunData, the player
 #                            node, the shop / level-up UI on screen, the plan
@@ -31,6 +35,8 @@ const BotPaths = preload("bot_paths.gd")
 const PlanFile = preload("plan_file.gd")
 
 const SCHEMA_VERSION = 1
+const NORUN_ID = "norun"
+const BUILTIN_PLAN_ID = "builtin"
 const RECENT_MAX = 10
 const STATE_DIR = BotPaths.ROOT + "/state"
 const SHOP_ADVISOR_PATH = "res://mods-unpacked/Ellie-BrotatoBot/shopping/shop_advisor.gd"
@@ -137,18 +143,38 @@ static func iso8601(dt):
 			int(dt.get("hour", 0)), int(dt.get("minute", 0)), int(dt.get("second", 0))]
 
 
-static func file_name(run_id, seq):
+# OS.get_datetime() dictionary -> "YYYYMMDD-HHMMSS" (as RunRecorder.make_run_id).
+static func stamp(dt):
+	if typeof(dt) != TYPE_DICTIONARY or not dt.has("year"):
+		return "00000000-000000"
+	return "%04d%02d%02d-%02d%02d%02d" % [int(dt.year), int(dt.month), int(dt.day),
+			int(dt.get("hour", 0)), int(dt.get("minute", 0)), int(dt.get("second", 0))]
+
+
+# clock is the OS.get_datetime() dictionary serialize() received.
+static func file_name(run_id, seq, clock = {}):
+	if str(run_id) == NORUN_ID:
+		return "%s-%s-%03d.json" % [NORUN_ID, stamp(clock), int(seq)]
 	return "%s-%03d.json" % [str(run_id), int(seq)]
 
 
-# Writes data as pretty JSON to <dir>/<file_name(run_id, seq)>, creating dir.
-# Returns the path, or "" (with a push_warning) when it cannot be written.
-static func write(dir_path, run_id, seq, data):
+# Mirrors main.gd's run header and PlanFile.apply: a plan file applies only to
+# the character it names.
+static func effective_plan_id(loaded, character_id):
+	if typeof(loaded) == TYPE_DICTIONARY and str(character_id) != "" \
+			and str(loaded.get("character_id", "")) == str(character_id):
+		return str(loaded.get("plan_id", ""))
+	return BUILTIN_PLAN_ID
+
+
+# Writes data as pretty JSON to <dir>/<file_name(run_id, seq, clock)>, creating
+# dir. Returns the path, or "" (with a push_warning) when it cannot be written.
+static func write(dir_path, run_id, seq, data, clock = {}):
 	var d = Directory.new()
 	if not d.dir_exists(dir_path) and d.make_dir_recursive(dir_path) != OK:
 		push_warning("StateExport: cannot create %s" % dir_path)
 		return ""
-	var path = str(dir_path).plus_file(file_name(run_id, seq))
+	var path = str(dir_path).plus_file(file_name(run_id, seq, clock))
 	var f = File.new()
 	var err = f.open(path, File.WRITE)
 	if err != OK:
@@ -190,7 +216,9 @@ static func collect(player_index):
 
 	# Plan, target and recent snapshots do not need a run.
 	var loaded = PlanFile.load_cached(PlanFile.DEFAULT_PATH)
-	parts["plan_id"] = str(loaded.get("plan_id", "")) if typeof(loaded) == TYPE_DICTIONARY else ""
+	parts["plan_id"] = BUILTIN_PLAN_ID   # replaced once the character is known
+	# Path lookup, not BotRuntime.instance(): preloading bot_runtime.gd here would
+	# be a preload cycle, and this file must parse in the headless test project.
 	var rt = root.get_node_or_null("BotRuntime")
 	var config = rt.config if rt != null and typeof(rt.config) == TYPE_DICTIONARY else {}
 	parts["target_challenge"] = PlanFile.target_id(loaded, config)
@@ -211,6 +239,7 @@ static func collect(player_index):
 	var character = rd.get_player_character(p)
 	var character_id = character.my_id if character != null else ""
 	parts["character_id"] = character_id
+	parts["plan_id"] = effective_plan_id(loaded, character_id)
 	parts["gold"] = rd.get_player_gold(p)
 	parts["stats"] = _stats(rd, root, p)
 	parts["weapons"] = _weapons(rd.get_player_weapons(p))

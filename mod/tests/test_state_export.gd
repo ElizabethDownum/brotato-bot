@@ -103,8 +103,28 @@ func test_serialize_levelup_options_get_index():
 
 
 func test_file_name_pads_seq():
-	assert_eq(StateExport.file_name("norun", 7), "norun-007.json", "padded seq")
+	assert_eq(StateExport.file_name("20261021-090000-well_rounded-d2", 7, CLOCK),
+			"20261021-090000-well_rounded-d2-007.json", "in-run name: run_id and padded seq")
 	assert_eq(StateExport.file_name("r", 1234), "r-1234.json", "wider seq not truncated")
+	assert_eq(StateExport.file_name("norun", 7, CLOCK), "norun-20261021-090507-007.json",
+			"no open run: timestamped from the export clock")
+
+
+func test_effective_plan_id():
+	var plan = {"plan_id": "wr-ranged-v2", "character_id": "character_well_rounded", "plan": {}}
+	assert_eq(StateExport.effective_plan_id(null, "character_well_rounded"), "builtin", "no plan file")
+	assert_eq(StateExport.effective_plan_id(plan, "character_ranger"), "builtin", "plan for another character")
+	assert_eq(StateExport.effective_plan_id(plan, "character_well_rounded"), "wr-ranged-v2", "matching character")
+
+
+# A collected shop entry carries its on-screen slot; serialize keeps it.
+func test_serialize_shop_index_passes_through():
+	var parts = {"shop": [{"index": 5, "id": "item_helmet", "kind": "item", "tier": 0,
+			"price": 14.0, "advisor_score": 4.0, "locked": false}]}
+	var out = StateExport.serialize(parts, _meta())
+	assert_eq(out.get("shop", []).size(), 1, "one entry")
+	if out.get("shop", []).size() == 1:
+		assert_eq(out.shop[0].get("index"), 5, "index from the part, not the list position")
 
 
 func test_export_state_writes_file():
