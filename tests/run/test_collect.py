@@ -200,6 +200,24 @@ def test_collect_twice_does_not_duplicate_experience(tmp_paths):
     assert "| cheap ranged damage | death |" in report.read_text(encoding="utf-8")
 
 
+def test_collect_keeps_every_decision_without_an_id(tmp_paths):
+    _install(tmp_paths, "run_small.jsonl")
+    _install_decision(tmp_paths)
+    decisions = tmp_paths.decisions_dir / f"{RUN_ID}.jsonl"
+    unlabelled = {"run_id": RUN_ID, "kind": "shop", "decision": {"action": "reroll"}}
+    decisions.write_text(
+        json.dumps(unlabelled) + "
+" + json.dumps(unlabelled) + "
+", encoding="utf-8"
+    )
+    log = tmp_paths.decisions_dir / "experience.jsonl"
+    collect.collect(RUN_ID, tmp_paths)
+    ids = [r["id"] for r in collect.parse_jsonl(log)]
+    assert ids == [f"{RUN_ID}-line000", f"{RUN_ID}-line001"]
+    collect.collect(RUN_ID, tmp_paths)
+    assert len(collect.parse_jsonl(log)) == 2
+
+
 def test_collect_missing_decisions_leaves_experience_absent(tmp_paths):
     _install(tmp_paths, "run_small.jsonl")
     report = collect.collect(RUN_ID, tmp_paths)

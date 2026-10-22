@@ -380,9 +380,12 @@ def collect(run_id: str, paths: Paths) -> Path:
     if decisions_path.is_file():
         experience_path = paths.decisions_dir / "experience.jsonl"
         seen = {(rec.get("run_id"), rec.get("id")) for rec in experience.read(experience_path)}
-        for record in experience.join_outcomes(decisions_path, summary, run_jsonl=src):
-            if record["id"]:
-                outcomes[record["id"]] = record["outcome"]
+        joined = experience.join_outcomes(decisions_path, summary, run_jsonl=src)
+        for n, record in enumerate(joined):
+            # A decision line without an id gets a stable one from its position, so
+            # several unlabelled lines neither collapse into one nor duplicate later.
+            record["id"] = record["id"] or f"{run_id}-line{n:03}"
+            outcomes[record["id"]] = record["outcome"]
             key = (record["run_id"], record["id"])
             if key not in seen:
                 experience.append(experience_path, record)
