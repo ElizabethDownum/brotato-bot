@@ -277,9 +277,11 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    gamepad, then press **Shift+Space**. A held move key repeats and halts the
    bot at once.
    - If the bot refuses, line 1 reads
-     `Bot refused: wrong profile (<id>)` or
-     `Bot refused: no plan at user://brotato-bot/plan.json`. A `warning`
-     line goes into the run file and the bot stays off.
+     `Bot refused: wrong profile (<id>)`,
+     `Bot refused: no plan at user://brotato-bot/plan.json` or
+     `Bot refused: invalid plan at user://brotato-bot/plan.json` (the file
+     is not valid JSON, or lacks `plan_id`, `character_id` or `plan`). A
+     `warning` line goes into the run file and the bot stays off.
    - If it accepts, the AI marker appears on the potato, it starts steering,
      and from then on it shops and picks level-ups.
 5. Read the overlay. It sits top-left at (8, 8) and has four lines:
@@ -289,15 +291,15 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    | 1 | The status. It can be `BOT acting`, `BOT idle`, `DECIDING: <kind> <N>s` (counts down), `HALTED: <reason>`, `RUN COMPLETE: win` or `RUN COMPLETE: death`, `TARGET: <id> DONE`, `Bot refused: <reason>`, `Exported: <path>`, `Warning: pause_on_focus_lost is true` or `Export failed (see log)`. |
    | 2 | `plan <plan_id> \| target <id or none>`. The plan id is `builtin` when the plan file does not apply, and `-` when no character is known. |
    | 3 | The last decision: `<kind>: <action> #<option_index> via <source>`. Examples: `shop: buy #2 via haiku`, `shop: - via timeout`. The line is blank until the first decision. |
-   | 4 | Warnings: `focus: pause_on_focus_lost` and/or `no plan.json`. Blank when there are none. |
+   | 4 | Warnings, joined by ` \| `: `focus: pause_on_focus_lost`, `no plan.json`, `sidecar: off` (two decisions in a row timed out, so the bot stops asking for the rest of the run). Blank when there are none. |
 
 6. Where files land. All are under `%APPDATA%\Brotato\brotato-bot\`:
 
    | File | Written when |
    |---|---|
-   | `runs\<run_id>.jsonl` | Opened when wave 1 starts, on any profile. `run_id` is `YYYYMMDD-HHMMSS-<character without "character_">-d<danger>`, e.g. `20261022-201500-well_rounded-d0`. A resumed or retried wave with no open run starts a new file whose header has `start_wave > 1`. |
-   | `state\<run_id>-<NNN>.json` | Each decision and each F9 press. `NNN` counts per run from `001`. |
-   | `requests\<run_id>-<NNN>.json` | Each decision request, with the same `NNN` as its state file. The mod never deletes these. |
+   | `runs\<run_id>.jsonl` | Opened when wave 1 starts, on any profile. `run_id` is `YYYYMMDD-HHMMSS-<character without "character_">-d<danger>`, e.g. `20261022-201500-well_rounded-d0`. A resumed or retried wave with no open run starts a new file whose header has `start_wave > 1`. Returning to the main menu closes the open file with an `end` line `"outcome":"abandoned"`, and a later wave continues an open file only when its header names the same profile and character. |
+   | `state\<id>.json` | Each decision and each F9 press. `<id>` is `<run_id>-<NNN>`, or `norun-<YYYYMMDD-HHMMSS>-<NNN>` with no open run. `NNN` counts per run from `001`. |
+   | `requests\<id>.json` | Each decision request, with the same `<id>` as its state file. The mod never deletes these. |
    | `responses\<run_id>-<NNN>.json` | Written by the sidecar. The mod reads each one once and deletes it. Responses for any other id are deleted unread. |
    | `options.cfg`, `coop_state.cfg`, `probe.txt` | The mod's own settings, co-op state and load probe. |
 
@@ -306,20 +308,22 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    | Kind | Data | When |
    |---|---|---|
    | `header` | `character_id`, `danger`, `plan_id`, `profile_id`, `game_version`, `mod_version`, `start_wave`, `run_id` | first line |
+   | `bot_state` | `state` (`acting`, `idle`, `halted`), `reason` (`enabled`, `toggle_off`, `main_menu`, `run_start`, or the halt reason) | Shift+Space on or off, a halt, the main menu, and right after the header (the bot's state when the file opened) |
    | `snapshot` | position, heading, threats, ... | about 1 Hz, only while the bot is enabled |
    | `damage`, `dash`, `bullet_hell` | — | only while the bot is enabled |
    | `death` | `wave`, `position`, `killer`, `last_threats`, `build`, `dmg_w` | player 0 dies |
    | `wave_end` | `wave`, `hp`, `gold`, `damage_taken`, `kills` | every wave end |
-   | `warning` | `reason` | refused enable; `pause_on_focus_lost is true` |
+   | `warning` | `reason`, or `message` | `reason`: refused enable; `pause_on_focus_lost is true`. `message`: `sidecar timeouts; asking disabled for this run` |
    | `halt` | `reason` (`human input`, `wrong profile`) | the bot halts |
    | `export` | `export_kind`, `path`, `seq` | every state export (F9 or a decision) |
-   | `decision` | `request_kind`, `id`, `source`, `response` | every decision request. `source` is `haiku` (valid answer), `invalid`, `timeout`, `interrupted` or `busy`. |
+   | `decision` | `request_kind`, `id`, `wave`, `source`, `response` | every decision request. `source` is `haiku` (valid answer), `invalid`, `timeout`, `interrupted` or `busy`. |
    | `decision_applied` | `id`, `action`, `option_index`, `applied` | shop only, after a decision. `applied` is `buy`, `lock`, `reroll`, `skip`, `revise_plan` or `rule`. |
-   | `levelup` | `picked`, `alternatives`, `source` (`haiku`, `rule`, `timeout`) | every bot level-up pick |
+   | `shop` | `wave`, `action` (`buy`, `reroll`, `lock`, `ban`, `go`), `item_id`, `price`, `score`, `source` (`rule`, `haiku`), `gold_after` | every bot shop action. `item_id` is null for `reroll` and `go`; `price` is the reroll's cost (0 when free) and null for `go`; `score` is null for `reroll`, `ban` and `go` |
+   | `levelup` | `wave`, `id` (the decision's id, `""` when not asked), `picked`, `alternatives`, `source` (`haiku`, `rule`, `timeout`) | every bot level-up pick that landed |
    | `challenge` | `id`, `is_target` | a challenge completes for the first time on this profile |
    | `checkpoint` | `id`, `action`, `applied`, `reason` | the target checkpoint |
    | `complete` | `outcome` (`win`, `death`), `wave`, `extra` (`killer` on death) | the run ends while the bot plays |
-   | `end` | `outcome` (`won`, `death`, `abandoned`, `quit`), `wave`, `hp`, `gold` | always the last line |
+   | `end` | `outcome` (`won`, `death`, `abandoned`, `quit`), `wave`, `hp`, `gold` | always the last line (`abandoned`: the main menu, or a new run started over an open file) |
 
 7. **`DECIDING: <kind>`** (`shop`, `levelup`, `pivot` or `checkpoint`).
    - The bot has written a request and **paused the game**. It polls
@@ -330,12 +334,29 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
      was modified within the last **10 s**. Otherwise the rules decide at
      once: no request, no pause and no `decision` line.
    - A shop asks at most once per visit, before its first buy.
-   - Move keys do nothing while the game is paused. See Known limitations
-     for how to take over afterwards.
+   - After two decisions in a row time out, the bot stops asking for the rest
+     of the run: a `warning` line (`message`), line 4 `sidecar: off`, and a
+     checkpoint then logs `"reason":"asking_disabled"`. Any answer (valid or
+     invalid) resets the count; `interrupted` and `busy` neither count nor
+     reset. A new run asks again.
+   - **ESC during a decision** means "stop waiting, the rules decide": the
+     decision ends at once with `"source":"interrupted"`. In the shop, ESC
+     also opens the pause menu; the bot leaves the game paused under it and
+     does no more shopping this visit (you finish the shop and press GO). At
+     a level-up or checkpoint no menu opens: the game resumes and the rules
+     decide.
+   - **A move key during a decision** ends it the same way, then halts the
+     bot (`HALTED: human input`) once the decision is over.
 8. **Stopping the bot:**
    - **Shift+Space** turns it off cleanly: `BOT idle`, no `halt` line.
    - **Any move key, arrow, IJKL, gamepad button or stick** halts it:
      `HALTED: human input`, a `halt` line, and the key moves the potato.
+     A halt stops a shop visit or level-up at once: no further buy, reroll,
+     lock, pick or GO.
+   - **ESC in the shop** (the pause menu) ends the bot's shopping for this
+     visit, whether or not a decision was pending: nothing is bought behind
+     the menu, and after Resume the shop waits for you to finish it and press
+     GO. The bot stays on and plays the next wave.
    - **Switching profile** needs the main menu, which already turns the bot
      off. If the bot is ever acting while the profile is not the bot
      profile, its next action (or the next wave start) halts it with
@@ -349,6 +370,57 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    line and then exactly one `end` line. The end line says `won` where the
    complete line says `win`. For the next run, start it by hand and press
    Shift+Space again.
+
+#### 4.10 Decision protocol (the sidecar contract)
+
+All files are under `%APPDATA%\Brotato\brotato-bot\` (`user://brotato-bot`).
+
+- **Heartbeat.** The mod asks only if `sidecar.alive` was modified within the
+  last 10 s. It checks just before asking, never while waiting, and the
+  modification time has 1 s resolution. The sidecar should touch it every
+  few seconds while it runs.
+- **Request.** `requests\<id>.json`, written as `<id>.json.tmp` and renamed.
+  The mod never deletes requests.
+
+  | Field | Meaning |
+  |---|---|
+  | `id` | the state file's base name: `<run_id>-<NNN>`, or `norun-<YYYYMMDD-HHMMSS>-<NNN>` with no open run |
+  | `kind` | `shop`, `levelup`, `pivot` (an offered id is in the plan's `ask_on`) or `checkpoint` |
+  | `screen` | `shop`, `levelup` or `checkpoint`: which screen is asking. A `pivot` comes from the shop or a level-up; answer by `screen` |
+  | `run_id`, `seq` | the run (`norun` when none) and the export counter |
+  | `state_path` | the matching `state\<id>.json` (written before the request) |
+  | `options` | the choices, see below (empty for `checkpoint`) |
+  | `deadline_ms` | epoch milliseconds after which the mod stops waiting |
+
+- **Options.** `options[i].index == i`.
+  - `screen: "shop"`: `{index, id, kind ("weapon" or "item"), price, score}`,
+    one per *active* shop slot, compacted.
+  - `screen: "levelup"`: `{index, id, stat, value, score}` (`stat` and
+    `value` are the upgrade's first effect).
+- **`option_index` indexes `request.options[]` only.** It is not the state
+  file's `shop[].index`, which is the raw slot index with gaps. The two
+  differ as soon as a slot is inactive (e.g. after a ban). Always answer from
+  the request.
+- **Response.** `responses\<id>.json`, written as `<id>.json.tmp` and then
+  renamed (the mod reads only `*.json`). The mod reads it once and deletes
+  it; responses for any other id are deleted unread.
+
+  | Field | Rule |
+  |---|---|
+  | `action` | `buy`, `lock`, `reroll`, `skip` (shop); `pick` (level-up); `revise_plan` (any screen, mostly `checkpoint`) |
+  | `option_index` | int >= 0, required for `buy`, `lock` and `pick` |
+  | `confidence` | number in 0..1, required |
+  | `rationale` | string, optional |
+  | `plan_patch` | object, required for `revise_plan` (merged into `plan.json`) |
+  | `tags` | optional, ignored |
+
+  A response that fails these rules counts as `invalid` and the rules decide.
+  An action that does not fit the screen (e.g. `pick` in the shop) is applied
+  as `rule`.
+- **Sources** in the `decision` line: `haiku` (valid answer), `invalid`,
+  `timeout` (no answer by the deadline; also a failed write or a halt while
+  waiting), `interrupted` (ESC, a move key or the pause menu during the wait)
+  and `busy` (a second decision while one is pending: no request).
 
 ### 5. Advisor mode (any profile)
 
@@ -561,11 +633,14 @@ Move-Item "$Bot\responses\$id.json.tmp" "$Bot\responses\$id.json"
    object, then `decision_applied` with `"action":"buy"` and
    `"applied":"buy"`. Line 3 reads `shop: buy #<n> via haiku`.
 4. **ESC during DECIDING: shop.** At the next asking shop, press ESC once
-   while `DECIDING` shows. Expect the game to resume at once without waiting
-   for the timeout. Line 3 reads `shop: - via interrupted`. Evidence: a
-   `decision` line with `"source":"interrupted"`, then `decision_applied`
-   `"applied":"rule"`. If a pause menu opens instead and the game stays
-   frozen, write down exactly what you saw, then choose Resume.
+   while `DECIDING` shows. Expect the pause menu to open over the shop
+   within about 0.25 s, and the countdown to stop. The game stays paused
+   under the menu. Line 3 reads `shop: - via interrupted`. Choose Resume.
+   Expect the bot to buy nothing more and not to press GO: finish the shop
+   yourself. Evidence: a `decision` line with `"source":"interrupted"`, no
+   `decision_applied` and no `shop` line after it for this visit, and a
+   `BOTLOG SHOP ... abandoned` line in `godot.log`. The next wave plays
+   with the bot on.
 5. **Alt-tab** away during a decision and back. Expect: nothing changes and
    no pause menu appears. Drop a response afterwards. Expect one resume, one
    buy, and exactly one `decision` line for that id.
@@ -573,8 +648,28 @@ Move-Item "$Bot\responses\$id.json.tmp" "$Bot\responses\$id.json"
    expect `DECIDING: levelup`. A response
    `{"action":"pick","option_index":1,"confidence":0.8}` picks the second
    option. Evidence: `decision` (`"source":"haiku"`) and `levelup` with
-   `"source":"haiku"`. With no response, after the timeout `levelup` says
-   `"source":"timeout"`.
+   `"source":"haiku"` and the same `id`. With no response, after the
+   timeout `levelup` says `"source":"timeout"`.
+7. **ESC during DECIDING: levelup.** With the loop running and a close
+   level-up, press ESC once while `DECIDING: levelup` shows. Expect no pause
+   menu: the game resumes within about 0.25 s and the rules pick. Evidence:
+   `decision` `"source":"interrupted"`, then `levelup` `"source":"rule"`.
+8. **ESC during an auto-shop, no decision pending.** Stop the keep-alive
+   loop (so no shop asks). In a shop where the bot has gold to spend, press
+   ESC while it is still buying or rerolling. Expect the pause menu, and no
+   buys, rerolls or locks while it is open. Choose Resume. Expect the bot
+   to do nothing more in this shop: you finish it and press GO. Evidence: no
+   `shop` line after the pause, and `BOTLOG SHOP ... abandoned` in
+   `godot.log`. The next wave plays with the bot on.
+9. **A move key mid-shop.** In a shop where the bot is still buying, press
+   W. Expect `HALTED: human input` and zero further `shop` lines; the shop is
+   yours.
+10. **Two-timeout breaker.** Keep the loop running but write no responses.
+    Let two decisions in a row time out (shop or level-up). Expect, after
+    the second: a `warning` line
+    `{"message":"sidecar timeouts; asking disabled for this run"}`, line 4
+    `sidecar: off`, and no further `DECIDING` pause for the rest of this run
+    even with the loop running. A new run asks again.
 
 Stop the keep-alive loop and remove `ask_on` entries when done.
 
@@ -609,11 +704,13 @@ Stop the keep-alive loop and remove `ask_on` entries when done.
    `checkpoint: revise_plan via haiku`.
 7. **ESC during DECIDING: checkpoint.** Do this on another run, or with a new
    target, since the checkpoint happens once per run. Press ESC once while
-   `DECIDING: checkpoint` shows. Expect the game to resume, the overlay to
-   return to the bot's status, a `decision` line with
-   `"source":"interrupted"` and a `checkpoint` line with `"applied":"skip"`
-   and `"reason":"interrupted"`. After that the bot is still on (verify that
-   the next wave plays normally).
+   `DECIDING: checkpoint` shows. In Main no pause menu can open during the
+   decision; expect the countdown to stop within about 0.25 s, the wave end
+   to carry on as usual, the overlay to return to the bot's status, a
+   `decision` line with `"source":"interrupted"` and a `checkpoint` line
+   with `"applied":"skip"` and `"reason":"interrupted"`. After that the bot
+   is still on (verify that the next wave plays normally). Press W instead
+   on a later attempt: the same lines, then `HALTED: human input`.
 
 #### 6.8 Overlay (Task 10)
 
@@ -642,9 +739,14 @@ Stop the keep-alive loop and remove `ask_on` entries when done.
 - **Restarting from the pause menu keeps the bot's state.** Only the main
   menu turns the bot off. A run restarted from the pause menu starts with
   the bot still on, if it was on.
-- **Taking over after a decision.** While the game is paused for a decision,
-  move keys are not processed and do not halt the bot. When the game
-  resumes, press a move key to take control.
+- **Taking over during a decision.** While the game is paused for a
+  decision, a move key ends the wait and halts the bot once the decision is
+  over; the key itself does not move the potato (the game is paused). Press
+  it again after the game resumes. Navigating the shop's pause menu with
+  WASD or the arrows during a decision also halts the bot.
+- **The pause menu ends a shop visit.** Opening the pause menu in the shop
+  stops the bot's shopping for that visit even after Resume; you finish the
+  shop. A pause at a level-up only freezes the bot's picks until Resume.
 - **AI buys skip the rule limits.** A `buy` from the sidecar checks only that
   the slot is still there and affordable. It ignores `min_buy`, `gold_floor`
   and the locked-weapon `save_floor`.
