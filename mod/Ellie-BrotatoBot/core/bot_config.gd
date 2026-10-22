@@ -24,7 +24,7 @@ const DEFAULTS = {
 	"request_timeout_ms": 45000,
 	"checkpoint_timeout_ms": 120000,
 	"ask_tie_margin": 3.0,
-	"ask_floor": 8.0,
+	"ask_floor": 4.0,
 	"target_challenge": "",
 	"export_hotkey": "F9",
 }

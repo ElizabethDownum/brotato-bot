@@ -7,6 +7,7 @@ const RunRecorder = preload("res://mods-unpacked/Ellie-BrotatoBot/core/run_recor
 const BotPaths = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_paths.gd")
 const PlanFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/plan_file.gd")
 const Guards = preload("res://mods-unpacked/Ellie-BrotatoBot/core/guards.gd")
+const Checkpoint = preload("res://mods-unpacked/Ellie-BrotatoBot/core/checkpoint.gd")
 
 const MOD_ID = "Ellie-BrotatoBot"
 
@@ -32,15 +33,10 @@ func _ready():
 	_bot_run_guards()
 	var _e = connect("end_of_the_wave", self, "_bot_on_end_of_the_wave")
 
-func free():
-	remove_child(canvas_layer)
-	.free()
-
-
 # Opens the run file on the first wave of a run. main.tscn reloads every wave,
-# so a later wave continues the open run; a later wave with no open run (a
-# resumed save, or a retried wave after the run ended) starts a new file whose
-# header carries start_wave.
+# so a later wave continues the open run (same profile and character); a later
+# wave with no open run (a resumed save, or a retried wave after the run ended)
+# starts a new file whose header carries start_wave.
 func _bot_start_recording():
 	var rt = get_node_or_null("/root/BotRuntime")
 	if rt == null:
@@ -48,13 +44,16 @@ func _bot_start_recording():
 		return
 	if RunData.get_player_count() < 1 or RunData.get_player_character(0) == null:
 		return
+	var character_id = RunData.get_player_character(0).my_id
 	var open = rt.recorder != null and rt.recorder.is_open()
-	if open and RunData.current_wave > 1:
+	# Continue only the same run: a later wave on the profile and character the
+	# open file's header names (final review I2).
+	if open and RunData.current_wave > 1 \
+			and rt.recorder.continues(ProgressData.current_profile_id, character_id):
 		return
 	if open:
-		# Wave 1 again with a run still open: the last run was left via the menu.
+		# Wave 1 again, or a different profile/character: the open run was left.
 		rt.recorder.end_run({"outcome": "abandoned", "wave": null, "hp": null, "gold": null})
-	var character_id = RunData.get_player_character(0).my_id
 	var plan_id = "builtin"
 	var loaded = PlanFile.load_cached(PlanFile.DEFAULT_PATH)
 	if typeof(loaded) == TYPE_DICTIONARY and loaded.character_id == str(character_id):
@@ -75,15 +74,19 @@ func _bot_start_recording():
 		"start_wave": RunData.current_wave,
 	})
 	rt.on_run_started()
+	# The bot is often enabled before the file opens: log its state now.
+	rt.record_bot_state("run_start")
 
 
 # Every wave start: warn once per run if the game would pause when the window
 # loses focus, then halt a bot that is on while the profile is not the bot
 # profile (e.g. the profile changed after enabling). Halt last so its status wins.
+# A pause Ellie made in the last shop ended that visit only: the wave starts clean.
 func _bot_run_guards():
 	var rt = get_node_or_null("/root/BotRuntime")
 	if rt == null:
 		return
+	rt.begin_bot_screen()
 	if not Guards.focus_setting_ok(ProgressData.settings) and rt.focus_warned_run_id != rt.run_id:
 		rt.focus_warned_run_id = rt.run_id
 		var rec = _bot_recorder()
@@ -109,16 +112,34 @@ func _bot_player0():
 
 func _bot_on_end_of_the_wave():
 	var rec = _bot_recorder()
-	if rec == null:
+	if rec != null:
+		var p = _bot_player0()
+		rec.event("wave_end", {
+			"wave": RunData.current_wave,
+			"hp": int(p.current_stats.health) if p != null else 0,
+			"gold": RunData.get_player_gold(0),
+			"damage_taken": ai_telemetry.damage_taken_this_wave(),
+			"kills": _bot_kills_this_wave,
+		})
+	_bot_checkpoint()
+
+
+# Target checkpoint: decides here whether it is due (Checkpoint.due: once
+# per run after the target fired, never on the final wave of a normal run --
+# the completion gate owns it) and hands over to BotRuntime.checkpoint(), a
+# coroutine on the persistent autoload, since this node is freed by the scene
+# change. Waits while the bot is not acting (stays pending for a later wave
+# end). end_of_the_wave is emitted from _on_WaveTimer_timeout; the base game
+# then runs clean_up_room with the tree paused, and the scene change waits for
+# EndWaveTimer, which stops while paused.
+func _bot_checkpoint():
+	var rt = get_node_or_null("/root/BotRuntime")
+	if rt == null or rt.bot_state != "acting":
 		return
-	var p = _bot_player0()
-	rec.event("wave_end", {
-		"wave": RunData.current_wave,
-		"hp": int(p.current_stats.health) if p != null else 0,
-		"gold": RunData.get_player_gold(0),
-		"damage_taken": ai_telemetry.damage_taken_this_wave(),
-		"kills": _bot_kills_this_wave,
-	})
+	if not Checkpoint.due(rt.target_fired, rt.checkpoint_done, RunData.current_wave,
+			RunData.nb_of_waves, RunData.is_endless_run):
+		return
+	var _cp = rt.checkpoint()
 
 
 func _on_enemy_died(enemy: Enemy, args: Entity.DieArgs) -> void:

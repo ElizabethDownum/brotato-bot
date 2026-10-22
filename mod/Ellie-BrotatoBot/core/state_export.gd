@@ -33,6 +33,7 @@ extends Reference
 
 const BotPaths = preload("bot_paths.gd")
 const PlanFile = preload("plan_file.gd")
+const DecisionClient = preload("decision_client.gd")
 
 const SCHEMA_VERSION = 1
 const NORUN_ID = "norun"
@@ -151,6 +152,11 @@ static func stamp(dt):
 			int(dt.get("hour", 0)), int(dt.get("minute", 0)), int(dt.get("second", 0))]
 
 
+# The export's id: file_name without ".json" (also the decision request id).
+static func export_id(run_id, seq, clock = {}):
+	return file_name(run_id, seq, clock).get_basename()
+
+
 # clock is the OS.get_datetime() dictionary serialize() received.
 static func file_name(run_id, seq, clock = {}):
 	if str(run_id) == NORUN_ID:
@@ -168,20 +174,17 @@ static func effective_plan_id(loaded, character_id):
 
 
 # Writes data as pretty JSON to <dir>/<file_name(run_id, seq, clock)>, creating
-# dir. Returns the path, or "" (with a push_warning) when it cannot be written.
+# dir, atomically (DecisionClient.write_atomic: <path>.tmp, then rename), so an
+# F9 watcher never reads a half-written file. Returns the path, or "" (with a
+# push_warning) when it cannot be written.
 static func write(dir_path, run_id, seq, data, clock = {}):
 	var d = Directory.new()
 	if not d.dir_exists(dir_path) and d.make_dir_recursive(dir_path) != OK:
 		push_warning("StateExport: cannot create %s" % dir_path)
 		return ""
 	var path = str(dir_path).plus_file(file_name(run_id, seq, clock))
-	var f = File.new()
-	var err = f.open(path, File.WRITE)
-	if err != OK:
-		push_warning("StateExport: cannot open %s (error %d)" % [path, err])
+	if DecisionClient.write_atomic(path, JSON.print(data, "  ")) != OK:
 		return ""
-	f.store_string(JSON.print(data, "  "))
-	f.close()
 	return path
 
 

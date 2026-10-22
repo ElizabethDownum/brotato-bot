@@ -131,3 +131,37 @@ func test_default_paths_derive_from_bot_paths_root():
 	assert_eq(BotPaths.ROOT, "user://brotato-bot", "ROOT")
 	assert_eq(BotConfig.DEFAULT_PATH, BotPaths.ROOT + "/config.json", "config path")
 	assert_eq(PlanFile.DEFAULT_PATH, BotPaths.ROOT + "/plan.json", "plan path")
+
+
+# Dictionaries compare by reference in Godot 3: compare sorted JSON instead.
+func _j(d):
+	return JSON.print(d, "", true)
+
+
+func test_shop_event_shape():
+	var e = RunRecorder.shop_event(5, "buy", "item_anvil", 40, 12.5, "rule", 63)
+	assert_eq(_j(e), _j({"wave": 5, "action": "buy", "item_id": "item_anvil", "price": 40, "score": 12.5,
+		"source": "rule", "gold_after": 63}), "buy")
+	var go = RunRecorder.shop_event(5, "go", null, null, null, "rule", 23)
+	assert_eq(_j(go), _j({"wave": 5, "action": "go", "item_id": null, "price": null, "score": null,
+		"source": "rule", "gold_after": 23}), "go has nulls")
+	var reroll = RunRecorder.shop_event(5.0, "reroll", null, 3.0, null, "haiku", 60.0)
+	assert_eq(reroll.wave, 5, "wave int")
+	assert_eq(reroll.price, 3, "price int")
+	assert_eq(reroll.gold_after, 60, "gold int")
+	var s = RunRecorder.shop_event(1, "lock", "weapon_x", 30, 28, "rule", 10)
+	assert_eq(s.score, 28.0, "score float")
+
+
+func test_continues_only_the_same_profile_and_character():
+	var root = _make_root()
+	var rec = RunRecorder.new(root)
+	assert_false(rec.continues(1, "character_well_rounded"), "nothing open")
+	rec.start_run({"character_id": "character_well_rounded", "danger": 0, "profile_id": 1})
+	assert_true(rec.continues(1, "character_well_rounded"), "same run")
+	assert_true(rec.continues(1.0, "character_well_rounded"), "float profile id")
+	assert_false(rec.continues(0, "character_well_rounded"), "other profile")
+	assert_false(rec.continues(1, "character_mage"), "other character")
+	rec.end_run({"outcome": "abandoned"})
+	assert_false(rec.continues(1, "character_well_rounded"), "closed")
+	_remove_tree(root)

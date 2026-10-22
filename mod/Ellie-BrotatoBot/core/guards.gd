@@ -4,6 +4,9 @@ extends Reference
 # function takes explicit inputs so it runs in the headless test project (no
 # ProgressData, no /root/AutobattlerOptions). Callers preload this script.
 
+# Relative preload: resolves in the game and in the headless test project.
+const PlanFile = preload("plan_file.gd")
+
 # The game's own move bindings (keys + d-pad buttons; analog_move_* are axes).
 const MOVE_ACTIONS = ["button_move_left", "button_move_right", "button_move_up", "button_move_down"]
 
@@ -31,12 +34,16 @@ static func focus_setting_ok(settings) -> bool:
 	return settings.get("pause_on_focus_lost", true) == false
 
 
-# "" when the bot may be enabled, else the refusal reason (profile first).
+# "" when the bot may be enabled, else the refusal reason (profile first):
+# "wrong profile (<id>)", "no plan at <path>", or "invalid plan at <path>"
+# when PlanFile.load_from rejects the file (bad JSON, missing keys, ...).
 static func enable_refusal(current_profile_id, config, plan_path) -> String:
 	if not profile_ok(current_profile_id, config):
 		return "wrong profile (%d)" % int(current_profile_id)
 	if not plan_present(plan_path):
 		return "no plan at %s" % plan_path
+	if PlanFile.load_from(plan_path) == null:
+		return "invalid plan at %s" % plan_path
 	return ""
 
 

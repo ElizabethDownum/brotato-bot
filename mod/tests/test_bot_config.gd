@@ -9,7 +9,7 @@ func test_defaults_when_file_missing():
 	assert_eq(c.request_timeout_ms, 45000, "request_timeout_ms")
 	assert_eq(c.checkpoint_timeout_ms, 120000, "checkpoint_timeout_ms")
 	assert_eq(c.ask_tie_margin, 3.0, "ask_tie_margin")
-	assert_eq(c.ask_floor, 8.0, "ask_floor")
+	assert_eq(c.ask_floor, 4.0, "ask_floor")
 	assert_eq(c.target_challenge, "", "target_challenge")
 	assert_eq(c.export_hotkey, "F9", "export_hotkey")
 	assert_eq(BotConfig.DEFAULT_PATH, "user://brotato-bot/config.json", "DEFAULT_PATH")

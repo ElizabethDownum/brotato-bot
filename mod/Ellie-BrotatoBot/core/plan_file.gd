@@ -85,6 +85,57 @@ static func load_cached(path):
 	return data
 
 
+# Writes plan (the file shape above) to path as indented JSON: <path>.tmp, then
+# renamed over path (an existing file is removed first; Godot 3's rename does
+# not replace on every platform). Drops the load_cached entry for path, since a
+# rewrite within the same second can keep the 1 s mtime unchanged. Returns OK
+# or the failing error code (with a push_warning).
+static func save(path, plan) -> int:
+	_CACHE.erase(path)
+	var d = Directory.new()
+	var dir_path = str(path).get_base_dir()
+	if not d.dir_exists(dir_path) and d.make_dir_recursive(dir_path) != OK:
+		push_warning("PlanFile: cannot create %s" % dir_path)
+		return ERR_CANT_CREATE
+	var tmp = path + ".tmp"
+	var f = File.new()
+	var err = f.open(tmp, File.WRITE)
+	if err != OK:
+		push_warning("PlanFile: cannot open %s (error %d)" % [tmp, err])
+		return err
+	f.store_string(JSON.print(plan, "  "))
+	f.close()
+	if d.file_exists(path):
+		d.remove(path)
+	err = d.rename(tmp, path)
+	if err != OK:
+		push_warning("PlanFile: cannot rename %s (error %d)" % [tmp, err])
+		d.remove(tmp)
+	return err
+
+
+# Merges patch (plan keys, as in a revise_plan response) into the plan file at
+# path for character_id and saves it. A missing file is created as
+# {plan_id: new_plan_id, character_id, target_challenge: "", plan: patch}.
+# Refuses (returns ERR_UNAVAILABLE, with a push_warning) rather than overwrite
+# a file that exists but does not load, or one written for another character.
+# Returns OK or the save error.
+static func apply_patch(path, character_id, patch, new_plan_id) -> int:
+	var loaded = load_from(path)
+	if loaded == null:
+		if File.new().file_exists(path):
+			push_warning("PlanFile: %s exists but does not load; patch not applied" % path)
+			return ERR_UNAVAILABLE
+		loaded = {"plan_id": str(new_plan_id), "character_id": str(character_id),
+			"target_challenge": "", "plan": {}}
+	elif loaded.character_id != str(character_id):
+		push_warning("PlanFile: %s is for %s, not %s; patch not applied"
+			% [path, loaded.character_id, str(character_id)])
+		return ERR_UNAVAILABLE
+	loaded.plan = merge(loaded.plan, patch)
+	return save(path, loaded)
+
+
 # base.duplicate(true) overlaid with override: stats and item_bonus merge one
 # level deep when both sides are dictionaries; any other key replaces wholesale.
 # Neither input is mutated and the result shares no containers with them.
