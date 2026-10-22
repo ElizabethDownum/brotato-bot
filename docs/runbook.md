@@ -31,9 +31,9 @@ The three rules:
 1. **The bot profile belongs to the bot.** The bot acts only when the game's
    `current_profile_id` equals `bot_profile_id` in `config.json` (default
    `1`). Profile ids are 0-based. The profile menu labels its buttons
-   "Profile 1", "Profile 2" and "Profile 3", so the bot's id 1 is most likely
-   the button labelled **"Profile 2"** (verify). Step 3.1 shows how to
-   confirm this.
+   "Profile 1", "Profile 2" and "Profile 3", so the bot's id 1 is the button
+   labelled **"Profile 2"** (`menu_profile.gd:195-197` maps ProfileButton2 to
+   `active_profile_button(1)`). Step 3.1 still has you confirm it in game.
 2. **You launch the game and start every run by hand.** The bot never starts
    a run, never survives a return to the main menu, and never starts a game
    session enabled. Each run you press Shift+Space yourself.
@@ -75,7 +75,8 @@ The three rules:
      `ec55a43`, including the `.import` files.
    - Use `-GameDir <path>` only if the game moves.
 4. Launch Brotato through Steam. The title screen shows the Mod Loader's
-   one-time "mods are loaded" warning. Dismiss it.
+   one-time "mods are loaded" warning (unverified; it may not appear).
+   Dismiss it if it does.
 5. Check that the mod loaded:
    - Open `%APPDATA%\Brotato\brotato-bot\probe.txt`. The mod writes the
      launch time there (local ISO time) every time it loads. A fresh
@@ -98,8 +99,9 @@ The three rules:
 
 1. On the title screen, open the profile menu (the main-menu button reads
    "Profile N").
-2. Select the second button ("Profile 2"), then "Load Profile". Most likely
-   this is profile id 1 (verify).
+2. Select the second button ("Profile 2"), then "Load Profile". This is
+   profile id 1 (`_on_Select_pressed` loads the highlighted profile's
+   `view_id`); step 4 confirms it in game.
 3. Start any run and play at least one wave by hand. The harness notes say
    the save file may only appear after a save point (verify).
 4. Confirm the id. Load a run on the profile you are about to use and press
@@ -118,18 +120,27 @@ by hand.
 
 #### 3.2 Turn off "Pause on losing focus"
 
-1. Main menu → Options. Open the Audio page; its right-hand column has
-   "On losing focus" and below it the switch **"Pause on losing focus"**.
-   This comes from `ui/menus/pages/menu_options.tscn`, node
-   `Audio_Container/.../RightContainer/PauseOnFocusLostButton`.
-2. Turn it off. The setting is global (`settings.pause_on_focus_lost` in
+1. Main menu → Options. Open the **Sound** tab (`MENU_SOUND`,
+   `menu_options.tscn:304`) and find the **"On losing focus"** dropdown
+   (`MENU_ON_LOST_FOCUS`, `on_lost_focus_button.gd`). Its options are
+   "Do nothing", "Pause" and "Pause disable input". The old
+   `PauseOnFocusLostButton` checkbox still exists in the scene but is
+   `visible = false` (`menu_options.tscn:560-568`), so you cannot reach it.
+2. Set "On losing focus" to **"Do nothing"**. That sets
+   `pause_on_focus_lost` false; "Pause" or "Pause disable input" sets it true
+   (`menu_options.gd:614-619`). The default is "Pause"
+   (`progress_data.gd:342-343`). The setting is global
+   (`settings.pause_on_focus_lost` in
    `%APPDATA%\Brotato\<steam64 id>\settings.json`), so it also affects
    your own play.
-3. If it is on, at the start of every bot-profile wave:
+3. If it is on (the dropdown shows "Pause" or "Pause disable input"), the
+   warning fires once per run, on any profile
+   (`main.gd:84-93`, gated by `focus_warned_run_id`), not on every wave:
    - Overlay line 1 reads `Warning: pause_on_focus_lost is true`.
    - Overlay line 4 reads `focus: pause_on_focus_lost`.
    - The run file gets one `warning` line per run with
      `"reason":"pause_on_focus_lost is true"`.
+   - Overlay line 4 persists for as long as the setting is on.
 4. Leave "Mouse Only" (Options, Gameplay page) **off** for bot runs. See
    Known limitations.
 
@@ -137,7 +148,8 @@ by hand.
 
 The overlay always shows while the bot is not idle, and whenever a status
 line is set (for example `Bot refused: ...` or `Exported: ...`). To also see
-it while idle (`BOT idle` plus the plan line), turn on AI visuals:
+it while idle (`BOT idle` plus the plan line), turn on AI visuals. This also draws the in-world AI highlight canvas
+(`ai_canvas.gd:7`), not only the overlay:
 
 1. Quit the game. The mod rewrites the file on every toggle.
 2. In `%APPDATA%\Brotato\brotato-bot\options.cfg`, section `[options]`, set
@@ -152,8 +164,10 @@ it while idle (`BOT idle` plus the plan line), turn on AI visuals:
 - **Location:** `%APPDATA%\Brotato\brotato-bot\config.json`.
 - **Optional.** A missing, unreadable or invalid file means every default
   applies. Keys you leave out keep their defaults. Unknown keys are ignored.
-  A value of the wrong type falls back to its default, with a warning in
-  `godot.log`.
+  A wrong-typed value falls back to its default, with a warning in
+  `godot.log`, only for the five numeric keys (`INT_KEYS` / `FLOAT_KEYS` in
+  `core/bot_config.gd`). `target_challenge` and `export_hotkey` are coerced
+  with `str()` instead.
 - **Read once, at game start** (`BotRuntime._ready`). After you edit it,
   restart the game.
 
@@ -211,7 +225,9 @@ Copy-pasteable, all defaults:
   `sidecar-<decision id>`. A patch is refused when the file belongs to
   another character or exists but does not load.
 
-Common `plan` keys. `shopping/build_plans.gd` documents the full set.
+Common `plan` keys. This table is the full set. The header comment in
+`shopping/build_plans.gd` is partial: it does not list `ask_on`, `gold_floor`,
+`prefer_weapons`, `ban_items` or `phase_boost`.
 
 | Key | Meaning |
 |---|---|
@@ -269,7 +285,7 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
 
    | Line | Shows |
    |---|---|
-   | 1 | The status. It can be `BOT acting`, `BOT idle`, `DECIDING: <kind> <N>s` (counts down), `HALTED: <reason>`, `RUN COMPLETE: win` or `RUN COMPLETE: death`, `TARGET: <id> DONE`, `Bot refused: <reason>`, `Exported: <path>` or `Warning: pause_on_focus_lost is true`. |
+   | 1 | The status. It can be `BOT acting`, `BOT idle`, `DECIDING: <kind> <N>s` (counts down), `HALTED: <reason>`, `RUN COMPLETE: win` or `RUN COMPLETE: death`, `TARGET: <id> DONE`, `Bot refused: <reason>`, `Exported: <path>`, `Warning: pause_on_focus_lost is true` or `Export failed (see log)`. |
    | 2 | `plan <plan_id> \| target <id or none>`. The plan id is `builtin` when the plan file does not apply, and `-` when no character is known. |
    | 3 | The last decision: `<kind>: <action> #<option_index> via <source>`. Examples: `shop: buy #2 via haiku`, `shop: - via timeout`. The line is blank until the first decision. |
    | 4 | Warnings: `focus: pause_on_focus_lost` and/or `no plan.json`. Blank when there are none. |
@@ -379,6 +395,11 @@ function Show-BotRun([string[]]$Kind) {
 
 1. Do section 2 steps 3-5. Expect: a fresh `probe.txt`, no `ERROR` line in
    `modloader.log` that names the mod, and no `SCRIPT ERROR` in `godot.log`.
+   - In `modloader.log`, also look for the positive signals: `Ellie-BrotatoBot`
+     is listed among the loaded mods, and the line
+     `DONE: Installed all script extensions` appears.
+   - Confirm Ellie-BrotatoBot is the only mod listed (the loader cache files
+     were regenerated).
    - Also note whether `godot.log` complains about `defect.png` or a missing
      `.stex`. That would be the AI marker icon, inherited from BOTato.
 2. Quit the game. Wait one minute. Then run:
@@ -418,12 +439,15 @@ function Show-BotRun([string[]]$Kind) {
    the marker gone, and the potato moving on that very press. Evidence: a
    `halt` line with `"reason":"human input"`. Repeat with an arrow key and a
    gamepad stick push. Shift+Space turns it back on.
-4. While the bot acts, press Shift+Space twice. The first press turns it off
+4. While the bot acts, press Shift+Space twice, waiting about half a second
+   between presses (presses under 350 ms apart collapse into one toggle,
+   `autobattler_options.gd:88`). The first press turns it off
    with no `HALTED`: the status clears, and the block hides unless AI
    visuals are on. The next shop is not auto-bought. The second press turns it on again.
 5. Turn the bot on, then quit and restart the game. Expect the bot to start
    off (no marker), even though `options.cfg` says `ENABLE_AUTOBATTLER=true`.
-6. With "Pause on losing focus" **on**, start a bot-profile run. Expect
+6. With Options > Sound > "On losing focus" set to **"Pause"** (the
+   default), start a bot-profile run. Expect
    `Warning: pause_on_focus_lost is true` on line 1 and
    `focus: pause_on_focus_lost` on line 4. Evidence: exactly one `warning`
    line with that reason in the run file. Turn the setting off again.
@@ -471,8 +495,10 @@ function Show-BotRun([string[]]$Kind) {
    `extra.killer` equals the `death` line's `killer`) and then `end`
    (`"outcome":"won"` or `"death"`). There must be exactly one `end` in the
    file.
-4. Any post-run shop or level-up is not automated. Note which outcome and
-   wave occurred.
+4. After `RUN COMPLETE`, advance into any post-run shop or level-up. Expect
+   no purchase and no pick (T7 Step 4: the post-run shop does not auto-buy).
+   `end_run` has already closed the JSONL, so this is observation-only, with
+   no file evidence. Note which outcome and wave occurred.
 
 #### 6.6 Decisions with a fake sidecar (Task 8 Step 7)
 
@@ -555,8 +581,9 @@ Stop the keep-alive loop and remove `ask_on` entries when done.
 
 1. Pick a target the bot profile has **not** completed yet:
    `chal_gatherer_1` (collect 300 materials, counted across the profile's
-   lifetime). If the bot profile already has it, use `chal_gatherer_2` or
-   `chal_survivor_1`.
+   lifetime). If the bot profile already has it, the fallbacks are much
+   bigger: `chal_gatherer_2` is 2000 lifetime materials and `chal_survivor_1`
+   is 300 kills (`challenge_service.gd:633-646`).
 2. In `config.json` set `"target_challenge": "chal_gatherer_1"`. Optionally
    also set `"checkpoint_timeout_ms": 20000`. Leave `plan.json`'s
    `target_challenge` empty, or set it to the same id. Restart the game.
@@ -564,7 +591,8 @@ Stop the keep-alive loop and remove `ask_on` entries when done.
 3. Start the keep-alive loop from 6.6. Without it, the checkpoint does not
    pause: it logs `checkpoint` with `"applied":"skip"` and
    `"reason":"no_sidecar"`. The loop also makes close shops ask and wait.
-4. Bot run on Danger 0. Within about 4-7 waves the target fires. Expect line 1
+4. Bot run on Danger 0. For `chal_gatherer_1` (300 materials) the target should fire within about
+   4-7 waves (an unmeasured estimate; the fallbacks take far longer). Expect line 1
    `TARGET: chal_gatherer_1 DONE`. At the end of that wave, expect
    `DECIDING: checkpoint <N>s` with the game paused. It resumes on a response
    or at the timeout.
@@ -667,6 +695,7 @@ Back up first, every time.
 
    ```powershell
    $stamp = Get-Date -Format 'yyyy-MM-dd-HHmmss'
+   New-Item -ItemType Directory -Force "C:\Users\eliza\Desktop\ClaudeFiles\brotato-bot\backups\$stamp-pre-reset" | Out-Null
    Copy-Item -Recurse "$env:APPDATA\Brotato\<steam64 id>" `
        "C:\Users\eliza\Desktop\ClaudeFiles\brotato-bot\backups\$stamp-pre-reset\<steam64 id>"
    ```
@@ -674,12 +703,12 @@ Back up first, every time.
 3. **Preferred: the in-game reset.** Use this because Steam Cloud is on and
    file deletes may be undone.
    1. Launch the game and open the profile menu.
-   2. Select "Profile 2" (the bot profile, see 3.1).
+   2. Select "Profile 2" (the bot profile, id 1, see 3.1).
    3. Press "Reset". The game warns "Resetting this profile will erase all
       your progress for this profile." Press Confirm.
-   4. Which profile "Reset" acts on, the highlighted one or the loaded one,
-      is not settled by the code (verify). Check the profile stats on screen
-      before you confirm.
+   4. "Reset" acts on the highlighted profile (`menu_profile.gd:268-269`
+      calls `reset_save_profile(view_id)`). As a second check, look at the
+      profile stats on screen before you confirm.
 4. **Fallback: delete the files.** Do this with the game closed. The game's
    save loader (`ProgressDataLoaderV3`) names the files per profile id, so
    for id 1 they are:
