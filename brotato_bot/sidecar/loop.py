@@ -199,6 +199,7 @@ class Sidecar:
                 "source": outcome.source,
                 "attempts": outcome.to_dict()["attempts"],
                 "elapsed_ms": elapsed_ms,
+                # ``decision`` and ``response`` duplicate on purpose (UNION ruling).
                 "decision": outcome.decision,
                 "prompt_sha256": hashlib.sha256(user.encode("utf-8")).hexdigest(),
                 "run_id": run_id,

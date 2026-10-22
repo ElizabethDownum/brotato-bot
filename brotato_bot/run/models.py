@@ -22,16 +22,11 @@ class WaveRow(BaseModel):
 
 
 class ShopRow(BaseModel):
-    """One shop action. From a ``shop`` event: ``action`` is buy/reroll/lock/ban/go and
-    ``source`` is rule/haiku. From a ``decision_applied`` line (older recordings): ``action``
-    is the mod's ``applied`` word (buy/lock/reroll/skip/revise_plan/rule), ``item``,
-    ``price`` and ``score`` come from the request file's options when it is available,
-    and ``source`` is the matching ``decision`` line's source."""
+    """One shop action, from a ``shop`` event: ``action`` is buy/reroll/lock/ban/go and
+    ``source`` is rule/haiku."""
 
     wave: int | None = None
-    id: str = ""
     action: str
-    option_index: int | None = None
     item: str | None = None
     price: int | None = None
     score: float | None = None

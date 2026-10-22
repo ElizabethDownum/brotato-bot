@@ -78,14 +78,6 @@ def settings(cfg: dict | None) -> dict:
     return out
 
 
-def _user_message(request: dict, context: Any) -> str:
-    """``context`` is the built user message, or a dict of ``prompt.build`` keyword
-    arguments (``state, plan, dataset, unlock_state, knowledge, experience``)."""
-    if isinstance(context, str):
-        return context
-    return prompt.build(request, **(context or {}))
-
-
 def _deterministic_error(raw: str) -> bool:
     """Whether the CLI envelope reports an error a retry would repeat: HTTP 400/401/403
     (``api_error_status`` or ``API Error: <status>`` in ``result``) or ``error_max_turns``."""
@@ -125,21 +117,20 @@ def _repair_message(original: str, answer: str, errors: list[str]) -> str:
 
 def decide(
     request: dict,
-    context: Any,
+    user: str,
     cfg: dict | None,
     run=claude_cli.run,
     *,
     deadline_ms: int | None = None,
     clock=time.monotonic,
 ) -> Outcome:
-    """Run the ladder for one request; see the module docstring."""
+    """Run the ladder for one request on the built user message; see the module docstring."""
     started = clock()
     s = settings(cfg)
     checkpoint = (request or {}).get("kind") == "checkpoint"
     model = s["checkpoint_model"] if checkpoint else s["model"]
     timeout_ms = s["checkpoint_timeout_ms"] if checkpoint else s["request_timeout_ms"]
     timeout_s = float(timeout_ms) / 1000 * CALL_TIMEOUT_SHARE
-    user = _user_message(request, context)
     attempts: list[Attempt] = []
 
     with tempfile.TemporaryDirectory(prefix="brotato-bot-") as tmp:

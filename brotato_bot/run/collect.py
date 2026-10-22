@@ -5,9 +5,8 @@ Event shapes are the mod's as built (runbook section 4; ``core/run_recorder.gd``
 ``extensions/main.gd``, ``bot_runtime.gd``, the shop and upgrades extensions). Every line
 is ``{"t": ms, "kind": ..., ...data}``. Unknown kinds (e.g. ``bot_state``) are ignored so
 later mod versions can add events, and every field is optional: older recordings without
-``shop`` events or ``wave`` on ``decision``/``levelup`` still collect. The shop ledger
-comes from ``shop`` events (one per shop action) when the recording has any, else from
-``decision_applied`` lines, the only shop record in recordings made before ``shop`` existed.
+``wave`` on ``decision``/``levelup`` still collect. The shop ledger comes from ``shop``
+events (one per shop action); ``decision_applied`` lines are read by the experience join.
 """
 
 from __future__ import annotations
@@ -81,29 +80,13 @@ def _str(v: Any) -> str | None:
     return v if isinstance(v, str) else None
 
 
-def _option(request: dict | None, index: int | None) -> dict | None:
-    if request is None or index is None:
-        return None
-    options = request.get("options")
-    if not isinstance(options, list):
-        return None
-    for opt in options:
-        if isinstance(opt, dict) and _int(opt.get("index")) == index:
-            return opt
-    return None
-
-
-def summarize(events: list[dict], requests: dict[str, dict] | None = None) -> RunSummary:
-    """Fold the run's events into a RunSummary. ``requests`` maps decision id to the
-    mod's request file, used to name the item, price and score behind a shop action."""
-    requests = requests or {}
+def summarize(events: list[dict]) -> RunSummary:
+    """Fold the run's events into a RunSummary."""
     header: dict = next((e for e in events if e.get("kind") == "header"), {})
     waves: dict[int, WaveRow] = {}
     shop: list[ShopRow] = []
-    applied_rows: list[ShopRow] = []  # from decision_applied: the ledger for older recordings
     levelups: list[LevelupRow] = []
     decisions: list[DecisionRow] = []
-    by_id: dict[str, DecisionRow] = {}
     checkpoints: list[CheckpointRow] = []
     challenges: list[str] = []
     targets: list[str] = []
@@ -141,26 +124,6 @@ def summarize(events: list[dict], requests: dict[str, dict] | None = None) -> Ru
                 rationale=_str(resp.get("rationale")),
             )
             decisions.append(row)
-            if row.id:
-                by_id[row.id] = row
-        elif kind == "decision_applied":
-            did = _str(e.get("id")) or ""
-            dec = by_id.get(did)
-            applied = _str(e.get("applied")) or "?"
-            idx = _int(e.get("option_index"))
-            opt = _option(requests.get(did), idx) if applied in ("buy", "lock") else None
-            applied_rows.append(
-                ShopRow(
-                    wave=dec.wave if dec else last_wave,
-                    id=did,
-                    action=applied,
-                    option_index=idx,
-                    item=_str(opt.get("id")) if opt else None,
-                    price=_int(opt.get("price")) if opt else None,
-                    score=_float(opt.get("score")) if opt else None,
-                    source=dec.source if dec else None,
-                )
-            )
         elif kind == "shop":
             wave = _int(e.get("wave"))
             shop.append(
@@ -262,7 +225,7 @@ def summarize(events: list[dict], requests: dict[str, dict] | None = None) -> Ru
         end_outcome=end_word,
         death_wave=death_wave,
         waves=[waves[k] for k in sorted(waves)],
-        shop=shop or applied_rows,
+        shop=shop,
         levelups=levelups,
         decisions=decisions,
         checkpoints=checkpoints,
@@ -271,25 +234,6 @@ def summarize(events: list[dict], requests: dict[str, dict] | None = None) -> Ru
         death=death,
         notes=notes,
     )
-
-
-def _load_requests(events: list[dict], requests_dir: Path) -> dict[str, dict]:
-    out: dict[str, dict] = {}
-    for e in events:
-        did = e.get("id") if e.get("kind") == "decision" else None
-        if not isinstance(did, str) or not did or did in out:
-            continue
-        try:
-            f = requests_dir / f"{plain_name(did)}.json"
-        except ValueError:
-            continue  # an id that is not a plain name never leaves requests_dir
-        try:
-            req = read_json(f)
-        except (OSError, json.JSONDecodeError):
-            continue
-        if isinstance(req, dict):
-            out[did] = req
-    return out
 
 
 def _read_target(path: Path, plan_id: str | None = None) -> str | None:
@@ -378,7 +322,7 @@ def collect(run_id: str, paths: Paths) -> Path:
     if not src.is_file():
         raise FileNotFoundError(f"no run recording at {src}")
     events = parse_jsonl(src)
-    summary = summarize(events, _load_requests(events, paths.requests_dir))
+    summary = summarize(events)
     if summary.run_id and summary.run_id != run_id:
         summary.notes.append(
             f"warning: header run_id {summary.run_id!r} differs from the file name {run_id!r}"

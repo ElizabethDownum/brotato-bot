@@ -65,7 +65,7 @@ def test_parse_jsonl_skips_only_a_bad_final_line(tmp_path):
         raise AssertionError("a corrupt middle line must not pass silently")
 
 
-def test_older_recording_without_shop_or_wave_fields():
+def test_older_recording_without_wave_fields():
     rid = "r-001"
     events = [
         {"kind": "header", "run_id": "r", "character_id": "c", "danger": 2, "plan_id": "p"},
@@ -77,31 +77,13 @@ def test_older_recording_without_shop_or_wave_fields():
             "source": "haiku",
             "response": {"action": "buy", "option_index": 1, "confidence": 0.7},
         },
-        {
-            "kind": "decision_applied",
-            "id": rid,
-            "action": "buy",
-            "option_index": 1,
-            "applied": "buy",
-        },
         {"kind": "levelup", "picked": "upgrade_armor_1", "alternatives": [], "source": "rule"},
         {"kind": "warning", "reason": "pause_on_focus_lost is true"},
         {"kind": "bot_state", "state": "idle", "reason": "toggle"},
         {"kind": "end", "outcome": "won", "wave": 20, "hp": 3, "gold": 1},
     ]
-    requests = {
-        rid: {
-            "options": [
-                {"index": 0, "id": "item_bag", "price": 20, "score": 2.0},
-                {"index": 1, "id": "weapon_smg_1", "price": 25, "score": 6.5},
-            ]
-        }
-    }
-    s = collect.summarize(events, requests)
+    s = collect.summarize(events)
     assert s.outcome == "win"
-    assert [(r.wave, r.action, r.item, r.price, r.score, r.source) for r in s.shop] == [
-        (4, "buy", "weapon_smg_1", 25, 6.5, "haiku")
-    ]
     assert s.decisions[0].wave == 4 and s.levelups[0].wave == 4
     assert "warning: pause_on_focus_lost is true" in s.notes
 
@@ -240,20 +222,6 @@ def test_collect_writes_report_copy_and_index_row(tmp_paths):
         encoding="utf-8",
     )
     p.config_json.write_text(json.dumps({"target_challenge": "chal_gatherer_1"}), encoding="utf-8")
-    p.requests_dir.mkdir(parents=True)
-    (p.requests_dir / f"{RUN_ID}-001.json").write_text(
-        json.dumps(
-            {
-                "id": f"{RUN_ID}-001",
-                "kind": "shop",
-                "options": [
-                    {"index": 0, "id": "item_bag", "kind": "item", "price": 20, "score": 2.0},
-                    {"index": 1, "id": "weapon_smg_1", "kind": "weapon", "price": 25, "score": 6.5},
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
     p.runs_out.mkdir(parents=True)
     other = {"run_id": "older", "outcome": "win"}
     (p.runs_out / "index.json").write_text(json.dumps([other]), encoding="utf-8")
@@ -335,43 +303,6 @@ def test_collect_rejects_traversal_run_id(tmp_paths, tmp_path):
             collect.collect(bad, tmp_paths)
         assert cli.main(["collect", bad]) == 1
     assert sorted(tmp_path.rglob("*")) == before
-
-
-def test_request_lookup_skips_non_plain_decision_id(tmp_paths):
-    p = tmp_paths
-    secret = p.requests_dir.parent.parent / "settings.json"
-    secret.parent.mkdir(parents=True, exist_ok=True)
-    secret.write_text(
-        json.dumps({"options": [{"index": 0, "id": "LEAKED", "price": 1}]}), encoding="utf-8"
-    )
-    bad_id = r"..\..\settings"
-    lines = [
-        {"kind": "header", "run_id": "r1", "character_id": "c", "danger": 0, "plan_id": "p"},
-        {"kind": "wave_end", "wave": 1, "hp": 5, "gold": 9, "damage_taken": 0, "kills": 3},
-        {
-            "kind": "decision",
-            "request_kind": "shop",
-            "id": bad_id,
-            "source": "haiku",
-            "response": {"action": "buy", "option_index": 0, "confidence": 0.5},
-        },
-        {
-            "kind": "decision_applied",
-            "id": bad_id,
-            "action": "buy",
-            "option_index": 0,
-            "applied": "buy",
-        },
-        {"kind": "end", "outcome": "quit"},
-    ]
-    p.runs_in.mkdir(parents=True, exist_ok=True)
-    (p.runs_in / "r1.jsonl").write_text(
-        "\n".join(json.dumps(x) for x in lines) + "\n", encoding="utf-8"
-    )
-    p.requests_dir.mkdir(parents=True, exist_ok=True)
-    md = collect.collect("r1", p).read_text(encoding="utf-8")
-    assert "LEAKED" not in md
-    assert "| 1 | buy | - | - | - | haiku |" in md
 
 
 def test_index_run_id_is_the_file_name_and_mismatch_is_noted(tmp_paths):
