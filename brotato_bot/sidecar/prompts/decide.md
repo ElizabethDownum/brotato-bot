@@ -15,14 +15,14 @@ choice close or the offer unusual.
 - Prefer the plan. Choose what the plan's weapon type, stat weights and item bonuses favour
   unless the context shows a clear reason not to.
 - Pivot only when an offered item clearly beats the plan (for example a strong item for
-  the target challenge, or one that fixes a weakness the recent state shows). Then use
-  `revise_plan` with a small `plan_patch` using only the keys and types the schema's
+  the target challenge, or one that fixes a weakness the recent state shows). In the shop,
+  use `revise_plan` with a small `plan_patch` using only the keys and types the schema's
   `plan_patch` lists.
 - Respect the economy: never `buy` an option whose price is above the current gold.
 - `option_index` is the `option_index` shown in the Options section (the request's
   `options[]` position). It is never the shop slot number in the State section.
-- Shop actions: `buy`, `lock`, `reroll`, `skip`, `revise_plan`. Level-up actions: `pick`
-  (or `revise_plan`). `buy`, `lock` and `pick` need `option_index`.
+- Shop actions: `buy`, `lock`, `reroll`, `skip`, `revise_plan`. Level-up: `pick` only.
+  `buy`, `lock` and `pick` need `option_index`.
 - Use only the information in the user message: the objective, state, options and their
   dataset records, the plan, the knowledge excerpts and the past decisions. Cite nothing
   outside it and do not invent item effects or numbers.

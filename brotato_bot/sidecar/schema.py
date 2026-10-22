@@ -13,6 +13,12 @@ SCHEMA_PATH = Path(__file__).with_name("decision.schema.json")
 
 Action = Literal["buy", "reroll", "lock", "skip", "pick", "revise_plan"]
 NEEDS_OPTION_INDEX = frozenset({"buy", "lock", "pick"})
+# The actions each screen applies (base_shop.gd, upgrades_ui.gd, Checkpoint.wanted).
+SCREEN_ACTIONS = {
+    "shop": ("buy", "lock", "reroll", "skip", "revise_plan"),
+    "levelup": ("pick",),
+    "checkpoint": ("revise_plan", "skip"),
+}
 
 # Plan keys whose values the mod uses as ints (plan_file.gd INT_PLAN_KEYS).
 INT_PLAN_KEYS = ("harvest_cap", "max_weapons", "reroll_keep", "max_rerolls", "gold_floor")
@@ -74,8 +80,12 @@ class Decision(BaseModel):
         return self
 
 
-def validate(obj: Any) -> list[str]:
-    """Return human-readable errors for ``obj``; an empty list means it is valid."""
+def validate(obj: Any, request: dict | None = None) -> list[str]:
+    """Return human-readable errors for ``obj``; an empty list means it is valid.
+
+    With ``request``, the action must be one its ``screen`` applies (``SCREEN_ACTIONS``)
+    and an ``option_index`` must be one of its ``options[].index``.
+    """
     if not isinstance(obj, dict):
         return [f"<root>: expected a JSON object, got {type(obj).__name__}"]
     try:
@@ -85,4 +95,15 @@ def validate(obj: Any) -> list[str]:
             f"{'.'.join(str(p) for p in err['loc']) or '<root>'}: {err['msg']}"
             for err in exc.errors()
         ]
+    if request is None:
+        return []
+    screen = request.get("screen") or request.get("kind")
+    allowed = SCREEN_ACTIONS.get(screen)
+    if allowed is not None and obj["action"] not in allowed:
+        return [
+            f"action: '{obj['action']}' is not allowed on the {screen} screen; use one of {allowed}"
+        ]
+    indexes = [o.get("index") for o in request.get("options") or [] if isinstance(o, dict)]
+    if "option_index" in obj and obj["option_index"] not in indexes:
+        return [f"option_index: {obj['option_index']} is not an index in Options {indexes}"]
     return []

@@ -292,3 +292,14 @@ def test_transient_api_error_still_retries():
     runner.calls = 0
     out = decide.decide(REQUEST, "PROMPT", CFG, run=_run_with(runner))
     assert out.source == "fallback" and runner.calls == 3
+
+
+def test_action_illegal_for_the_screen_runs_the_retry_rung():
+    request = {"id": "r-3", "kind": "levelup", "screen": "levelup", "options": [{"index": 0}]}
+    revise = {**VALID, "action": "revise_plan", "plan_patch": {"min_buy": 3.0}}
+    pick = {**VALID, "action": "pick", "option_index": 0}
+    runner = _scripted(revise, {**pick, "option_index": 4}, pick)
+    out = decide.decide(request, "PROMPT", CFG, run=_run_with(runner))
+    assert out.source == "repair" and out.decision == pick
+    assert out.attempts[0].errors[0].startswith("action")
+    assert out.attempts[1].errors[0].startswith("option_index")

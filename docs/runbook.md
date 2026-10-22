@@ -411,7 +411,7 @@ All files are under `%APPDATA%\Brotato\brotato-bot\` (`user://brotato-bot`).
 
   | Field | Rule |
   |---|---|
-  | `action` | `buy`, `lock`, `reroll`, `skip` (shop); `pick` (level-up); `revise_plan` (any screen, mostly `checkpoint`) |
+  | `action` | `buy`, `lock`, `reroll`, `skip` (shop); `pick` (level-up); `revise_plan` (shop and `checkpoint` only); `skip` (`checkpoint`) |
   | `option_index` | int >= 0, required for `buy`, `lock` and `pick` |
   | `confidence` | number in 0..1, required |
   | `rationale` | string, optional |
@@ -420,7 +420,9 @@ All files are under `%APPDATA%\Brotato\brotato-bot\` (`user://brotato-bot`).
 
   A response that fails these rules counts as `invalid` and the rules decide.
   An action that does not fit the screen (e.g. `pick` in the shop) is applied
-  as `rule`.
+  as `rule`. The sidecar rejects such an answer, and an `option_index` that
+  is not in `options[].index`, before writing it, so its retry and repair
+  steps run instead.
 - **Sources** in the `decision` line: `haiku` (valid answer), `invalid`,
   `timeout` (no answer by the deadline; also a failed write or a halt while
   waiting), `interrupted` (ESC, a move key or the pause menu during the wait)

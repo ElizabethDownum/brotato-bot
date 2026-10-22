@@ -187,3 +187,39 @@ def test_schema_json_plan_patch_mirrors_the_whitelist():
     assert {k for k, t in kinds.items() if t == "integer"} == set(schema.INT_PLAN_KEYS)
     assert patch["properties"]["ask_on"]["items"]["type"] == "string"
     assert patch["properties"]["stats"]["additionalProperties"]["type"] == "number"
+
+
+SHOP = {"screen": "shop", "options": [{"index": 0}, {"index": 1}]}
+LEVELUP = {"screen": "levelup", "options": [{"index": 0}, {"index": 1}, {"index": 2}]}
+CHECKPOINT = {"screen": "checkpoint", "options": []}
+
+
+@pytest.mark.parametrize(
+    ("request_", "obj"),
+    [
+        (SHOP, _buy(option_index=1)),
+        (SHOP, _buy(action="reroll", option_index=0)),
+        (SHOP, _revise({"min_buy": 3.0})),
+        (LEVELUP, _buy(action="pick", option_index=2)),
+        (CHECKPOINT, _revise({"min_buy": 3.0})),
+        (CHECKPOINT, {k: v for k, v in _buy(action="skip").items() if k != "option_index"}),
+    ],
+)
+def test_validate_accepts_actions_legal_for_the_screen(request_, obj):
+    assert schema.validate(obj, request_) == []
+
+
+@pytest.mark.parametrize(
+    ("request_", "obj", "field"),
+    [
+        (LEVELUP, _revise({"min_buy": 3.0}), "action"),
+        (LEVELUP, {k: v for k, v in _buy(action="skip").items() if k != "option_index"}, "action"),
+        (SHOP, _buy(action="pick", option_index=0), "action"),
+        (CHECKPOINT, _buy(option_index=0), "action"),
+        (SHOP, _buy(option_index=2), "option_index"),
+        (LEVELUP, _buy(action="pick", option_index=3), "option_index"),
+    ],
+)
+def test_validate_rejects_illegal_action_or_index_for_the_request(request_, obj, field):
+    errors = schema.validate(obj, request_)
+    assert errors and all(e.startswith(field) for e in errors), errors

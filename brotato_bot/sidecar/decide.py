@@ -180,7 +180,7 @@ def decide(
             if res.returncode != 0:
                 errors.insert(0, f"claude CLI exited with code {res.returncode}")
             if not errors:
-                errors = validate(res.parsed)
+                errors = validate(res.parsed, request)
             attempts.append(
                 Attempt(use_model, label, res.elapsed_ms, res.returncode,
                         res.raw[:RAW_MAX_CHARS], list(errors))
