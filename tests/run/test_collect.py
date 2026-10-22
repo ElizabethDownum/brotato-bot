@@ -279,6 +279,7 @@ def test_collect_writes_report_copy_and_index_row(tmp_paths):
         "death_wave": 3,
         "hp_end_last_wave": 5,
         "proposal_n": None,
+        "profile_id": 1,
     }
 
 
@@ -388,3 +389,25 @@ def test_latest_breaks_mtime_ties_by_name(tmp_paths):
     for f in (b, a):
         os.utime(f, (2_000_000, 2_000_000))
     assert collect.latest_run_id(tmp_paths) == "20261022-000001-a-d0"
+
+
+def _install_on_profile(tmp_paths, profile_id):
+    dst = _install(tmp_paths, "run_small.jsonl")
+    text = dst.read_text(encoding="utf-8")
+    dst.write_text(text.replace('"profile_id":1,', f'"profile_id":{profile_id},', 1), "utf-8")
+
+
+def test_collect_records_experience_only_for_the_bot_profile(tmp_paths):
+    _install_on_profile(tmp_paths, 0)
+    _install_decision(tmp_paths)
+    report = collect.collect(RUN_ID, tmp_paths)
+    assert not (tmp_paths.decisions_dir / "experience.jsonl").exists()
+    assert "profile 0 is not the bot profile (1)" in report.read_text(encoding="utf-8")
+    index = json.loads((tmp_paths.runs_out / "index.json").read_text(encoding="utf-8"))
+    assert index[0]["profile_id"] == 0
+
+    tmp_paths.config_json.parent.mkdir(parents=True, exist_ok=True)
+    tmp_paths.config_json.write_text(json.dumps({"bot_profile_id": 2}), encoding="utf-8")
+    _install_on_profile(tmp_paths, 2)
+    collect.collect(RUN_ID, tmp_paths)
+    assert len(collect.parse_jsonl(tmp_paths.decisions_dir / "experience.jsonl")) == 1

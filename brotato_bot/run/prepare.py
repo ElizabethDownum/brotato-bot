@@ -49,6 +49,15 @@ def _read_object(path: Path) -> dict | None:
     return data
 
 
+def bot_profile_id(config: dict) -> int:
+    """The bot's profile from the mod's ``config.json`` object: ``bot_profile_id``, default
+    1. As in the mod, a value below 1 counts as 1 (profile 0 is the owner's own)."""
+    pid = config.get("bot_profile_id", DEFAULT_BOT_PROFILE_ID)
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid < 1:
+        return DEFAULT_BOT_PROFILE_ID
+    return pid
+
+
 def settings_warnings(settings_path: Path, bot_profile_id: int) -> list[str]:
     try:
         settings = _read_object(settings_path)
@@ -77,10 +86,7 @@ def prepare(plan: dict, target: str | None, paths: Paths) -> list[str]:
     old_target = config.get("target_challenge", "")
     new_target = target or ""
 
-    bot_pid = config.get("bot_profile_id", DEFAULT_BOT_PROFILE_ID)
-    if not isinstance(bot_pid, int) or isinstance(bot_pid, bool):
-        bot_pid = DEFAULT_BOT_PROFILE_ID
-    warnings = settings_warnings(paths.settings_json, bot_pid)
+    warnings = settings_warnings(paths.settings_json, bot_profile_id(config))
 
     plan_target = plan.get("target_challenge", "")
     if plan_target and plan_target != new_target:

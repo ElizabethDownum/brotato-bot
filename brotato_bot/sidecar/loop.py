@@ -25,7 +25,8 @@ the loop):
    ``[<id>] <kind> -> <action> via <source> in <ms> ms``.
 
 With ``auto_next`` it also tails the newest ``<mod_user_dir>/runs/*.jsonl``. When an
-``end`` line appears it collects that run and runs ``claude -p /brotato-next`` in the
+``end`` line appears in a run whose header ``profile_id`` is the bot profile
+(config.json ``bot_profile_id``, default 1), it collects that run and runs ``claude -p /brotato-next`` in the
 project (spec 7.5), once per run file, for at most ``NEXT_TIMEOUT_S``. Requests wait
 meanwhile and the heartbeat goes stale, so the mod's rules decide until it returns.
 Runs that ended before the sidecar started are left alone.
@@ -53,6 +54,7 @@ from brotato_bot.fsutil import (
 )
 from brotato_bot.report import render
 from brotato_bot.run import collect
+from brotato_bot.run.prepare import bot_profile_id
 from brotato_bot.sidecar import decide, experience, prompt
 from brotato_bot.sidecar.command import prompt_inputs
 
@@ -63,6 +65,16 @@ NEXT_TIMEOUT_S = 600
 
 def _now_ms() -> int:
     return time.time_ns() // 1_000_000
+
+
+def _header_profile(run_file: Path) -> object:
+    """The ``profile_id`` in the run file's first (header) line, None without one."""
+    try:
+        with run_file.open("rb") as fh:
+            header = json.loads(fh.readline())
+    except (OSError, ValueError):
+        return None
+    return header.get("profile_id") if isinstance(header, dict) else None
 
 
 class Sidecar:
@@ -234,6 +246,11 @@ class Sidecar:
                 continue
             if isinstance(event, dict) and event.get("kind") == "end":
                 self._next_done.add(newest.stem)
+                profile, bot_pid = _header_profile(newest), bot_profile_id(self.cfg)
+                if profile != bot_pid:
+                    print(f"auto-next: {newest.stem} skipped: profile {profile} is not "
+                          f"the bot profile ({bot_pid})")  # fmt: skip
+                    return
                 self._run_next(newest.stem)
                 return
 

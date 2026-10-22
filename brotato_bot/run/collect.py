@@ -19,7 +19,13 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from brotato_bot.fsutil import atomic_write_json, atomic_write_text, plain_name, read_json
+from brotato_bot.fsutil import (
+    atomic_write_json,
+    atomic_write_text,
+    plain_name,
+    read_json,
+    read_json_or_empty,
+)
 from brotato_bot.paths import Paths
 from brotato_bot.report import render
 from brotato_bot.run.models import (
@@ -31,6 +37,7 @@ from brotato_bot.run.models import (
     ShopRow,
     WaveRow,
 )
+from brotato_bot.run.prepare import bot_profile_id
 from brotato_bot.sidecar import experience
 
 END_OUTCOMES = {"won": "win", "death": "death"}  # abandoned / quit / no end line: incomplete
@@ -248,6 +255,7 @@ def summarize(events: list[dict], requests: dict[str, dict] | None = None) -> Ru
         character_id=_str(header.get("character_id")) or "",
         danger=_int(header.get("danger")),
         plan_id=_str(header.get("plan_id")) or "",
+        profile_id=_int(header.get("profile_id")),
         start_wave=start_wave,
         target_challenge=targets[0] if targets else None,
         outcome=outcome,
@@ -338,6 +346,7 @@ def index_row(summary: RunSummary) -> dict:
         "death_wave": summary.death_wave,
         "hp_end_last_wave": summary.hp_end_last_wave,
         "proposal_n": None,
+        "profile_id": summary.profile_id,
     }
 
 
@@ -358,7 +367,8 @@ def append_index(index_path: Path, row: dict) -> None:
 
 def collect(run_id: str, paths: Paths) -> Path:
     """Summarize ``<runs_in>/<run_id>.jsonl``; write ``<runs_out>/<run_id>.md``, copy the
-    JSONL beside it and update ``<runs_out>/index.json``. Returns the report path.
+    JSONL beside it and update ``<runs_out>/index.json``. Returns the report path. Joined
+    decisions go to ``experience.jsonl`` only for a run on the bot profile.
 
     ``run_id`` must be a plain file name (ValueError otherwise). It names every file and
     the index row; a header run_id that disagrees is reported as a note."""
@@ -377,7 +387,14 @@ def collect(run_id: str, paths: Paths) -> Path:
 
     outcomes: dict[str, str] = {}
     decisions_path = paths.decisions_dir / f"{run_id}.jsonl"
-    if decisions_path.is_file():
+    bot_pid = bot_profile_id(read_json_or_empty(paths.config_json))
+    on_bot_profile = summary.profile_id == bot_pid
+    if not on_bot_profile:
+        summary.notes.append(
+            f"profile {summary.profile_id} is not the bot profile ({bot_pid}): "
+            "no experience recorded"
+        )
+    if on_bot_profile and decisions_path.is_file():
         experience_path = paths.decisions_dir / "experience.jsonl"
         seen = {(rec.get("run_id"), rec.get("id")) for rec in experience.read(experience_path)}
         joined = experience.join_outcomes(decisions_path, summary, run_jsonl=src)

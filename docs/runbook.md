@@ -964,6 +964,8 @@ collect are local. Decisions also need the authenticated `claude` CLI's model se
    already present at startup. On a new `end` line it collects in-process,
    then runs `claude -p --model <next_model> /brotato-next` from the project
    root with a 600 s timeout, once per run file; no CLI call if collect fails.
+   A run whose header `profile_id` is not the bot profile (`config.json`
+   `bot_profile_id`, default 1) is skipped: no collect, no call.
 3. While that call runs, the loop answers no requests and does not refresh
    the heartbeat. Once it is more than 10 s old the mod's rules decide until
    the call returns. The flag is wired; the `/brotato-next` skill belongs
@@ -980,6 +982,9 @@ collect are local. Decisions also need the authenticated `claude` CLI's model se
    `--latest` is the default. Input is the bot root's `runs/<run_id>.jsonl`.
 2. Re-collecting a finished run is safe: report and index row are replaced;
    joined experience is appended only for unseen `(run_id, id)` pairs.
+3. Every run gets a report and an index row (with its `profile_id`), but
+   experience is appended only for a run on the bot profile (`config.json`
+   `bot_profile_id`, default 1), so the owner's own runs never reach it.
 
 | Project output | Contents |
 |---|---|

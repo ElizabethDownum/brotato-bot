@@ -82,6 +82,7 @@ class RunSummary(BaseModel):
     character_id: str = ""
     danger: int | None = None
     plan_id: str = ""
+    profile_id: int | None = None
     start_wave: int = 1
     target_challenge: str | None = None
     outcome: Outcome

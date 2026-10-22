@@ -371,3 +371,23 @@ def test_run_forever_removes_heartbeat_on_interrupt(p, monkeypatch):
     with pytest.raises(KeyboardInterrupt):
         sidecar.run_forever()
     assert not (p.mod_user_dir / "sidecar.alive").exists()
+
+
+@pytest.mark.parametrize(("profile", "cfg", "runs_next"), [(0, {}, False), (2, {}, False),
+                                                         (2, {"bot_profile_id": 2}, True)])  # fmt: skip
+def test_auto_next_skips_runs_on_another_profile(p, monkeypatch, capsys, profile, cfg, runs_next):
+    p.runs_in.mkdir(parents=True)
+    calls = []
+    monkeypatch.setattr(
+        loop.subprocess,
+        "run",
+        lambda cmd, **kw: calls.append(cmd) or subprocess.CompletedProcess(cmd, 0),
+    )
+    sidecar = loop.Sidecar(p, cfg, decide_fn=FakeDecide(None), auto_next=True)
+    text = RUN_FIXTURE.read_text(encoding="utf-8")
+    run = p.runs_in / "20261022-201500-well_rounded-d0.jsonl"
+    run.write_text(text.replace('"profile_id":1,', f'"profile_id":{profile},', 1), "utf-8")
+    sidecar.poll_once()
+    assert bool(calls) is runs_next
+    if not runs_next:
+        assert f"profile {profile} is not the bot profile" in capsys.readouterr().out
