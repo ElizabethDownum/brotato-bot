@@ -17,12 +17,15 @@ The structured answer is a call of the CLI's own output tool, which uses a turn:
 ``--setting-sources ""`` (no user/project settings, CLAUDE.md or memory) cut a Haiku call
 from about 33k input tokens per model turn to about 6k and from 7.3 s to 4.3 s, with the
 structured answer intact (live, 2026-10-22). ``--no-session-persistence`` keeps every
-decision call out of the resumable sessions.
+decision call out of the resumable sessions. The child gets the parent environment minus
+``ANTHROPIC_API_KEY`` and ``ANTHROPIC_AUTH_TOKEN``, so it uses the subscription login and
+never bills the API.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import time
@@ -32,6 +35,7 @@ from typing import Any
 
 CLAUDE = "claude"
 MAX_TURNS = "2"
+_API_CREDENTIALS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 # Top-level keys a tool input_schema may not carry (API 400 "does not support oneOf,
 # allOf, or anyOf at the top level"); if/then/else only appear inside allOf here.
 _TOP_LEVEL_UNSUPPORTED = ("allOf", "anyOf", "oneOf", "if", "then", "else")
@@ -135,6 +139,7 @@ def run(
         errors="replace",
         timeout=timeout_s,
         shell=False,
+        env={k: v for k, v in os.environ.items() if k not in _API_CREDENTIALS},
     )
     elapsed_ms = int((time.monotonic() - start) * 1000)
     raw = proc.stdout or ""

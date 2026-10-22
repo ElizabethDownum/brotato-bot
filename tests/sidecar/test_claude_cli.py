@@ -83,3 +83,22 @@ def test_schema_arg_drops_top_level_combinators():
     assert not {"allOf", "anyOf", "oneOf"} & arg.keys()
     assert arg["properties"] == full["properties"] and arg["required"] == full["required"]
     assert arg["additionalProperties"] is False
+
+
+def test_run_strips_api_credentials_from_the_cli_env(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "tok-test")
+    monkeypatch.setenv("BROTATO_ENV_PROBE", "kept")
+    runner = _completed(json.dumps({"structured_output": DECISION}))
+    claude_cli.run(
+        "p",
+        system_prompt_file=tmp_path / "s.md",
+        model="m",
+        schema_path=SCHEMA_PATH,
+        timeout_s=1.0,
+        runner=runner,
+    )
+    ((_cmd, kwargs),) = runner.calls
+    env = kwargs["env"]
+    assert "ANTHROPIC_API_KEY" not in env and "ANTHROPIC_AUTH_TOKEN" not in env
+    assert env["BROTATO_ENV_PROBE"] == "kept"
