@@ -16,6 +16,8 @@ var coop_focus_hud
 
 # Enemies player-killed this wave (main.tscn is reloaded every wave).
 var _bot_kills_this_wave = 0
+# Killer id written into player 0's death event ("" until player 0 dies).
+var _bot_killer = ""
 
 
 # Godot 3 runs the base main.gd _ready first, so RunData is populated here.
@@ -138,6 +140,7 @@ func _on_player_died(p_player: Player, _args: Entity.DieArgs) -> void:
 			elif "enemy_id" in from:
 				killer = from.enemy_id
 		ai_telemetry.record_death(p_player, killer)
+		_bot_killer = ai_telemetry.last_killer()
 	._on_player_died(p_player, _args)
 
 
@@ -151,6 +154,17 @@ func _bot_end_run(outcome):
 	var rec = _bot_recorder()
 	if rec == null:
 		return
+	var rt = get_node_or_null("/root/BotRuntime")
+	# Completion gate: the single place a bot run is marked complete (player 0's
+	# death and the final wave both arrive here via _set_run_states). complete()
+	# runs first because the recorder drops events once end_run has closed the
+	# file, so the JSONL ends ...complete, end. The end line keeps its won/death
+	# words; complete() takes win/death.
+	if rt != null and (rt.bot_state == "acting" or rt.bot_state == "deciding"):
+		var extra = {}
+		if outcome != "won":
+			extra["killer"] = _bot_killer
+		rt.complete(Guards.normalize_outcome(outcome), extra)
 	var p = _bot_player0()
 	rec.end_run({
 		"outcome": outcome,
@@ -158,6 +172,5 @@ func _bot_end_run(outcome):
 		"hp": int(p.current_stats.health) if p != null else 0,
 		"gold": RunData.get_player_gold(0),
 	})
-	var rt = get_node_or_null("/root/BotRuntime")
 	if rt != null:
 		rt.run_id = ""

@@ -152,13 +152,7 @@ func move_scancodes() -> Array:
 # shop directly, so enablement must not carry over). Not a halt: no event.
 func reset_for_menu():
 	bot_state = "idle"
-	var options = get_node_or_null("/root/AutobattlerOptions")
-	if options != null:
-		options.enable_autobattler = false
-		options.enable_autoshop = false
-		options.emit_signal("setting_changed", options.ENABLE_AUTOBATTLER_OPTION_NAME, false, options.MOD_NAME)
-		options.emit_signal("setting_changed", options.ENABLE_AUTOSHOP_OPTION_NAME, false, options.MOD_NAME)
-		options.save_configs()
+	_disable_flags()
 	set_status("")
 
 
@@ -167,16 +161,42 @@ func reset_for_menu():
 # A later Shift+Space goes through the enable guards again.
 func halt(reason: String):
 	bot_state = "halted"
-	var options = get_node_or_null("/root/AutobattlerOptions")
-	if options != null:
-		options.enable_autobattler = false
-		options.enable_autoshop = false
-		options.emit_signal("setting_changed", options.ENABLE_AUTOBATTLER_OPTION_NAME, false, options.MOD_NAME)
-		options.emit_signal("setting_changed", options.ENABLE_AUTOSHOP_OPTION_NAME, false, options.MOD_NAME)
-		options.save_configs()
+	_disable_flags()
 	if recorder != null:
 		recorder.event("halt", {"reason": reason})
 	set_status("HALTED: " + reason)
+
+
+# The run ended (player 0 died, or the run was won) while the bot was playing:
+# state "complete", both bot flags off (persisted), a complete event and the
+# RUN COMPLETE status. outcome is "win" or "death" (anything else is warned
+# about and treated as "death"; main.gd maps its "won" with
+# Guards.normalize_outcome). The run's end line is main.gd's job; this
+# never writes a second one. may_act() is false from here on, so neither the
+# post-run shop nor movement acts.
+func complete(outcome: String, extra: Dictionary):
+	if not outcome in ["win", "death"]:
+		push_warning("BrotatoBot: complete() got outcome '%s'; using death" % outcome)
+		outcome = "death"
+	bot_state = "complete"
+	_disable_flags()
+	if recorder != null:
+		recorder.event("complete", {"outcome": outcome, "wave": RunData.current_wave, "extra": extra})
+	set_status("RUN COMPLETE: " + outcome)
+
+
+# Turns enable_autobattler and enable_autoshop off on /root/AutobattlerOptions,
+# tells its listeners and persists the change. Shared by halt, complete and
+# reset_for_menu.
+func _disable_flags():
+	var options = get_node_or_null("/root/AutobattlerOptions")
+	if options == null:
+		return
+	options.enable_autobattler = false
+	options.enable_autoshop = false
+	options.emit_signal("setting_changed", options.ENABLE_AUTOBATTLER_OPTION_NAME, false, options.MOD_NAME)
+	options.emit_signal("setting_changed", options.ENABLE_AUTOSHOP_OPTION_NAME, false, options.MOD_NAME)
+	options.save_configs()
 
 
 # A new run file was opened: export numbering and snapshot history restart.

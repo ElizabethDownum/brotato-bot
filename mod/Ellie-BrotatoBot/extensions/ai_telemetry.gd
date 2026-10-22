@@ -23,6 +23,7 @@ var _damage_taken_this_wave = 0.0
 var _last_wave = - 1
 var _last_threats = []
 var _last_damage_src = ""
+var _last_killer = ""
 var _boss_state_cache = {}
 
 
@@ -303,6 +304,7 @@ func record_death(player, killer):
 		ids.push_back(t.id)
 	if killer == "":
 		killer = _last_damage_src
+	_last_killer = killer
 	var weapons = []
 	for w in RunData.get_player_weapons(0):
 		weapons.push_back(w.my_id)
@@ -317,6 +319,12 @@ func record_death(player, killer):
 		"build": {"weapons": weapons, "items": items},
 		"dmg_w": int(_damage_taken_this_wave),
 	})
+
+
+# The killer written into the last death event ("" before any death), for
+# main.gd's completion gate.
+func last_killer() -> String:
+	return _last_killer
 
 
 # Damage taken by player 0 this wave, for main.gd's wave_end event.

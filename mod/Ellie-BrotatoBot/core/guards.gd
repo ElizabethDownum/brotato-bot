@@ -82,3 +82,11 @@ static func is_human_move(event, move_scancodes = null, move_buttons = null, mou
 		if event is InputEventMouseButton:
 			return event.pressed
 	return false
+
+
+# Run-completion outcome for BotRuntime.complete(): "win" or "death". Accepts the
+# recorder's end-line word "won" as "win"; anything else counts as a death.
+static func normalize_outcome(outcome) -> String:
+	if outcome == "win" or outcome == "won":
+		return "win"
+	return "death"
