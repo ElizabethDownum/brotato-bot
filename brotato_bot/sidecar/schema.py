@@ -5,14 +5,50 @@ pydantic ``Decision`` model mirrors it and is the authority ``validate`` uses.
 """
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator, with_config
 
 SCHEMA_PATH = Path(__file__).with_name("decision.schema.json")
 
 Action = Literal["buy", "reroll", "lock", "skip", "pick", "revise_plan"]
 NEEDS_OPTION_INDEX = frozenset({"buy", "lock", "pick"})
+
+# Plan keys whose values the mod uses as ints (plan_file.gd INT_PLAN_KEYS).
+INT_PLAN_KEYS = ("harvest_cap", "max_weapons", "reroll_keep", "max_rerolls", "gold_floor")
+_PATCH_CONFIG = ConfigDict(extra="forbid", strict=True)
+
+
+@with_config(_PATCH_CONFIG)
+class PhaseBoost(TypedDict, total=False):
+    until_wave: int
+    stats: dict[str, float]
+
+
+@with_config(_PATCH_CONFIG)
+class PlanPatch(TypedDict, total=False):
+    """The plan keys the mod reads (shopping/build_plans.gd, shop_advisor.gd, base_shop.gd),
+    with the types it reads them as. The mod's PlanFile.KEY_TYPES is the same table."""
+
+    weapon_type: Literal["ranged", "melee", "any"]
+    stats: dict[str, float]
+    item_bonus: dict[str, float]
+    phase_boost: PhaseBoost
+    harvest_cap: int
+    max_weapons: int
+    reroll_keep: int
+    max_rerolls: int
+    gold_floor: int
+    min_buy: float
+    prefer_weapons: list[str]
+    ban_items: list[str]
+    deprioritize_weapons: list[str]
+    ask_on: list[str]
+    weapon_set: str
+    unique_weapons: bool
+    stack_combine: bool
+    hitrate_pref: bool
+    spend_surplus: bool
 
 
 class Decision(BaseModel):
@@ -20,7 +56,7 @@ class Decision(BaseModel):
 
     action: Action
     option_index: int | None = Field(default=None, ge=0)
-    plan_patch: dict[str, Any] | None = None
+    plan_patch: PlanPatch | None = None
     confidence: float = Field(ge=0, le=1)
     rationale: str = Field(max_length=300)
     tags: list[str]

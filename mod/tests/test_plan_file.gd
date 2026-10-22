@@ -162,6 +162,36 @@ func test_apply_patch_merges_for_matching_character_only():
 	d.remove(dir)
 
 
+func test_apply_patch_drops_unknown_keys_and_wrong_types():
+	var dir = "user://brotato-bot/test-plan-patch-types-%d" % OS.get_ticks_usec()
+	var path = dir.plus_file("plan.json")
+	var patch = {
+		"min_buy": "2", "ask_on": "item_scar", "focus": "ranged", "stats": [1, 2],
+		"item_bonus": {"item_scar": "lots"}, "phase_boost": {"until_wave": "7"},
+		"weapon_type": "magic", "unique_weapons": 1.0,
+		"max_rerolls": 4.0, "prefer_weapons": ["weapon_taser"], "spend_surplus": true,
+		"stats_ok": null,
+	}
+	assert_eq(PlanFile.apply_patch(path, "character_well_rounded", patch, "typed"), OK, "saved")
+	var a = PlanFile.load_from(path)
+	assert_true(typeof(a) == TYPE_DICTIONARY, "loads")
+	if typeof(a) != TYPE_DICTIONARY:
+		return
+	assert_eq(a.plan.keys().size(), 3, "only the three well-typed keys kept: %s" % str(a.plan.keys()))
+	assert_eq(a.plan.get("max_rerolls"), 4, "int key kept (normalized on load)")
+	assert_eq(a.plan.get("spend_surplus"), true, "bool key kept")
+	assert_true(a.plan.has("prefer_weapons"), "string list kept")
+	assert_true(PlanFile.value_ok("phase_boost", {"until_wave": 7.0, "stats": {"stat_armor": 1.5}}),
+		"phase_boost shape")
+	assert_true(PlanFile.value_ok("phase_boost", {}), "empty phase_boost disables")
+	assert_false(PlanFile.value_ok("ask_on", ["item_scar", 3.0]), "non-string list element")
+	assert_false(PlanFile.value_ok("stats", {"stat_armor": true}), "bool is not a number")
+	assert_true(PlanFile.value_ok("weapon_type", "melee"), "weapon_type enum")
+	var d = Directory.new()
+	d.remove(path)
+	d.remove(dir)
+
+
 # Godot 3 compares Dictionaries by identity, so == fails for equal contents.
 # Compare key sets and each value with the type-strict assert_eq.
 func _assert_dict_eq(a, b, msg):

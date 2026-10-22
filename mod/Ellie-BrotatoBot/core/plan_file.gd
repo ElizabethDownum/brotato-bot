@@ -24,6 +24,21 @@ const DEEP_KEYS = ["stats", "item_bonus"]
 # so load_from converts these back with int() (e.g. for range()/%d use).
 const INT_PLAN_KEYS = ["harvest_cap", "max_weapons", "reroll_keep", "max_rerolls", "gold_floor"]
 
+# The plan keys the shop and level-up code read, with the type each is read as
+# (the sidecar's schema.PlanPatch is the same table). apply_patch drops every
+# other key and every wrong-typed value, so a bad response cannot corrupt
+# plan.json. JSON numbers parse as floats, so INT_PLAN_KEYS are "number" here.
+const KEY_TYPES = {
+	"weapon_type": "weapon_type", "weapon_set": "string",
+	"stats": "number_map", "item_bonus": "number_map", "phase_boost": "phase_boost",
+	"harvest_cap": "number", "max_weapons": "number", "reroll_keep": "number",
+	"max_rerolls": "number", "gold_floor": "number", "min_buy": "number",
+	"prefer_weapons": "string_list", "ban_items": "string_list",
+	"deprioritize_weapons": "string_list", "ask_on": "string_list",
+	"unique_weapons": "bool", "stack_combine": "bool", "hitrate_pref": "bool",
+	"spend_surplus": "bool",
+}
+
 # mtime cache for load_cached(): path -> {"mtime": int, "data": Dictionary|null}.
 # Godot 3 has no static vars; a const Dictionary is shared by all users of the
 # script and stays mutable, so it serves as the cache holder.
@@ -115,7 +130,8 @@ static func save(path, plan) -> int:
 
 
 # Merges patch (plan keys, as in a revise_plan response) into the plan file at
-# path for character_id and saves it. A missing file is created as
+# path for character_id and saves it. Keys that fail value_ok are dropped (with a
+# push_warning) before the merge. A missing file is created as
 # {plan_id: new_plan_id, character_id, target_challenge: "", plan: patch}.
 # Refuses (returns ERR_UNAVAILABLE, with a push_warning) rather than overwrite
 # a file that exists but does not load, or one written for another character.
@@ -132,8 +148,54 @@ static func apply_patch(path, character_id, patch, new_plan_id) -> int:
 		push_warning("PlanFile: %s is for %s, not %s; patch not applied"
 			% [path, loaded.character_id, str(character_id)])
 		return ERR_UNAVAILABLE
-	loaded.plan = merge(loaded.plan, patch)
+	var typed = {}
+	for k in patch.keys():
+		if value_ok(k, patch[k]):
+			typed[k] = patch[k]
+		else:
+			push_warning("PlanFile: plan_patch key '%s' is unknown or wrong-typed; dropped" % str(k))
+	loaded.plan = merge(loaded.plan, typed)
 	return save(path, loaded)
+
+
+# True when key is in KEY_TYPES and v has that type.
+static func value_ok(key, v) -> bool:
+	return _type_ok(KEY_TYPES.get(key, ""), v)
+
+
+static func _type_ok(kind, v) -> bool:
+	match kind:
+		"number":
+			return typeof(v) == TYPE_REAL or typeof(v) == TYPE_INT
+		"string":
+			return typeof(v) == TYPE_STRING
+		"bool":
+			return typeof(v) == TYPE_BOOL
+		"weapon_type":
+			return typeof(v) == TYPE_STRING and v in ["ranged", "melee", "any"]
+		"string_list":
+			if typeof(v) != TYPE_ARRAY:
+				return false
+			for e in v:
+				if typeof(e) != TYPE_STRING:
+					return false
+			return true
+		"number_map":
+			if typeof(v) != TYPE_DICTIONARY:
+				return false
+			for k in v.keys():
+				if typeof(k) != TYPE_STRING or not _type_ok("number", v[k]):
+					return false
+			return true
+		"phase_boost":
+			if typeof(v) != TYPE_DICTIONARY:
+				return false
+			for k in v.keys():
+				var sub_kind = {"until_wave": "number", "stats": "number_map"}.get(k, "")
+				if not _type_ok(sub_kind, v[k]):
+					return false
+			return true
+	return false
 
 
 # base.duplicate(true) overlaid with override: stats and item_bonus merge one

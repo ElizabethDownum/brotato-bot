@@ -50,7 +50,7 @@ def test_revise_requires_plan_patch():
     del obj["option_index"]
     errors = schema.validate(obj)
     assert any("plan_patch" in e for e in errors)
-    assert schema.validate({**obj, "plan_patch": {"focus": "ranged"}}) == []
+    assert schema.validate({**obj, "plan_patch": {"weapon_type": "ranged"}}) == []
 
 
 def test_rejects_extra_fields():
@@ -116,3 +116,74 @@ def test_rejects_explicit_null_and_coerced_types():
     assert schema.validate(_buy(confidence=1)) == []
     assert any("confidence" in e for e in schema.validate(_buy(confidence="0.5")))
     assert any("option_index" in e for e in schema.validate(_buy(option_index=True)))
+
+
+def _revise(patch):
+    return {
+        "action": "revise_plan",
+        "plan_patch": patch,
+        "confidence": 0.6,
+        "rationale": "r",
+        "tags": [],
+    }
+
+
+def test_plan_patch_accepts_the_plan_keys_the_mod_reads():
+    patch = {
+        "weapon_type": "melee",
+        "stats": {"stat_armor": 4, "stat_dodge": 2.5},
+        "item_bonus": {"item_scar": 6.0},
+        "phase_boost": {"until_wave": 7, "stats": {"stat_max_hp": 2.2}},
+        "harvest_cap": 40,
+        "max_weapons": 6,
+        "reroll_keep": 5,
+        "max_rerolls": 10,
+        "gold_floor": 30,
+        "min_buy": 2.0,
+        "prefer_weapons": ["weapon_taser"],
+        "ban_items": ["item_medical_gun"],
+        "deprioritize_weapons": [],
+        "ask_on": ["item_scar"],
+        "weapon_set": "set_elemental",
+        "unique_weapons": True,
+        "stack_combine": False,
+        "hitrate_pref": True,
+        "spend_surplus": False,
+    }
+    assert schema.validate(_revise(patch)) == []
+    assert schema.validate(_revise({"phase_boost": {}})) == []
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"focus": "ranged"},
+        {"min_buy": "2"},
+        {"max_rerolls": 2.5},
+        {"max_rerolls": True},
+        {"ask_on": "item_scar"},
+        {"ask_on": [3]},
+        {"stats": {"stat_armor": "high"}},
+        {"stats": [1, 2]},
+        {"item_bonus": {"item_scar": None}},
+        {"weapon_type": "magic"},
+        {"phase_boost": {"until_wave": 7, "stats": {"stat_max_hp": "x"}}},
+        {"phase_boost": {"wave": 7}},
+        {"unique_weapons": "yes"},
+        {"max_rerolls": None},
+    ],
+)
+def test_plan_patch_rejects_unknown_keys_and_wrong_types(patch):
+    errors = schema.validate(_revise(patch))
+    assert errors and all(e.startswith("plan_patch") for e in errors), errors
+
+
+def test_schema_json_plan_patch_mirrors_the_whitelist():
+    data = json.loads(schema.SCHEMA_PATH.read_text(encoding="utf-8"))
+    patch = data["properties"]["plan_patch"]
+    assert patch["additionalProperties"] is False
+    assert set(patch["properties"]) == set(schema.PlanPatch.__annotations__)
+    kinds = {k: v.get("type") for k, v in patch["properties"].items()}
+    assert {k for k, t in kinds.items() if t == "integer"} == set(schema.INT_PLAN_KEYS)
+    assert patch["properties"]["ask_on"]["items"]["type"] == "string"
+    assert patch["properties"]["stats"]["additionalProperties"]["type"] == "number"

@@ -8,7 +8,39 @@
       "enum": ["buy", "reroll", "lock", "skip", "pick", "revise_plan"]
     },
     "option_index": {"type": "integer", "minimum": 0},
-    "plan_patch": {"type": "object"},
+    "plan_patch": {
+      "type": "object",
+      "description": "Plan keys to merge into plan.json; only these keys, with these types.",
+      "properties": {
+        "weapon_type": {"type": "string", "enum": ["ranged", "melee", "any"]},
+        "stats": {"type": "object", "additionalProperties": {"type": "number"}},
+        "item_bonus": {"type": "object", "additionalProperties": {"type": "number"}},
+        "phase_boost": {
+          "type": "object",
+          "properties": {
+            "until_wave": {"type": "integer"},
+            "stats": {"type": "object", "additionalProperties": {"type": "number"}}
+          },
+          "additionalProperties": false
+        },
+        "harvest_cap": {"type": "integer"},
+        "max_weapons": {"type": "integer"},
+        "reroll_keep": {"type": "integer"},
+        "max_rerolls": {"type": "integer"},
+        "gold_floor": {"type": "integer"},
+        "min_buy": {"type": "number"},
+        "prefer_weapons": {"type": "array", "items": {"type": "string"}},
+        "ban_items": {"type": "array", "items": {"type": "string"}},
+        "deprioritize_weapons": {"type": "array", "items": {"type": "string"}},
+        "ask_on": {"type": "array", "items": {"type": "string"}},
+        "weapon_set": {"type": "string"},
+        "unique_weapons": {"type": "boolean"},
+        "stack_combine": {"type": "boolean"},
+        "hitrate_pref": {"type": "boolean"},
+        "spend_surplus": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
     "confidence": {"type": "number", "minimum": 0, "maximum": 1},
     "rationale": {"type": "string", "maxLength": 300},
     "tags": {"type": "array", "items": {"type": "string"}}

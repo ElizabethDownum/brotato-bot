@@ -223,11 +223,14 @@ Copy-pasteable, all defaults:
   same way and saved back to `plan.json` (written to a temp file, then
   renamed). If `plan.json` is missing, it is created with `plan_id`
   `sidecar-<decision id>`. A patch is refused when the file belongs to
-  another character or exists but does not load.
+  another character or exists but does not load. Only the keys in the table
+  below, with their types, are accepted: the sidecar's schema rejects any
+  other key or type, and the mod drops one that still arrives
+  (`PlanFile.KEY_TYPES`).
 
 Common `plan` keys. This table is the full set. The header comment in
 `shopping/build_plans.gd` is partial: it does not list `ask_on`, `gold_floor`,
-`prefer_weapons` or `ban_items`.
+`prefer_weapons`, `ban_items` or the last row's keys.
 
 | Key | Meaning |
 |---|---|
@@ -240,6 +243,7 @@ Common `plan` keys. This table is the full set. The header comment in
 | `prefer_weapons`, `ban_items` | lists of weapon / item ids |
 | `ask_on` | ids that always trigger a `pivot` decision when offered |
 | `phase_boost` | `{"until_wave": N, "stats": {stat key → multiplier}}`; before wave N the named stats' weights are multiplied (`build_plans.gd:40-42`); `{}` disables |
+| `weapon_set` (string), `deprioritize_weapons` (list of ids), `unique_weapons`, `stack_combine`, `hitrate_pref`, `spend_surplus` (booleans) | per-character shop tweaks read by `shop_advisor.gd` and `base_shop.gd` |
 
 `ask_on` is matched against shop offers (item and weapon ids, e.g.
 `item_bag`, `item_scar`, `weapon_smg_1`) and level-up options (upgrade ids,
@@ -411,7 +415,7 @@ All files are under `%APPDATA%\Brotato\brotato-bot\` (`user://brotato-bot`).
   | `option_index` | int >= 0, required for `buy`, `lock` and `pick` |
   | `confidence` | number in 0..1, required |
   | `rationale` | string, optional |
-  | `plan_patch` | object, required for `revise_plan` (merged into `plan.json`) |
+  | `plan_patch` | object of section 3.5 plan keys, required for `revise_plan` (merged into `plan.json`; unknown or wrong-typed keys are dropped) |
   | `tags` | optional, ignored |
 
   A response that fails these rules counts as `invalid` and the rules decide.

@@ -16,7 +16,8 @@ choice close or the offer unusual.
   unless the context shows a clear reason not to.
 - Pivot only when an offered item clearly beats the plan (for example a strong item for
   the target challenge, or one that fixes a weakness the recent state shows). Then use
-  `revise_plan` with a small `plan_patch` using the plan's own keys.
+  `revise_plan` with a small `plan_patch` using only the keys and types the schema's
+  `plan_patch` lists.
 - Respect the economy: never `buy` an option whose price is above the current gold.
 - `option_index` is the `option_index` shown in the Options section (the request's
   `options[]` position). It is never the shop slot number in the State section.
