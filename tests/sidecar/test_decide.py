@@ -256,3 +256,39 @@ def test_decide_once_forwards_request_deadline(tmp_path, monkeypatch, capsys):
     assert received == {"deadline_ms": 45000}
     assert runner.calls[0][1]["timeout"] == 18.0
     assert '"source": "haiku"' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "envelope",
+    [
+        {"type": "result", "subtype": "success", "is_error": True, "api_error_status": 400,
+         "result": "API Error: 400 tools.0.input_schema: ..."},
+        {"type": "result", "subtype": "success", "is_error": True,
+         "result": "API Error: 401 authentication_error"},
+        {"type": "result", "subtype": "success", "is_error": True,
+         "result": "API Error: 403 permission_error"},
+        {"type": "result", "subtype": "error_max_turns", "is_error": True, "num_turns": 2},
+    ],
+)  # fmt: skip
+def test_deterministic_api_error_stops_the_ladder(envelope):
+    calls = []
+
+    def runner(cmd, **kwargs):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 1, stdout=json.dumps(envelope), stderr="")
+
+    out = decide.decide(REQUEST, "PROMPT", CFG, run=_run_with(runner))
+    assert out.source == "fallback" and out.decision is None
+    assert len(calls) == 1 and len(out.attempts) == 1
+
+
+def test_transient_api_error_still_retries():
+    envelope = {"type": "result", "is_error": True, "result": "API Error: 529 overloaded"}
+
+    def runner(cmd, **kwargs):
+        runner.calls += 1
+        return subprocess.CompletedProcess(cmd, 1, stdout=json.dumps(envelope), stderr="")
+
+    runner.calls = 0
+    out = decide.decide(REQUEST, "PROMPT", CFG, run=_run_with(runner))
+    assert out.source == "fallback" and runner.calls == 3

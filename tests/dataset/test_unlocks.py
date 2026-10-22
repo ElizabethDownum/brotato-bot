@@ -117,6 +117,7 @@ def test_unlock_state_command_writes_json(tmp_path, monkeypatch):
     assert out["profile"] == 2
     assert out["done"] == ["chal_robust"]
     assert out["blocked"] == ["chal_arms_dealer", "chal_mage"]
+    assert out["challenges"]["chal_robust"] == {"name": "Robust", "description": "Reach 50 max hp"}
 
 
 def test_unlock_state_profile_defaults_to_bot_profile():

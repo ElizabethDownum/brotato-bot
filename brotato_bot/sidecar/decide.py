@@ -11,7 +11,8 @@ A checkpoint request uses ``cfg["checkpoint_model"]``, ``prompts/checkpoint.md``
 ``checkpoint_timeout_ms`` for steps 1 and 2. Each call may take
 ``timeout_ms / 1000 * CALL_TIMEOUT_SHARE`` seconds. A CLI that times out or cannot be
 started ends the ladder at once (``fallback``): the deadline is spent or no call can
-succeed. A non-zero exit or an invalid answer moves to the next step. With
+succeed. A non-zero exit or an invalid answer moves to the next step, except an API error a
+retry would repeat (HTTP 400/401/403, or ``error_max_turns``), which also ends it. With
 ``deadline_ms`` (the time left for the whole request), every call checks the remaining
 budget. The first call is capped to that budget; later steps are skipped (``fallback``)
 when less than one call timeout remains. An exhausted budget skips even the first call.
@@ -19,6 +20,8 @@ when less than one call timeout remains. An exhausted budget skips even the firs
 
 from __future__ import annotations
 
+import json
+import re
 import subprocess
 import tempfile
 import time
@@ -40,6 +43,9 @@ CALL_TIMEOUT_SHARE = 0.4
 RAW_MAX_CHARS = 2000
 REPAIR_PROMPT = prompt.PROMPTS_DIR / "repair.md"
 NO_JSON = "<root>: no JSON object found in the CLI output"
+# API errors that repeat on every retry: bad request, authentication, permission.
+_DETERMINISTIC_STATUS = frozenset({400, 401, 403})
+_API_ERROR_STATUS = re.compile(r"API Error: (\d{3})\b")
 
 
 @dataclass
@@ -78,6 +84,26 @@ def _user_message(request: dict, context: Any) -> str:
     if isinstance(context, str):
         return context
     return prompt.build(request, **(context or {}))
+
+
+def _deterministic_error(raw: str) -> bool:
+    """Whether the CLI envelope reports an error a retry would repeat: HTTP 400/401/403
+    (``api_error_status`` or ``API Error: <status>`` in ``result``) or ``error_max_turns``."""
+    try:
+        envelope = json.loads(raw or "")
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(envelope, dict):
+        return False
+    if envelope.get("subtype") == "error_max_turns":
+        return True
+    if not envelope.get("is_error"):
+        return False
+    status = envelope.get("api_error_status")
+    if not isinstance(status, int):
+        m = _API_ERROR_STATUS.search(str(envelope.get("result") or ""))
+        status = int(m.group(1)) if m else None
+    return status in _DETERMINISTIC_STATUS
 
 
 def _repair_system() -> str:
@@ -159,6 +185,8 @@ def decide(
                 Attempt(use_model, label, res.elapsed_ms, res.returncode,
                         res.raw[:RAW_MAX_CHARS], list(errors))
             )  # fmt: skip
+            if errors and _deterministic_error(res.raw):
+                raise _CliFailed
             return res, errors
 
         try:

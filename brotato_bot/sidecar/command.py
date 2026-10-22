@@ -62,6 +62,16 @@ def _read_optional(path: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def prompt_inputs(p: paths.Paths) -> dict:
+    """The ``prompt.build`` inputs every request shares, read from disk now:
+    ``dataset``, ``unlock_state`` and ``knowledge`` (each empty when missing)."""
+    return {
+        "dataset": _read_optional(p.data_dir / "brotato.json"),
+        "unlock_state": _read_optional(p.data_dir / "unlock_state.json"),
+        "knowledge": cache.load_all(p.knowledge_cache),
+    }
+
+
 def _decide_once(args: argparse.Namespace) -> int:
     if hasattr(sys.stdout, "reconfigure"):  # a piped Windows stdout is cp1252
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -78,17 +88,11 @@ def _decide_once(args: argparse.Namespace) -> int:
         return 1
     cfg = decide.settings(_read_optional(p.config_json))
     request = request_from_state(state, Path(args.state), args.kind, cfg)
-    dataset = _read_optional(p.data_dir / "brotato.json")
-    if not dataset:
+    inputs = prompt_inputs(p)
+    if not inputs["dataset"]:
         print(f"WARNING: no dataset at {p.data_dir / 'brotato.json'}; options lack records")
     user = prompt.build(
-        request,
-        state,
-        plan,
-        dataset,
-        _read_optional(p.data_dir / "unlock_state.json"),
-        cache.load_all(p.knowledge_cache),
-        [],
+        request, state, plan, inputs["dataset"], inputs["unlock_state"], inputs["knowledge"], []
     )
     if args.print_prompt:
         print(user)
