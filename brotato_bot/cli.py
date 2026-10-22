@@ -33,6 +33,7 @@ def main(argv: list[str] | None = None) -> int:
 def _register_builtin_commands() -> None:
     # Command modules add themselves to COMMANDS on import; import them before parsing.
     from brotato_bot.dataset import command, unlock_command  # noqa: F401
+    from brotato_bot.knowledge import command as knowledge_command  # noqa: F401
 
 
 _register_builtin_commands()

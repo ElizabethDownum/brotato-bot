@@ -29,6 +29,7 @@ class Paths:
     responses_dir: Path
     project_root: Path
     data_dir: Path
+    knowledge_dir: Path
     knowledge_cache: Path
     runs_out: Path
     decisions_dir: Path
@@ -55,6 +56,7 @@ def load(env: Mapping[str, str] | None = None) -> Paths:
     settings_json = ov("settings_json", save_dir / "settings.json")
     mod_user_dir = ov("mod_user_dir", brotato_appdata / "brotato-bot")
     project_root = ov("project_root", Path(__file__).resolve().parent.parent)
+    knowledge_dir = ov("knowledge_dir", project_root / "knowledge")
 
     return Paths(
         game_dir=game_dir,
@@ -71,7 +73,8 @@ def load(env: Mapping[str, str] | None = None) -> Paths:
         responses_dir=ov("responses_dir", mod_user_dir / "responses"),
         project_root=project_root,
         data_dir=ov("data_dir", project_root / "data"),
-        knowledge_cache=ov("knowledge_cache", project_root / "knowledge" / "cache"),
+        knowledge_dir=knowledge_dir,
+        knowledge_cache=ov("knowledge_cache", knowledge_dir / "cache"),
         runs_out=ov("runs_out", project_root / "runs"),
         decisions_dir=ov("decisions_dir", project_root / "decisions"),
         proposals_dir=ov("proposals_dir", project_root / "proposals"),

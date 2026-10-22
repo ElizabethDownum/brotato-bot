@@ -1,0 +1,357 @@
+[
+  {
+    "slug": "wiki-stats",
+    "kind": "wiki",
+    "ref": "Stats"
+  },
+  {
+    "slug": "wiki-characters",
+    "kind": "wiki",
+    "ref": "Characters"
+  },
+  {
+    "slug": "wiki-weapons",
+    "kind": "wiki",
+    "ref": "Weapons"
+  },
+  {
+    "slug": "wiki-items",
+    "kind": "wiki",
+    "ref": "Items"
+  },
+  {
+    "slug": "wiki-danger",
+    "kind": "wiki",
+    "ref": "Danger Levels"
+  },
+  {
+    "slug": "wiki-waves",
+    "kind": "wiki",
+    "ref": "Waves"
+  },
+  {
+    "slug": "wiki-enemies",
+    "kind": "wiki",
+    "ref": "Enemies"
+  },
+  {
+    "slug": "character-apprentice",
+    "kind": "wiki",
+    "ref": "Apprentice"
+  },
+  {
+    "slug": "character-arms-dealer",
+    "kind": "wiki",
+    "ref": "Arms Dealer"
+  },
+  {
+    "slug": "character-artificer",
+    "kind": "wiki",
+    "ref": "Artificer"
+  },
+  {
+    "slug": "character-baby",
+    "kind": "wiki",
+    "ref": "Baby"
+  },
+  {
+    "slug": "character-beast-master",
+    "kind": "wiki",
+    "ref": "Beast Master"
+  },
+  {
+    "slug": "character-brawler",
+    "kind": "wiki",
+    "ref": "Brawler"
+  },
+  {
+    "slug": "character-bull",
+    "kind": "wiki",
+    "ref": "Bull"
+  },
+  {
+    "slug": "character-chunky",
+    "kind": "wiki",
+    "ref": "Chunky"
+  },
+  {
+    "slug": "character-crazy",
+    "kind": "wiki",
+    "ref": "Crazy"
+  },
+  {
+    "slug": "character-cryptid",
+    "kind": "wiki",
+    "ref": "Cryptid"
+  },
+  {
+    "slug": "character-cyborg",
+    "kind": "wiki",
+    "ref": "Cyborg"
+  },
+  {
+    "slug": "character-demon",
+    "kind": "wiki",
+    "ref": "Demon"
+  },
+  {
+    "slug": "character-doctor",
+    "kind": "wiki",
+    "ref": "Doctor"
+  },
+  {
+    "slug": "character-engineer",
+    "kind": "wiki",
+    "ref": "Engineer"
+  },
+  {
+    "slug": "character-entrepreneur",
+    "kind": "wiki",
+    "ref": "Entrepreneur"
+  },
+  {
+    "slug": "character-explorer",
+    "kind": "wiki",
+    "ref": "Explorer"
+  },
+  {
+    "slug": "character-farmer",
+    "kind": "wiki",
+    "ref": "Farmer"
+  },
+  {
+    "slug": "character-fisherman",
+    "kind": "wiki",
+    "ref": "Fisherman"
+  },
+  {
+    "slug": "character-generalist",
+    "kind": "wiki",
+    "ref": "Generalist"
+  },
+  {
+    "slug": "character-ghost",
+    "kind": "wiki",
+    "ref": "Ghost"
+  },
+  {
+    "slug": "character-gladiator",
+    "kind": "wiki",
+    "ref": "Gladiator"
+  },
+  {
+    "slug": "character-glutton",
+    "kind": "wiki",
+    "ref": "Glutton"
+  },
+  {
+    "slug": "character-golem",
+    "kind": "wiki",
+    "ref": "Golem"
+  },
+  {
+    "slug": "character-hunter",
+    "kind": "wiki",
+    "ref": "Hunter"
+  },
+  {
+    "slug": "character-jack",
+    "kind": "wiki",
+    "ref": "Jack"
+  },
+  {
+    "slug": "character-king",
+    "kind": "wiki",
+    "ref": "King"
+  },
+  {
+    "slug": "character-knight",
+    "kind": "wiki",
+    "ref": "Knight"
+  },
+  {
+    "slug": "character-lich",
+    "kind": "wiki",
+    "ref": "Lich"
+  },
+  {
+    "slug": "character-loud",
+    "kind": "wiki",
+    "ref": "Loud"
+  },
+  {
+    "slug": "character-lucky",
+    "kind": "wiki",
+    "ref": "Lucky"
+  },
+  {
+    "slug": "character-mage",
+    "kind": "wiki",
+    "ref": "Mage"
+  },
+  {
+    "slug": "character-masochist",
+    "kind": "wiki",
+    "ref": "Masochist"
+  },
+  {
+    "slug": "character-multitasker",
+    "kind": "wiki",
+    "ref": "Multitasker"
+  },
+  {
+    "slug": "character-mutant",
+    "kind": "wiki",
+    "ref": "Mutant"
+  },
+  {
+    "slug": "character-old",
+    "kind": "wiki",
+    "ref": "Old"
+  },
+  {
+    "slug": "character-one-arm",
+    "kind": "wiki",
+    "ref": "One Armed"
+  },
+  {
+    "slug": "character-pacifist",
+    "kind": "wiki",
+    "ref": "Pacifist"
+  },
+  {
+    "slug": "character-ranger",
+    "kind": "wiki",
+    "ref": "Ranger"
+  },
+  {
+    "slug": "character-renegade",
+    "kind": "wiki",
+    "ref": "Renegade"
+  },
+  {
+    "slug": "character-saver",
+    "kind": "wiki",
+    "ref": "Saver"
+  },
+  {
+    "slug": "character-sick",
+    "kind": "wiki",
+    "ref": "Sick"
+  },
+  {
+    "slug": "character-soldier",
+    "kind": "wiki",
+    "ref": "Soldier"
+  },
+  {
+    "slug": "character-speedy",
+    "kind": "wiki",
+    "ref": "Speedy"
+  },
+  {
+    "slug": "character-streamer",
+    "kind": "wiki",
+    "ref": "Streamer"
+  },
+  {
+    "slug": "character-technomage",
+    "kind": "wiki",
+    "ref": "Technomage"
+  },
+  {
+    "slug": "character-vagabond",
+    "kind": "wiki",
+    "ref": "Vagabond"
+  },
+  {
+    "slug": "character-vampire",
+    "kind": "wiki",
+    "ref": "Vampire"
+  },
+  {
+    "slug": "character-well-rounded",
+    "kind": "wiki",
+    "ref": "Well Rounded"
+  },
+  {
+    "slug": "character-wildling",
+    "kind": "wiki",
+    "ref": "Wildling"
+  },
+  {
+    "slug": "character-wounded",
+    "kind": "wiki",
+    "ref": "Wounded"
+  },
+  {
+    "slug": "character-buccaneer",
+    "kind": "wiki",
+    "ref": "Buccaneer"
+  },
+  {
+    "slug": "character-builder",
+    "kind": "wiki",
+    "ref": "Builder"
+  },
+  {
+    "slug": "character-captain",
+    "kind": "wiki",
+    "ref": "Captain"
+  },
+  {
+    "slug": "character-chef",
+    "kind": "wiki",
+    "ref": "Chef"
+  },
+  {
+    "slug": "character-creature",
+    "kind": "wiki",
+    "ref": "Creature"
+  },
+  {
+    "slug": "character-curious",
+    "kind": "wiki",
+    "ref": "Curious"
+  },
+  {
+    "slug": "character-diver",
+    "kind": "wiki",
+    "ref": "Diver"
+  },
+  {
+    "slug": "character-druid",
+    "kind": "wiki",
+    "ref": "Druid"
+  },
+  {
+    "slug": "character-dwarf",
+    "kind": "wiki",
+    "ref": "Dwarf"
+  },
+  {
+    "slug": "character-gangster",
+    "kind": "wiki",
+    "ref": "Gangster"
+  },
+  {
+    "slug": "character-hiker",
+    "kind": "wiki",
+    "ref": "Hiker"
+  },
+  {
+    "slug": "character-ogre",
+    "kind": "wiki",
+    "ref": "Ogre"
+  },
+  {
+    "slug": "character-romantic",
+    "kind": "wiki",
+    "ref": "Romantic"
+  },
+  {
+    "slug": "character-sailor",
+    "kind": "wiki",
+    "ref": "Sailor"
+  }
+]

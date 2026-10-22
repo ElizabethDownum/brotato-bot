@@ -23,6 +23,7 @@ def test_default_paths_match_spec():
     root = Path(paths.__file__).resolve().parent.parent
     assert p.project_root == root
     assert p.data_dir == root / "data"
+    assert p.knowledge_dir == root / "knowledge"
     assert p.knowledge_cache == root / "knowledge" / "cache"
     assert p.runs_out == root / "runs"
     assert p.decisions_dir == root / "decisions"
@@ -59,3 +60,9 @@ def test_paths_dlc_pck_override():
     assert p.dlc_pck == Path("/x/dlc.pck")
     moved = paths.load({"APPDATA": "C:/a", "BROTATO_BOT_GAME_DIR": "/g"})
     assert moved.dlc_pck == Path("/g") / "BrotatoAbyssalTerrors.pck"
+
+
+def test_knowledge_dir_override_moves_cache():
+    p = paths.load({"APPDATA": "C:/a", "BROTATO_BOT_KNOWLEDGE_DIR": "/k"})
+    assert p.knowledge_dir == Path("/k")
+    assert p.knowledge_cache == Path("/k") / "cache"
