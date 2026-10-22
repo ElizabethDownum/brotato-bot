@@ -12,9 +12,9 @@ A checkpoint request uses ``cfg["checkpoint_model"]``, ``prompts/checkpoint.md``
 ``timeout_ms / 1000 * CALL_TIMEOUT_SHARE`` seconds. A CLI that times out or cannot be
 started ends the ladder at once (``fallback``): the deadline is spent or no call can
 succeed. A non-zero exit or an invalid answer moves to the next step. With
-``deadline_ms`` (the time left for the whole request), a step after the first is skipped
-(``fallback``) when less than one call timeout remains, since its answer would arrive after
-the mod has given up.
+``deadline_ms`` (the time left for the whole request), every call checks the remaining
+budget. The first call is capped to that budget; later steps are skipped (``fallback``)
+when less than one call timeout remains. An exhausted budget skips even the first call.
 """
 
 from __future__ import annotations
@@ -124,28 +124,30 @@ def decide(
         repair_file.write_text(_repair_system(), encoding="utf-8")
 
         def attempt(label: str, text: str, use_model: str, sys_file: Path):
-            if attempts and deadline_ms is not None:
+            call_timeout_s = timeout_s
+            if deadline_ms is not None:
                 left_s = deadline_ms / 1000 - (clock() - started)
-                if left_s < timeout_s:
+                if left_s <= 0 or (attempts and left_s < timeout_s):
                     raise _CliFailed
+                call_timeout_s = min(timeout_s, left_s)
             try:
                 res = run(
                     text,
                     system_prompt_file=sys_file,
                     model=use_model,
                     schema_path=SCHEMA_PATH,
-                    timeout_s=timeout_s,
+                    timeout_s=call_timeout_s,
                 )
             except subprocess.TimeoutExpired:
                 attempts.append(
-                    Attempt(use_model, label, int(timeout_s * 1000), None, "",
-                            [f"claude CLI timed out after {timeout_s:g} s"])
+                    Attempt(use_model, label, int(call_timeout_s * 1000), None, "",
+                            [f"claude CLI timed out after {call_timeout_s:g} s"])
                 )  # fmt: skip
                 raise _CliFailed from None
             except (OSError, subprocess.SubprocessError) as exc:
                 attempts.append(
                     Attempt(use_model, label, 0, None, "",
-                            [f"claude CLI failed to run: {type(exc).__name__}: {exc}"[:300]])
+                            [f"claude CLI failed to run: {type(exc).__name__}: {exc}"[:RAW_MAX_CHARS]])
                 )  # fmt: skip
                 raise _CliFailed from None
             errors = [] if res.parsed is not None else [NO_JSON]

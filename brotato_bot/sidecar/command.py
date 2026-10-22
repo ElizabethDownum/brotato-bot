@@ -94,7 +94,7 @@ def _decide_once(args: argparse.Namespace) -> int:
         print(user)
         return 0
     start = time.monotonic()
-    outcome = decide.decide(request, user, cfg)
+    outcome = decide.decide(request, user, cfg, deadline_ms=request["deadline_ms"])
     elapsed_ms = int((time.monotonic() - start) * 1000)
     print(json.dumps(outcome.to_dict(), indent=2, ensure_ascii=False))
     print(f"{request['id']} {args.kind} -> {outcome.source} in {elapsed_ms} ms")

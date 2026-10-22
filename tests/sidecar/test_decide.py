@@ -1,6 +1,8 @@
 import json
 import subprocess
 
+import pytest
+
 from brotato_bot.sidecar import claude_cli, decide
 
 VALID = {"action": "skip", "confidence": 0.6, "rationale": "save gold", "tags": ["economy"]}
@@ -166,3 +168,91 @@ def test_deadline_skips_steps_that_cannot_finish_in_time():
 def test_no_deadline_runs_full_ladder():
     out = decide.decide(REQUEST, "PROMPT", CFG, run=_run_with(_scripted(INVALID, INVALID, VALID)))
     assert out.source == "repair"
+
+
+@pytest.mark.parametrize("deadline_ms", [0, -1000])
+def test_exhausted_deadline_skips_first_call(deadline_ms):
+    runner = _scripted(VALID)
+    out = decide.decide(
+        REQUEST, "PROMPT", CFG, run=_run_with(runner), deadline_ms=deadline_ms, clock=lambda: 0
+    )
+    assert out.source == "fallback" and out.decision is None
+    assert out.attempts == []
+    assert runner.calls == []
+
+
+@pytest.mark.parametrize("deadline_ms, expected_timeout", [(45000, 18.0), (5000, 5.0)])
+def test_first_call_timeout_respects_remaining_deadline(deadline_ms, expected_timeout):
+    runner = _scripted(VALID)
+    out = decide.decide(
+        REQUEST, "PROMPT", CFG, run=_run_with(runner), deadline_ms=deadline_ms, clock=lambda: 0
+    )
+    assert out.source == "haiku" and out.decision == VALID
+    assert runner.calls[0][1]["timeout"] == expected_timeout
+
+
+def test_deadline_includes_prompt_preparation_time():
+    times = iter([0.0, 5.0])
+    runner = _scripted(VALID)
+    out = decide.decide(
+        REQUEST, "PROMPT", CFG, run=_run_with(runner), deadline_ms=5000, clock=lambda: next(times)
+    )
+    assert out.source == "fallback" and out.attempts == []
+    assert runner.calls == []
+
+
+def test_capped_timeout_is_recorded_on_timeout():
+    runner = _scripted(subprocess.TimeoutExpired(["claude"], 5.0))
+    out = decide.decide(
+        REQUEST, "PROMPT", CFG, run=_run_with(runner), deadline_ms=5000, clock=lambda: 0
+    )
+    assert out.source == "fallback" and len(out.attempts) == 1
+    assert runner.calls[0][1]["timeout"] == 5.0
+    assert out.attempts[0].elapsed_ms == 5000
+    assert out.attempts[0].errors == ["claude CLI timed out after 5 s"]
+
+
+def test_launch_error_is_truncated_to_raw_limit():
+    message = "x" * (decide.RAW_MAX_CHARS + 100)
+    runner = _scripted(OSError(message))
+    out = decide.decide(REQUEST, "PROMPT", CFG, run=_run_with(runner))
+    assert out.source == "fallback" and len(out.attempts) == 1
+    assert out.attempts[0].errors == [
+        f"claude CLI failed to run: OSError: {message}"[: decide.RAW_MAX_CHARS]
+    ]
+
+
+def test_decide_once_forwards_request_deadline(tmp_path, monkeypatch, capsys):
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from brotato_bot import cli
+    from brotato_bot.sidecar import command
+
+    fixture = Path(__file__).parent / "fixtures" / "state_shop.json"
+    monkeypatch.setattr(
+        command.paths,
+        "load",
+        lambda: SimpleNamespace(
+            plan_json=tmp_path / "plan.json",
+            config_json=tmp_path / "config.json",
+            data_dir=tmp_path,
+            knowledge_cache=tmp_path / "knowledge",
+        ),
+    )
+    monkeypatch.setattr(command.cache, "load_all", lambda _: [])
+    monkeypatch.setattr(command.prompt, "build", lambda *args: "PROMPT")
+    real_decide = decide.decide
+    runner = _scripted(VALID)
+    received = {}
+
+    def fake_decide(request, context, cfg, **kwargs):
+        received.update(kwargs)
+        assert kwargs["deadline_ms"] == request["deadline_ms"] == 45000
+        return real_decide(request, context, cfg, run=_run_with(runner), **kwargs)
+
+    monkeypatch.setattr(command.decide, "decide", fake_decide)
+    assert cli.main(["decide-once", str(fixture)]) == 0
+    assert received == {"deadline_ms": 45000}
+    assert runner.calls[0][1]["timeout"] == 18.0
+    assert '"source": "haiku"' in capsys.readouterr().out
