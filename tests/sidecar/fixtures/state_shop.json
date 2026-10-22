@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "kind": "shop",
+  "run_id": "20261022-201500-well_rounded-d0",
+  "seq": 2,
+  "exported_at": "2026-10-22T20:16:31",
+  "wave": 2,
+  "danger": 0,
+  "character_id": "character_well_rounded",
+  "hp": null,
+  "max_hp": null,
+  "gold": 44,
+  "stats": {
+    "stat_max_hp": 5.0,
+    "stat_speed": 5.0,
+    "stat_harvesting": 8.0,
+    "stat_ranged_damage": 1.0,
+    "stat_armor": 0.0
+  },
+  "weapons": [
+    {
+      "id": "weapon_pistol_1",
+      "tier": 0,
+      "type": "ranged",
+      "set_ids": [
+        "set_gun"
+      ]
+    }
+  ],
+  "items": [
+    {
+      "id": "item_coupon",
+      "tier": 0,
+      "count": 2
+    }
+  ],
+  "shop": [
+    {
+      "index": 1,
+      "id": "weapon_smg_1",
+      "kind": "weapon",
+      "tier": 0,
+      "price": 25,
+      "advisor_score": 6.5,
+      "locked": false
+    },
+    {
+      "index": 3,
+      "id": "item_bag",
+      "kind": "item",
+      "tier": 0,
+      "price": 20,
+      "advisor_score": 2.0,
+      "locked": true
+    }
+  ],
+  "levelup_options": [],
+  "unlocks_this_run": [],
+  "recent": [
+    {
+      "wave": 2,
+      "wave_time": 18,
+      "hp": 7,
+      "max_hp": 15,
+      "gold": 40,
+      "enemies": 22,
+      "projectiles": 3,
+      "nearest_threat": {
+        "id": "enemy_baby_alien",
+        "dist": 140
+      },
+      "heading": [
+        1,
+        0
+      ],
+      "margin": 0.4
+    },
+    {
+      "wave": 2,
+      "wave_time": 19,
+      "hp": 5,
+      "max_hp": 15,
+      "gold": 44,
+      "enemies": 9,
+      "projectiles": 0,
+      "nearest_threat": {
+        "id": "",
+        "dist": -1
+      },
+      "heading": [
+        0,
+        1
+      ],
+      "margin": null
+    }
+  ],
+  "plan_id": "well-rounded-v1",
+  "target_challenge": "chal_gatherer_1"
+}
