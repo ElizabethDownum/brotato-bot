@@ -4,14 +4,22 @@ import pytest
 
 from brotato_bot import paths
 
+FAKE_ID = "76561190000000000"
 
-def test_default_paths_match_spec():
-    p = paths.load({"APPDATA": r"C:\Users\x\AppData\Roaming"})
-    app = Path(r"C:\Users\x\AppData\Roaming")
+
+def _appdata(tmp_path, *names):
+    for n in names:
+        (tmp_path / "Brotato" / n).mkdir(parents=True)
+    return tmp_path
+
+
+def test_default_paths_match_spec(tmp_path):
+    app = _appdata(tmp_path, FAKE_ID, "brotato-bot")
+    p = paths.load({"APPDATA": str(app)})
     assert p.game_dir == Path(r"D:\SteamLibrary\steamapps\common\Brotato")
     assert p.pck == p.game_dir / "Brotato.pck"
     assert p.dlc_pck == p.game_dir / "BrotatoAbyssalTerrors.pck"
-    assert p.save_dir == app / "Brotato" / "<steam64 id>"
+    assert p.save_dir == app / "Brotato" / FAKE_ID
     assert p.settings_json == p.save_dir / "settings.json"
     assert p.mod_user_dir == app / "Brotato" / "brotato-bot"
     assert p.plan_json == p.mod_user_dir / "plan.json"
@@ -66,3 +74,36 @@ def test_knowledge_dir_override_moves_cache():
     p = paths.load({"APPDATA": "C:/a", "BROTATO_BOT_KNOWLEDGE_DIR": "/k"})
     assert p.knowledge_dir == Path("/k")
     assert p.knowledge_cache == Path("/k") / "cache"
+
+
+def test_save_dir_needs_exactly_one_steam64_folder(tmp_path):
+    app = _appdata(tmp_path, "brotato-bot", "1234", "7656119000000000x")
+    p = paths.load({"APPDATA": str(app)})  # loading never scans
+    assert p.plan_json == app / "Brotato" / "brotato-bot" / "plan.json"
+    with pytest.raises(RuntimeError, match="no Steam64 save folder.*BROTATO_BOT_SAVE_DIR"):
+        _ = p.save_dir
+
+    (app / "Brotato" / FAKE_ID).mkdir()
+    assert paths.load({"APPDATA": str(app)}).save_dir == app / "Brotato" / FAKE_ID
+
+    (app / "Brotato" / "76561190000000001").mkdir()
+    two = paths.load({"APPDATA": str(app)})
+    with pytest.raises(RuntimeError, match="2 Steam64 save folders"):
+        _ = two.settings_json
+
+
+def test_save_dir_without_brotato_folder_raises_on_access(tmp_path):
+    p = paths.load({"APPDATA": str(tmp_path)})
+    with pytest.raises(RuntimeError, match="BROTATO_BOT_STEAM_ID"):
+        _ = p.save_dir
+
+
+def test_save_dir_env_overrides_skip_the_scan(tmp_path):
+    app = _appdata(tmp_path, FAKE_ID, "76561190000000001")
+    by_id = paths.load({"APPDATA": str(app), "BROTATO_BOT_STEAM_ID": "76561190000000001"})
+    assert by_id.save_dir == app / "Brotato" / "76561190000000001"
+    by_dir = paths.load({"APPDATA": str(app), "BROTATO_BOT_SAVE_DIR": "/saves"})
+    assert by_dir.save_dir == Path("/saves")
+    assert by_dir.settings_json == Path("/saves") / "settings.json"
+    own = paths.load({"APPDATA": str(app), "BROTATO_BOT_SETTINGS_JSON": "/s.json"})
+    assert own.settings_json == Path("/s.json")  # no save dir needed
