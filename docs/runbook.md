@@ -11,7 +11,7 @@ Paths used throughout:
 
 | Name | Path |
 |---|---|
-| Repository | `C:\Users\eliza\Desktop\ClaudeFiles\brotato-bot` |
+| Repository (`<repo>` below) | `<workspace>\brotato-bot` |
 | Game folder | `D:\SteamLibrary\steamapps\common\Brotato` |
 | Installed mod | `D:\SteamLibrary\steamapps\common\Brotato\mods-unpacked\Ellie-BrotatoBot` |
 | Bot root (`user://brotato-bot`) | `%APPDATA%\Brotato\brotato-bot` |
@@ -50,7 +50,7 @@ The three rules:
 2. Run the headless tests:
 
    ```powershell
-   pwsh -File C:\Users\eliza\Desktop\ClaudeFiles\brotato-bot\scripts\test_mod.ps1
+   pwsh -File <repo>\scripts\test_mod.ps1
    ```
 
    - Expect a final line `67 passed, 0 failed` and exit code 0. The count
@@ -58,12 +58,12 @@ The three rules:
    - `ERROR: Error parsing JSON` and `WARNING: PlanFile: ...` lines are
      expected. They come from the invalid-input tests.
    - If it says `Godot not found`, run
-     `C:\Users\eliza\Desktop\ClaudeFiles\brotato-bot\scripts\get_godot.ps1`
+     `<repo>\scripts\get_godot.ps1`
      once, then run the tests again.
 3. Copy the mod into the game:
 
    ```powershell
-   pwsh -File C:\Users\eliza\Desktop\ClaudeFiles\brotato-bot\scripts\sync_mod.ps1
+   pwsh -File <repo>\scripts\sync_mod.ps1
    ```
 
    - The script removes any `Pasha-AutoBattler` and `Ellie-BrotatoBot`
@@ -490,7 +490,7 @@ function Show-BotRun([string[]]$Kind) {
 
    Expect no output, which means Steam Cloud does not sync the bot root.
    Record the result under "Result" in
-   `C:\Users\eliza\Desktop\ClaudeFiles\brotato-bot\learnings\steam-cloud.md`.
+   `<repo>\learnings\steam-cloud.md`.
    If anything matches, stop and report it: the root must move to
    `%LOCALAPPDATA%`.
 
@@ -543,7 +543,7 @@ function Show-BotRun([string[]]$Kind) {
 #### 6.4 Advisor export (Task 6 Step 6)
 
 1. Your own profile, mid-wave, bot off: press F9. Expect line 1
-   `Exported: C:/Users/eliza/AppData/Roaming/Brotato/brotato-bot/state/<run_id>-001.json`
+   `Exported: %USERPROFILE%/AppData/Roaming/Brotato/brotato-bot/state/<run_id>-001.json`
    for about 5 s, then the previous text. The file has `"kind": "advise"`,
    `"schema_version": 1`, and `wave`, `gold`, `hp` and `max_hp` matching the
    HUD. It also has `character_id`, non-empty `stats`, your weapons and
@@ -804,9 +804,9 @@ Back up first, every time.
 
    ```powershell
    $stamp = Get-Date -Format 'yyyy-MM-dd-HHmmss'
-   New-Item -ItemType Directory -Force "C:\Users\eliza\Desktop\ClaudeFiles\brotato-bot\backups\$stamp-pre-reset" | Out-Null
+   New-Item -ItemType Directory -Force "<repo>\backups\$stamp-pre-reset" | Out-Null
    Copy-Item -Recurse "$env:APPDATA\Brotato\<steam64 id>" `
-       "C:\Users\eliza\Desktop\ClaudeFiles\brotato-bot\backups\$stamp-pre-reset\<steam64 id>"
+       "<repo>\backups\$stamp-pre-reset\<steam64 id>"
    ```
 
 3. **Preferred: the in-game reset.** Use this because Steam Cloud is on and
