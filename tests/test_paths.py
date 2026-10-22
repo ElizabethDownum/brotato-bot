@@ -10,6 +10,7 @@ def test_default_paths_match_spec():
     app = Path(r"C:\Users\x\AppData\Roaming")
     assert p.game_dir == Path(r"D:\SteamLibrary\steamapps\common\Brotato")
     assert p.pck == p.game_dir / "Brotato.pck"
+    assert p.dlc_pck == p.game_dir / "BrotatoAbyssalTerrors.pck"
     assert p.save_dir == app / "Brotato" / "<steam64 id>"
     assert p.settings_json == p.save_dir / "settings.json"
     assert p.mod_user_dir == app / "Brotato" / "brotato-bot"
@@ -51,3 +52,10 @@ def test_missing_appdata_raises(monkeypatch):
     monkeypatch.delenv("APPDATA", raising=False)
     with pytest.raises(RuntimeError, match="APPDATA"):
         paths.load({})
+
+
+def test_paths_dlc_pck_override():
+    p = paths.load({"APPDATA": "C:/a", "BROTATO_BOT_DLC_PCK": "/x/dlc.pck"})
+    assert p.dlc_pck == Path("/x/dlc.pck")
+    moved = paths.load({"APPDATA": "C:/a", "BROTATO_BOT_GAME_DIR": "/g"})
+    assert moved.dlc_pck == Path("/g") / "BrotatoAbyssalTerrors.pck"

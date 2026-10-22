@@ -1,4 +1,4 @@
-"""CLI: ``unlock-state [--profile N] [--out PATH] [--save PATH] [--translations PATH]``.
+"""CLI: ``unlock-state [--profile N=1] [--out PATH] [--save PATH] [--translations PATH]``.
 
 Reads the profile save read-only and writes the unlock state JSON (default
 ``<data_dir>/unlock_state.json``).
@@ -14,6 +14,9 @@ from pathlib import Path
 from brotato_bot import cli, fsutil, paths
 from brotato_bot.dataset import unlocks
 
+# The plan's bot profile; the game numbers profiles from 0.
+DEFAULT_PROFILE = 1
+
 
 def save_path(save_dir: Path, profile: int) -> Path:
     # ProgressDataLoaderV3 names each profile's save <save_dir>/save_v3_<profile_id>.json.
@@ -27,7 +30,13 @@ def _run(args: argparse.Namespace) -> int:
     translations = Path(args.translations) if args.translations else p.data_dir / "translations.csv"
     extracted = p.data_dir / "extracted"
     if not save_file.is_file():
-        print(f"unlock-state failed: no save file at {save_file}", file=sys.stderr)
+        hint = ""
+        if not args.save:
+            hint = (
+                f": profile {args.profile} has no save yet; create profile {args.profile} "
+                "in game (select it on the title screen) and start a run, then retry"
+            )
+        print(f"unlock-state failed: no save file at {save_file}{hint}", file=sys.stderr)
         return 1
     if not (extracted / "challenges").is_dir():
         print(
@@ -56,7 +65,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(
         "unlock-state", help="report a profile's challenge and character unlocks"
     )
-    parser.add_argument("--profile", type=int, default=0, help="save profile id (default 0)")
+    parser.add_argument(
+        "--profile",
+        type=int,
+        default=DEFAULT_PROFILE,
+        help=f"save profile id, 0-based (default {DEFAULT_PROFILE}, the bot's profile)",
+    )
     parser.add_argument(
         "--out", default=None, help="output JSON (default: <data_dir>/unlock_state.json)"
     )

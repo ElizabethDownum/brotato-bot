@@ -1,6 +1,7 @@
 """Challenge/unlock graph from the extracted challenge resources, and a profile's state.
 
-``build_graph`` reads ``<extracted>/challenges/*.tres`` (one ``ChallengeData`` each);
+``build_graph`` reads ``<extracted>/challenges/*.tres`` and
+``<extracted>/dlcs/*/challenges/*.tres`` (one ``ChallengeData`` each);
 ``unlock_state`` joins it with a profile save (``save_v3_<profile>.json``), whose
 ``challenges_completed`` and ``characters_unlocked`` hold ``Keys.generate_hash`` ids.
 
@@ -13,6 +14,7 @@ character. Every other challenge is character-agnostic (``requires_character`` i
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -24,11 +26,21 @@ from brotato_bot.dataset.spud.tres import TresDoc, parse_tres
 RewardKind = Literal["item", "weapon", "character"]
 
 CHARACTER_CHALLENGE_DESC = "CHAL_CHARACTER_DESC"
-_REWARD_PREFIXES: tuple[tuple[str, RewardKind], ...] = (
-    ("res://items/all/", "item"),
-    ("res://weapons/", "weapon"),
-    ("res://items/characters/", "character"),
+# Base-pck rewards live under items/all, weapons and items/characters; a DLC pck
+# (dlcs/<dlc>/...) uses items, weapons and characters.
+_REWARD_PATH_RE = re.compile(
+    r"^res://(?:(?P<base>items/all|weapons|items/characters)"
+    r"|dlcs/[^/]+/(?P<dlc>items|weapons|characters))/"
 )
+_REWARD_KINDS: dict[str, RewardKind] = {
+    "items/all": "item",
+    "weapons": "weapon",
+    "items/characters": "character",
+    "items": "item",
+    "characters": "character",
+}
+# Challenge resources: the base tree, then every DLC tree.
+_CHALLENGE_GLOBS = ("challenges/*.tres", "dlcs/*/challenges/*.tres")
 
 
 @dataclass(frozen=True)
@@ -41,7 +53,8 @@ class Challenge:
     reward_kind: RewardKind | None
     reward_id: str | None
     stat: str
-    number: int
+    number: int  # display argument for the name text only
+    value: int  # the completion target the game compares against
     unlocked_by_default: bool
     requires_character: str | None
 
@@ -51,10 +64,10 @@ def _reward(doc: TresDoc) -> tuple[RewardKind | None, str | None]:
     if not isinstance(ref, dict) or "__ext__" not in ref:
         return None, None
     path = (doc.ext_resources.get(ref["__ext__"]) or {}).get("path") or ""
-    for prefix, kind in _REWARD_PREFIXES:
-        if path.startswith(prefix):
-            return kind, Path(path).stem.removesuffix("_data")
-    return None, None
+    m = _REWARD_PATH_RE.match(path)
+    if not m:
+        return None, None
+    return _REWARD_KINDS[m.group("base") or m.group("dlc")], Path(path).stem.removesuffix("_data")
 
 
 def _requires_character(my_id: str, description: str) -> str | None:
@@ -64,13 +77,14 @@ def _requires_character(my_id: str, description: str) -> str | None:
 
 
 def character_id_for_reward(reward_id: str) -> str:
-    # Character resources live at items/characters/<name>/<name>_data.tres with
+    # Character resources live at items/characters/<name>/<name>_data.tres (base) or
+    # dlcs/<dlc>/characters/<name>/<name>_data.tres (DLC), with
     # my_id "character_<name>".
     return "character_" + reward_id
 
 
 def build_graph(extracted: Path, translations: Path | None = None) -> list[Challenge]:
-    """Parse every challenge resource under ``extracted/challenges``, sorted by id.
+    """Parse every base and DLC challenge resource under ``extracted``, sorted by id.
 
     ``translations`` is a ``key,en`` CSV; when it is absent, English text falls back to
     the translation key.
@@ -79,8 +93,10 @@ def build_graph(extracted: Path, translations: Path | None = None) -> list[Chall
     if translations is not None and Path(translations).is_file():
         tr = parse_translations_csv(Path(translations).read_text(encoding="utf-8-sig"))
 
+    root = Path(extracted)
+    files = [path for pattern in _CHALLENGE_GLOBS for path in sorted(root.glob(pattern))]
     graph: list[Challenge] = []
-    for path in sorted((Path(extracted) / "challenges").glob("*.tres")):
+    for path in files:
         doc = parse_tres(path.read_text(encoding="utf-8"))
         res = doc.resource
         my_id = res.get("my_id")
@@ -100,6 +116,7 @@ def build_graph(extracted: Path, translations: Path | None = None) -> list[Chall
                 reward_id=reward_id,
                 stat=str(res.get("stat", "")),
                 number=int(res.get("number", 0) or 0),
+                value=int(res.get("value", 0) or 0),
                 unlocked_by_default=bool(res.get("unlocked_by_default", False)),
                 requires_character=_requires_character(my_id, desc_key),
             )
@@ -149,7 +166,12 @@ def unlock_state(graph: list[Challenge], save: dict, profile_id: int) -> dict:
             blocked.append(c.id)
         else:
             open_.append(c.id)
-        progress[c.id] = {"requires_character": req, "stat": c.stat, "number": c.number}
+        progress[c.id] = {
+            "requires_character": req,
+            "stat": c.stat,
+            "number": c.number,
+            "value": c.value,
+        }
 
     return {
         "profile": profile_id,

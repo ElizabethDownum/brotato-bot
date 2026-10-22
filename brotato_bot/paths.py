@@ -9,13 +9,15 @@ from pathlib import Path
 
 ENV_PREFIX = "BROTATO_BOT_"
 DEFAULT_GAME_DIR = r"D:\SteamLibrary\steamapps\common\Brotato"
-STEAM_ID = "<steam64 id>"
+DLC_PCK_NAME = "BrotatoAbyssalTerrors.pck"
+STEAM_ID ="<steam64 id>"
 
 
 @dataclass(frozen=True)
 class Paths:
     game_dir: Path
     pck: Path
+    dlc_pck: Path
     save_dir: Path
     settings_json: Path
     mod_user_dir: Path
@@ -48,6 +50,7 @@ def load(env: Mapping[str, str] | None = None) -> Paths:
 
     game_dir = ov("game_dir", Path(DEFAULT_GAME_DIR))
     pck = ov("pck", game_dir / "Brotato.pck")
+    dlc_pck = ov("dlc_pck", game_dir / DLC_PCK_NAME)
     save_dir = ov("save_dir", brotato_appdata / STEAM_ID)
     settings_json = ov("settings_json", save_dir / "settings.json")
     mod_user_dir = ov("mod_user_dir", brotato_appdata / "brotato-bot")
@@ -56,6 +59,7 @@ def load(env: Mapping[str, str] | None = None) -> Paths:
     return Paths(
         game_dir=game_dir,
         pck=pck,
+        dlc_pck=dlc_pck,
         save_dir=save_dir,
         settings_json=settings_json,
         mod_user_dir=mod_user_dir,
