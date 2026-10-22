@@ -61,6 +61,14 @@ def test_prepare_bot_profile_id_from_config(tmp_paths):
     assert not any("current_profile_id" in w for w in warnings)
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(2, 2), (2.0, 2), (2.7, 2), (0, 1), (0.0, 1), (-3, 1), (True, 1), ("2", 1), (None, 1)],
+)
+def test_bot_profile_id_normalizes_like_the_mod(value, expected):
+    assert prepare.bot_profile_id({"bot_profile_id": value}) == expected
+
+
 def test_prepare_warns_when_settings_missing(tmp_paths):
     warnings = prepare.prepare(PLAN, None, tmp_paths)
     assert any("settings.json" in w for w in warnings)

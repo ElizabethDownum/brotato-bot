@@ -8,6 +8,7 @@ The mod reads ``config.json`` once at game start but re-reads ``plan.json`` on c
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -53,9 +54,10 @@ def bot_profile_id(config: dict) -> int:
     """The bot's profile from the mod's ``config.json`` object: ``bot_profile_id``, default
     1. As in the mod, a value below 1 counts as 1 (profile 0 is the owner's own)."""
     pid = config.get("bot_profile_id", DEFAULT_BOT_PROFILE_ID)
-    if not isinstance(pid, int) or isinstance(pid, bool) or pid < 1:
+    # BotConfig.load_from: any finite number is truncated to int; else the default.
+    if isinstance(pid, bool) or not isinstance(pid, int | float) or not math.isfinite(pid):
         return DEFAULT_BOT_PROFILE_ID
-    return pid
+    return max(int(pid), DEFAULT_BOT_PROFILE_ID)
 
 
 def settings_warnings(settings_path: Path, bot_profile_id: int) -> list[str]:

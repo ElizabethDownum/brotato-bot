@@ -375,7 +375,8 @@ def test_run_forever_removes_heartbeat_on_interrupt(p, monkeypatch):
 
 
 @pytest.mark.parametrize(("profile", "cfg", "runs_next"), [(0, {}, False), (2, {}, False),
-                                                         (2, {"bot_profile_id": 2}, True)])  # fmt: skip
+                                                         (2, {"bot_profile_id": 2}, True),
+                                                         (2, {"bot_profile_id": 2.0}, True)])  # fmt: skip
 def test_auto_next_skips_runs_on_another_profile(p, monkeypatch, capsys, profile, cfg, runs_next):
     p.runs_in.mkdir(parents=True)
     calls = []

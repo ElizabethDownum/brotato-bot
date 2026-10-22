@@ -27,12 +27,13 @@ const INT_PLAN_KEYS = ["harvest_cap", "max_weapons", "reroll_keep", "max_rerolls
 # The plan keys the shop and level-up code read, with the type each is read as
 # (the sidecar's schema.PlanPatch is the same table). apply_patch drops every
 # other key and every wrong-typed value, so a bad response cannot corrupt
-# plan.json. JSON numbers parse as floats, so INT_PLAN_KEYS are "number" here.
+# plan.json. JSON numbers parse as floats, so INT_PLAN_KEYS are "integer":
+# a whole-number float such as 4.0 passes, 2.5 does not (load_from truncates).
 const KEY_TYPES = {
 	"weapon_type": "weapon_type", "weapon_set": "string",
 	"stats": "number_map", "item_bonus": "number_map", "phase_boost": "phase_boost",
-	"harvest_cap": "number", "max_weapons": "number", "reroll_keep": "number",
-	"max_rerolls": "number", "gold_floor": "number", "min_buy": "number",
+	"harvest_cap": "integer", "max_weapons": "integer", "reroll_keep": "integer",
+	"max_rerolls": "integer", "gold_floor": "integer", "min_buy": "number",
 	"prefer_weapons": "string_list", "ban_items": "string_list",
 	"deprioritize_weapons": "string_list", "ask_on": "string_list",
 	"unique_weapons": "bool", "stack_combine": "bool", "hitrate_pref": "bool",
@@ -167,6 +168,8 @@ static func _type_ok(kind, v) -> bool:
 	match kind:
 		"number":
 			return typeof(v) == TYPE_REAL or typeof(v) == TYPE_INT
+		"integer":
+			return typeof(v) == TYPE_INT or (typeof(v) == TYPE_REAL and v == floor(v))
 		"string":
 			return typeof(v) == TYPE_STRING
 		"bool":
@@ -191,7 +194,7 @@ static func _type_ok(kind, v) -> bool:
 			if typeof(v) != TYPE_DICTIONARY:
 				return false
 			for k in v.keys():
-				var sub_kind = {"until_wave": "number", "stats": "number_map"}.get(k, "")
+				var sub_kind = {"until_wave": "integer", "stats": "number_map"}.get(k, "")
 				if not _type_ok(sub_kind, v[k]):
 					return false
 			return true
