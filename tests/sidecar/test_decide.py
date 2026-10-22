@@ -143,3 +143,26 @@ def test_decide_once_request_uses_option_positions(tmp_path):
     assert req["options"][0]["score"] == 6.5 and req["deadline_ms"] == 45000
     assert req["id"] == "20261022-201500-well_rounded-d0-002"
     assert request_from_state(state, fixture, "checkpoint", decide.settings({}))["options"] == []
+
+
+def test_deadline_skips_steps_that_cannot_finish_in_time():
+    now = [0.0]
+
+    def runner(cmd, **kwargs):
+        now[0] += 20.0  # each call takes 20 s
+        return subprocess.CompletedProcess(
+            cmd, 0, stdout=json.dumps({"structured_output": INVALID}), stderr=""
+        )
+
+    out = decide.decide(
+        REQUEST, "PROMPT", CFG, run=_run_with(runner), deadline_ms=45000, clock=lambda: now[0]
+    )
+    # 45 s budget, 18 s per call: after 20 s, 25 s are left (retry runs); after 40 s, 5 s
+    # are left (< 18 s), so the repair step is skipped.
+    assert out.source == "fallback"
+    assert [a.source_label for a in out.attempts] == ["haiku", "haiku-retry"]
+
+
+def test_no_deadline_runs_full_ladder():
+    out = decide.decide(REQUEST, "PROMPT", CFG, run=_run_with(_scripted(INVALID, INVALID, VALID)))
+    assert out.source == "repair"

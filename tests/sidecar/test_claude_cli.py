@@ -63,6 +63,10 @@ def test_run_builds_expected_command(tmp_path: Path):
         "2",
         "--allowedTools",
         "",
+        "--tools",
+        "",
+        "--setting-sources",
+        "",
         "--no-session-persistence",
     ]
     assert kwargs["input"] == "the prompt"

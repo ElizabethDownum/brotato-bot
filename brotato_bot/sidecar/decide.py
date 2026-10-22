@@ -11,13 +11,17 @@ A checkpoint request uses ``cfg["checkpoint_model"]``, ``prompts/checkpoint.md``
 ``checkpoint_timeout_ms`` for steps 1 and 2. Each call may take
 ``timeout_ms / 1000 * CALL_TIMEOUT_SHARE`` seconds. A CLI that times out or cannot be
 started ends the ladder at once (``fallback``): the deadline is spent or no call can
-succeed. A non-zero exit or an invalid answer moves to the next step.
+succeed. A non-zero exit or an invalid answer moves to the next step. With
+``deadline_ms`` (the time left for the whole request), a step after the first is skipped
+(``fallback``) when less than one call timeout remains, since its answer would arrive after
+the mod has given up.
 """
 
 from __future__ import annotations
 
 import subprocess
 import tempfile
+import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -93,8 +97,17 @@ def _repair_message(original: str, answer: str, errors: list[str]) -> str:
     )
 
 
-def decide(request: dict, context: Any, cfg: dict | None, run=claude_cli.run) -> Outcome:
+def decide(
+    request: dict,
+    context: Any,
+    cfg: dict | None,
+    run=claude_cli.run,
+    *,
+    deadline_ms: int | None = None,
+    clock=time.monotonic,
+) -> Outcome:
     """Run the ladder for one request; see the module docstring."""
+    started = clock()
     s = settings(cfg)
     checkpoint = (request or {}).get("kind") == "checkpoint"
     model = s["checkpoint_model"] if checkpoint else s["model"]
@@ -111,6 +124,10 @@ def decide(request: dict, context: Any, cfg: dict | None, run=claude_cli.run) ->
         repair_file.write_text(_repair_system(), encoding="utf-8")
 
         def attempt(label: str, text: str, use_model: str, sys_file: Path):
+            if attempts and deadline_ms is not None:
+                left_s = deadline_ms / 1000 - (clock() - started)
+                if left_s < timeout_s:
+                    raise _CliFailed
             try:
                 res = run(
                     text,

@@ -13,7 +13,11 @@ CLI copy; ``schema.validate`` still enforces the conditional fields they express
 The structured answer is a call of the CLI's own output tool, which uses a turn: with
 ``--max-turns 1`` every call ended ``error_max_turns`` (``num_turns`` 2) without
 ``structured_output``, so ``MAX_TURNS`` is 2.
-``--no-session-persistence`` keeps every decision call out of the resumable sessions.
+``--tools ""`` (no built-in tool definitions; the structured-output tool stays) with
+``--setting-sources ""`` (no user/project settings, CLAUDE.md or memory) cut a Haiku call
+from about 33k input tokens per model turn to about 6k and from 7.3 s to 4.3 s, with the
+structured answer intact (live, 2026-10-22). ``--no-session-persistence`` keeps every
+decision call out of the resumable sessions.
 """
 
 from __future__ import annotations
@@ -60,6 +64,8 @@ def command(*, system_prompt_file: Path, model: str, schema_path: Path) -> list[
         "--system-prompt-file", str(system_prompt_file),
         "--max-turns", MAX_TURNS,
         "--allowedTools", "",
+        "--tools", "",
+        "--setting-sources", "",
         "--no-session-persistence",
     ]  # fmt: skip
 
