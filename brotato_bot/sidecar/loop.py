@@ -25,7 +25,7 @@ the loop):
    ``[<id>] <kind> -> <action> via <source> in <ms> ms``.
 
 With ``auto_next`` it also tails the newest ``<mod_user_dir>/runs/*.jsonl``. When an
-``end`` line appears in a run whose header ``profile_id`` is the bot profile
+``end`` line with outcome ``won`` or ``death`` appears in a run whose header ``profile_id`` is the bot profile
 (config.json ``bot_profile_id``, default 1), it collects that run and runs ``claude -p /brotato-next`` in the
 project (spec 7.5), once per run file, for at most ``NEXT_TIMEOUT_S``. Requests wait
 meanwhile and the heartbeat goes stale, so the mod's rules decide until it returns.
@@ -246,6 +246,9 @@ class Sidecar:
                 continue
             if isinstance(event, dict) and event.get("kind") == "end":
                 self._next_done.add(newest.stem)
+                if event.get("outcome") not in collect.END_OUTCOMES:
+                    print(f"auto-next: {newest.stem} skipped: ended {event.get('outcome')!r}")
+                    return
                 profile, bot_pid = _header_profile(newest), bot_profile_id(self.cfg)
                 if profile != bot_pid:
                     print(f"auto-next: {newest.stem} skipped: profile {profile} is not "

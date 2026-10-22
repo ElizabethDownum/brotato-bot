@@ -391,3 +391,22 @@ def test_auto_next_skips_runs_on_another_profile(p, monkeypatch, capsys, profile
     assert bool(calls) is runs_next
     if not runs_next:
         assert f"profile {profile} is not the bot profile" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(("outcome", "runs_next"), [("quit", False), ("abandoned", False),
+                                                    ("won", True), ("death", True)])  # fmt: skip
+def test_auto_next_only_after_a_won_or_death_end(p, monkeypatch, outcome, runs_next):
+    p.runs_in.mkdir(parents=True)
+    calls = []
+    monkeypatch.setattr(
+        loop.subprocess,
+        "run",
+        lambda cmd, **kw: calls.append(cmd) or subprocess.CompletedProcess(cmd, 0),
+    )
+    sidecar = loop.Sidecar(p, {}, decide_fn=FakeDecide(None), auto_next=True)
+    lines = RUN_FIXTURE.read_text(encoding="utf-8").splitlines(keepends=True)
+    end = json.loads(lines[-1])
+    run = p.runs_in / "20261022-201500-well_rounded-d0.jsonl"
+    run.write_text("".join(lines[:-1]) + json.dumps({**end, "outcome": outcome}) + "\n", "utf-8")
+    sidecar.poll_once()
+    assert bool(calls) is runs_next

@@ -961,7 +961,8 @@ collect are local. Decisions also need the authenticated `claude` CLI's model se
 
 1. Start `uv run python -m brotato_bot sidecar --auto-next` instead.
 2. It tails the newest run recording by modification time, ignoring lines
-   already present at startup. On a new `end` line it collects in-process,
+   already present at startup. On a new `end` line whose outcome is `won` or
+   `death` (not `quit` or `abandoned`) it collects in-process,
    then runs `claude -p --model <next_model> /brotato-next` from the project
    root with a 600 s timeout, once per run file; no CLI call if collect fails.
    A run whose header `profile_id` is not the bot profile (`config.json`
