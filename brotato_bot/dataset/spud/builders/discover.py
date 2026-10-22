@@ -93,9 +93,10 @@ def _effect_files(dir_path: str, prefix: str) -> list[str]:
         glob.glob(os.path.join(dir_path, "effects", f"{prefix}_effect_*.tres")))
 
 
-# DLC subtrees that are either modeled (the kinds in ContentSource, plus the
-# challenges the unlock graph reads) or non-gameplay assets. Anything else under
-# dlcs/<name>/ is reported as an unclaimed tree.
+# DLC subtrees that are either modeled or non-gameplay assets. Modeled: the kinds
+# in ContentSource, plus challenges/, which is not dropped: the unlock graph
+# (brotato_bot.dataset.unlocks) reads dlcs/*/challenges/*.tres. Anything else
+# under dlcs/<name>/ is reported as an unclaimed tree.
 _ACCOUNTED_DLC_TREES = frozenset({
     "challenges", "characters", "items", "sets", "weapons", "enemies",
     "translations", "icons", "title_screen_background", "resources",
@@ -294,6 +295,45 @@ def _find_item_data_path(dir_path: str, folder: str) -> str | None:
     return None
 
 
+def _is_item_data(doc) -> bool:
+    script_ref = doc.resource.get("script")
+    if isinstance(script_ref, dict) and "__ext__" in script_ref:
+        ext = doc.ext_resources.get(script_ref["__ext__"]) or {}
+        return str(ext.get("path", "")).endswith("item_data.gd")
+    return False
+
+
+def _tiered_item_entries(extracted_root: str, dir_path: str, folder: str) -> list[dict]:
+    """One entry per ItemData file when a folder holds several (DLC tiered items).
+
+    Abyssal Terrors ships ``items/builder_turret/`` with ``builder_turret_0_data.tres``
+    .. ``builder_turret_3_data.tres``, each its own ItemData with its own ``my_id``
+    (``item_builder_turret_0`` ..). Their effects do not share one filename prefix
+    (``builder_turret_1_data`` uses ``builder_turret_1_effect_0``,
+    ``builder_turret_1_effect`` and the shared ``builder_turret_effect_1``), so each
+    tier's effects come from its own ``effects`` ext_resource references, the way
+    weapon effects are resolved. Returns [] for the ordinary one-data-file folder.
+    """
+    tiers = []
+    for path in sorted(glob.glob(os.path.join(dir_path, "*.tres"))):
+        with open(path, encoding="utf-8") as fh:
+            doc = parse_tres(fh.read())
+        if _is_item_data(doc):
+            tiers.append((path, doc.resource.get("my_id")))
+    if len(tiers) < 2:
+        return []
+    entries = []
+    for path, my_id in tiers:
+        stem = os.path.basename(path)[: -len(".tres")]
+        stem = stem[: -len("_data")] if stem.endswith("_data") else stem
+        effects, _classes = _resolve_weapon_refs(extracted_root, path)
+        entries.append({
+            "item_id": str(my_id) if my_id else f"{ITEM_ID_PREFIX}{stem}",
+            "name": _title(stem), "data_path": path, "effect_paths": effects,
+        })
+    return entries
+
+
 def _source_dirs(extracted_root: str, sources: list[ContentSource] | None,
                  kind: str) -> list[tuple[ContentSource, str]]:
     """(source, entity dir) for every directory under each source's ``kind`` dir."""
@@ -311,6 +351,11 @@ def find_item_dirs(extracted_root: str,
         if not os.path.isdir(d):
             continue
         folder = os.path.basename(d)
+        if not os.path.isfile(os.path.join(d, f"{folder}_data.tres")):
+            tiered = _tiered_item_entries(extracted_root, d, folder)
+            if tiered:
+                results.extend(dict(e, dlc=source.dlc) for e in tiered)
+                continue
         data = _find_item_data_path(d, folder)
         if not data:
             continue

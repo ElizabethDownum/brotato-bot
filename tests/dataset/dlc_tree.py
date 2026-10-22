@@ -124,3 +124,46 @@ def make_tree(root: Path) -> Path:
         effects_subdir="effects",
     )
     return root
+
+
+TIERED_ITEM = "test_turret"
+_TIERED_DATA = """[gd_resource type="Resource" load_steps=4 format=2]
+
+[ext_resource path="res://items/global/item_data.gd" type="Script" id=1]
+[ext_resource path="res://dlcs/dlc_1/items/{folder}/effects/{own}.tres" type="Resource" id=2]
+[ext_resource path="res://dlcs/dlc_1/items/{folder}/effects/{shared}.tres" type="Resource" id=3]
+
+[resource]
+script = ExtResource( 1 )
+my_id = "item_{folder}_{tier}"
+name = "{key}"
+tier = {tier}
+value = 1
+tags = [  ]
+effects = [ ExtResource( 2 ), ExtResource( 3 ) ]
+"""
+
+
+def _tiered_effect(key: str) -> str:
+    return f'[resource]\nkey = "{key}"\nvalue = 1\neffect_sign = 3\ntext_key = ""\n'
+
+
+def add_tiered_dlc_item(root: Path) -> Path:
+    """One DLC item folder holding two tier data files (the builder_turret shape).
+
+    Each tier has its own ``my_id`` and references its own effect plus one shared
+    effect; the effect file names do not all start with the data file's stem.
+    """
+    d = root / "dlcs" / "dlc_1" / "items" / TIERED_ITEM
+    shared = f"{TIERED_ITEM}_effect_shared"
+    _w(d / "effects" / f"{shared}.tres", _tiered_effect("stat_engineering"))
+    for tier, key in ((0, "stat_armor"), (1, "stat_range")):
+        own = f"{TIERED_ITEM}_{tier}_effect" if tier else f"{TIERED_ITEM}_effect_0"
+        _w(d / "effects" / f"{own}.tres", _tiered_effect(key))
+        _w(
+            d / f"{TIERED_ITEM}_{tier}_data.tres",
+            _TIERED_DATA.format(
+                folder=TIERED_ITEM, tier=tier, own=own, shared=shared, key=TIERED_ITEM.upper()
+            ),
+        )
+    return root

@@ -81,9 +81,14 @@ def _load_translations(translations: Path | list[Path] | None, extracted: Path) 
     return tr
 
 
-def _tag(record: dict, entry: dict) -> dict:
-    record["dlc"] = entry.get("dlc")
-    return record
+def _build_tagged(entries: list[dict], build) -> list[dict]:
+    """``build(entry)`` for each discovered entry, tagged with the entry's ``dlc``."""
+    records = []
+    for entry in entries:
+        record = build(entry)
+        record["dlc"] = entry.get("dlc")
+        records.append(record)
+    return records
 
 
 def _duplicate_ids(coll: str, records: list[dict], key=lambda r: r["id"]) -> list[str]:
@@ -126,8 +131,7 @@ def build_dataset(
         generated_at = format_generated_at(datetime.now(UTC))
     tr = _load_translations(translations, Path(extracted))
 
-    weapons = []
-    for entry in discover.find_weapon_dirs(root):
+    def weapon(entry: dict) -> dict:
         effect_paths = entry.get("effect_paths", [])
         companion_paths = entry.get("effect_companion_paths", {})
         effect_companion_texts = [
@@ -136,90 +140,72 @@ def build_dataset(
             else None
             for p in effect_paths
         ]
-        weapons.append(
-            _tag(
-                build_weapon_record(
-                    _read(entry["stats_path"]),
-                    _read(entry["data_path"]),
-                    [_read(p) for p in effect_paths],
-                    effect_companion_texts,
-                    weapon_id=entry["weapon_id"],
-                    name=entry["name"],
-                    tier=entry["tier"],
-                    classes=entry.get("classes", []),
-                    tr=tr,
-                ),
-                entry,
-            )
+        return build_weapon_record(
+            _read(entry["stats_path"]),
+            _read(entry["data_path"]),
+            [_read(p) for p in effect_paths],
+            effect_companion_texts,
+            weapon_id=entry["weapon_id"],
+            name=entry["name"],
+            tier=entry["tier"],
+            classes=entry.get("classes", []),
+            tr=tr,
         )
 
-    items = [
-        _tag(
-            build_item_record(
-                _read(e["data_path"]),
-                [_read(p) for p in e["effect_paths"]],
-                item_id=e["item_id"],
-                name=e["name"],
-                tr=tr,
-            ),
-            e,
-        )
-        for e in discover.find_item_dirs(root)
-    ]
+    weapons = _build_tagged(discover.find_weapon_dirs(root), weapon)
 
-    sets = [
-        _tag(
-            build_set_record(
-                _read(e["set_data_path"]),
-                {c: _read(p) for c, p in e["count_effect_paths"].items()},
-                set_id=e["set_id"],
-                name=e["name"],
-                tr=tr,
-            ),
-            e,
-        )
-        for e in discover.find_set_dirs(root)
-    ]
+    items = _build_tagged(
+        discover.find_item_dirs(root),
+        lambda e: build_item_record(
+            _read(e["data_path"]),
+            [_read(p) for p in e["effect_paths"]],
+            item_id=e["item_id"],
+            name=e["name"],
+            tr=tr,
+        ),
+    )
+
+    sets = _build_tagged(
+        discover.find_set_dirs(root),
+        lambda e: build_set_record(
+            _read(e["set_data_path"]),
+            {c: _read(p) for c, p in e["count_effect_paths"].items()},
+            set_id=e["set_id"],
+            name=e["name"],
+            tr=tr,
+        ),
+    )
     set_names = {s["id"]: s["display_name"] for s in sets}
     # Keyed by tier-agnostic weapon id (a starting-weapon pool is always tier 1).
     weapons_by_id = {w["id"]: w for w in weapons}
 
-    characters = []
-    for e in discover.find_character_dirs(root):
+    def character(e: dict) -> dict:
         data_text = _read(e["data_path"])
         res = parse_tres(data_text).resource
-        characters.append(
-            _tag(
-                build_character_record(
-                    data_text,
-                    [_read(p) for p in e["effect_paths"]],
-                    char_id=e["char_id"],
-                    name=e["name"],
-                    wanted_tags=res.get("wanted_tags", []) or [],
-                    banned_item_groups=res.get("banned_item_groups", []) or [],
-                    tr=tr,
-                    set_names=set_names,
-                    weapons_by_id=weapons_by_id,
-                ),
-                e,
-            )
+        return build_character_record(
+            data_text,
+            [_read(p) for p in e["effect_paths"]],
+            char_id=e["char_id"],
+            name=e["name"],
+            wanted_tags=res.get("wanted_tags", []) or [],
+            banned_item_groups=res.get("banned_item_groups", []) or [],
+            tr=tr,
+            set_names=set_names,
+            weapons_by_id=weapons_by_id,
         )
 
-    enemies = []
-    for e in discover.find_enemy_dirs(root):
-        scene_text = _read(e["scene_path"]) if e.get("scene_path") else None
-        enemies.append(
-            _tag(
-                build_enemy_record(
-                    _read(e["stats_path"]),
-                    scene_text,
-                    enemy_id=e["enemy_id"],
-                    name=e["name"],
-                    tr=tr,
-                ),
-                e,
-            )
-        )
+    characters = _build_tagged(discover.find_character_dirs(root), character)
+
+    enemies = _build_tagged(
+        discover.find_enemy_dirs(root),
+        lambda e: build_enemy_record(
+            _read(e["stats_path"]),
+            _read(e["scene_path"]) if e.get("scene_path") else None,
+            enemy_id=e["enemy_id"],
+            name=e["name"],
+            tr=tr,
+        ),
+    )
 
     zone_1_waves = []
     enemy_ids_in_waves: set[str] = set()

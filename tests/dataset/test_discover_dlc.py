@@ -71,3 +71,38 @@ def test_weapon_scaling_on_dlc_curse_stat_builds():
     )
     rec = build_weapon_record(stats, "[resource]\n", weapon_id="weapon_test", name="T", tier=2)
     assert rec["id"] == "weapon_test"
+
+
+def test_discover_emits_one_item_per_tier_data_file(tmp_path):
+    from dlc_tree import TIERED_ITEM, add_tiered_dlc_item
+
+    root = make_tree(tmp_path)
+    add_tiered_dlc_item(root)
+    items = [e for e in discover.find_item_dirs(str(root)) if TIERED_ITEM in e["item_id"]]
+    assert [e["item_id"] for e in items] == [f"item_{TIERED_ITEM}_0", f"item_{TIERED_ITEM}_1"]
+    assert all(e["dlc"] == "dlc_1" for e in items)
+    names = [
+        sorted(p.replace("\\", "/").rsplit("/", 1)[1] for p in e["effect_paths"]) for e in items
+    ]
+    assert names == [
+        [f"{TIERED_ITEM}_effect_0.tres", f"{TIERED_ITEM}_effect_shared.tres"],
+        [f"{TIERED_ITEM}_1_effect.tres", f"{TIERED_ITEM}_effect_shared.tres"],
+    ]
+
+
+def test_build_dataset_tiered_dlc_item_records(tmp_path):
+    from dlc_tree import TIERED_ITEM, add_tiered_dlc_item
+
+    from brotato_bot.dataset.build import build_dataset
+
+    root = make_tree(tmp_path / "extracted")
+    add_tiered_dlc_item(root)
+    ds = build_dataset(root, tmp_path / "out.json", "1.1.15.4", generated_at="2026-10-22T00:00:00Z")
+    recs = {r["id"]: r for r in ds["items"] if TIERED_ITEM in r["id"]}
+    assert sorted(recs) == [f"item_{TIERED_ITEM}_0", f"item_{TIERED_ITEM}_1"]
+    keys = {i: sorted(e["key"] for e in r["effects"]) for i, r in recs.items()}
+    assert keys == {
+        f"item_{TIERED_ITEM}_0": ["stat_armor", "stat_engineering"],
+        f"item_{TIERED_ITEM}_1": ["stat_engineering", "stat_range"],
+    }
+    assert {r["tier"] for r in recs.values()} == {1, 2}
