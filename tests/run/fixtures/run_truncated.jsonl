@@ -1,0 +1,13 @@
+{"character_id":"character_well_rounded","danger":0,"plan_id":"well-rounded-v1","profile_id":1,"game_version":"1.1.13.0","mod_version":"0.2.0","start_wave":1,"run_id":"20261022-201500-well_rounded-d0","t":0,"kind":"header"}
+{"state":"acting","reason":"enable","t":900,"kind":"bot_state"}
+{"pos":[0,0],"heading":[1,0],"threats":[],"nearest_threat":{"id":"","dist":-1},"margin":null,"t":1000,"kind":"snapshot"}
+{"wave":1,"source":"enemy_baby_alien","amount":2,"hp_after":8,"total_this_wave":2,"t":5200,"kind":"damage"}
+{"wave":1,"hp":8,"gold":31,"damage_taken":2,"kills":40,"t":20000,"kind":"wave_end"}
+{"export_kind":"shop","path":"user://brotato-bot/state/20261022-201500-well_rounded-d0-001.json","seq":1,"t":20500,"kind":"export"}
+{"request_kind":"shop","id":"20261022-201500-well_rounded-d0-001","source":"haiku","response":{"id":"20261022-201500-well_rounded-d0-001","action":"buy","option_index":1,"confidence":0.8,"rationale":"cheap ranged damage"},"wave":1,"t":23000,"kind":"decision"}
+{"id":"20261022-201500-well_rounded-d0-001","action":"buy","option_index":1,"applied":"buy","t":23100,"kind":"decision_applied"}
+{"wave":1,"action":"buy","item_id":"weapon_smg_1","price":25,"score":6.5,"source":"haiku","gold_after":6,"t":23150,"kind":"shop"}
+{"wave":1,"id":null,"picked":"upgrade_ranged_damage_1","alternatives":[{"index":0,"id":"upgrade_ranged_damage_1","stat":"stat_ranged_damage","value":1,"score":8.0},{"index":1,"id":"upgrade_armor_1","stat":"stat_armor","value":1,"score":3.0}],"source":"rule","t":24000,"kind":"levelup"}
+{"id":"chal_gatherer_1","is_target":true,"t":44000,"kind":"challenge"}
+{"wave":2,"hp":5,"gold":44,"damage_taken":6,"kills":61,"t":45000,"kind":"wave_end"}
+{"id":"","action":null,"appl
