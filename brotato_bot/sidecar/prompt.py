@@ -40,6 +40,8 @@ PROMPTS_DIR = Path(__file__).with_name("prompts")
 SCHEMA_PLACEHOLDER = "{{DECISION_SCHEMA}}"
 NO_TARGET = "no unlock target: optimise this character's run"
 KNOWLEDGE_MAX_CHARS = 6000
+PLAN_MAX_CHARS = 4000
+PLAN_TRUNCATED = "... [plan truncated: {n} more chars]"
 RECENT_SHOWN = 3
 _WEAPON_TIER_ID = re.compile(r"^(weapon_.+)_(\d+)$")
 _FORMAT_ARG = re.compile(r"\{(\d+)\}")
@@ -291,7 +293,11 @@ def _option_lines(request: dict, state: dict, look: _Lookup) -> list[str]:
 def _plan_lines(plan: dict) -> list[str]:
     if not plan:
         return ["No plan file: the bot's built-in plan for this character applies."]
-    return ["```json", json.dumps(plan, indent=2, ensure_ascii=False), "```"]
+    text = json.dumps(plan, ensure_ascii=False, separators=(",", ":"))
+    if len(text) > PLAN_MAX_CHARS:
+        rest = len(text) - PLAN_MAX_CHARS
+        text = text[:PLAN_MAX_CHARS] + "\n" + PLAN_TRUNCATED.format(n=rest)
+    return ["```json", text, "```"]
 
 
 def _slugify(text: str) -> str:
@@ -318,7 +324,7 @@ def _knowledge_lines(
         if not text:
             continue
         if used + len(text) > KNOWLEDGE_MAX_CHARS:
-            break
+            continue  # a smaller excerpt further on may still fit
         used += len(text)
         lines += [f"[{slug}]", text, ""]
     return lines[:-1] if lines else ["none"]

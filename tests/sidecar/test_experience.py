@@ -192,3 +192,14 @@ def test_join_outcomes_reads_build_from_run_jsonl(tmp_path):
     won = _summary().model_copy(update={"outcome": "win", "death": None, "death_wave": None})
     row = experience.join_outcomes(decisions, won, run_jsonl=run)[0]
     assert row["kept_to_end"] is True
+
+
+def test_append_after_a_truncated_line_starts_a_new_line(tmp_path):
+    log = tmp_path / "experience.jsonl"
+    experience.append(log, {"character_id": "c", "kind": "shop", "wave": 1})
+    with log.open("ab") as fh:
+        fh.write(b'{"character_id": "c", "kind": "sh')  # crash mid-write
+    experience.append(log, {"character_id": "c", "kind": "shop", "wave": 2})
+    assert [r["wave"] for r in experience.query(log, "c", "shop")] == [1, 2]
+    assert log.read_bytes().endswith(b"\n")
+    assert log.read_bytes().count(b"\n") == 3

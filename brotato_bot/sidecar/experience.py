@@ -47,12 +47,19 @@ _TIER_SUFFIX = re.compile(r"_\d+$")
 
 
 def append(path: Path, record: dict) -> None:
-    """Append ``record`` as one JSON line (the parent directory is created)."""
+    """Append ``record`` as one JSON line (the parent directory is created). When the file
+    does not end in a newline (a crash cut its last line short), a newline goes first so
+    the new record never joins the broken line."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    line = json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
-    with path.open("a", encoding="utf-8", newline="") as fh:
-        fh.write(line)
+    line = (json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n").encode()
+    with path.open("ab+") as fh:
+        fh.seek(0, 2)
+        if fh.tell() > 0:
+            fh.seek(-1, 2)
+            if fh.read(1) != b"\n":
+                line = b"\n" + line
+        fh.write(line)  # append mode: always written at the end
         fh.flush()
 
 
