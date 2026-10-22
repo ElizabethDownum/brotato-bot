@@ -17,7 +17,7 @@ const PICK_WAIT = 0.3    # pace between picks -- slow enough to watch each selec
 var _auto_busy = false
 var _auto_heartbeat = 0        # bumped each pick; the _process watchdog watches it for stalls
 var _auto_seen_heartbeat = 0
-var _auto_progress_ms = 0     # OS.get_ticks_msec() of the loop's last progress (or a non-stall frame)
+var _auto_stall_ms = 0        # processed ms since the loop's last progress (reset on a non-stall frame)
 var _auto_deciding = false     # a sidecar decision is pending: the watchdog must not reclaim the loop
 var _focus_outline = null
 
@@ -52,25 +52,30 @@ func _process(_delta: float) -> void:
 	# loop ever exits early, or (defensively) if its coroutine dies mid-drain leaving
 	# _auto_busy stuck true. Every frame: start the loop when a bot is waiting and
 	# none is running; and if a loop is marked busy but has made no progress for
-	# PickWatchdog.STALL_MS (1.5 s, wall time) while a bot still waits, treat it as
-	# dead and reclaim it. Without this a single stall freezes the whole run on the
-	# level-up screen. A paused tree or a pending decision is never a stall.
-	var now = OS.get_ticks_msec()
+	# PickWatchdog.STALL_MS (1.5 s of processed time) while a bot still waits,
+	# treat it as dead and reclaim it. Without this a single stall freezes the
+	# whole run on the level-up screen. Time is accumulated from _delta, not the
+	# wall clock: this node inherits pause, so _process stands still during a
+	# human pause in Main exactly like the pause-aware pick timer does, and a
+	# long pause is not mistaken for a stall on Resume. A pending decision is
+	# never a stall either.
 	if not _bot_is_choosing():
-		_auto_progress_ms = now
+		_auto_stall_ms = 0
 		return
 	if not _auto_busy:
 		_auto_pick_loop()
 		return
 	if _auto_deciding or get_tree().paused:
-		_auto_progress_ms = now   # waiting on the sidecar / a frozen pick timer is not a stall
+		_auto_stall_ms = 0   # waiting on the sidecar / a frozen pick timer is not a stall
 		return
 	if _auto_heartbeat != _auto_seen_heartbeat:
 		_auto_seen_heartbeat = _auto_heartbeat
-		_auto_progress_ms = now
-	elif PickWatchdog.stalled(now, _auto_progress_ms, get_tree().paused):
-		_auto_busy = false
-		_auto_progress_ms = now
+		_auto_stall_ms = 0
+	else:
+		_auto_stall_ms += int(_delta * 1000.0)
+		if PickWatchdog.stalled(_auto_stall_ms, get_tree().paused):
+			_auto_busy = false
+			_auto_stall_ms = 0
 
 
 func _bot_is_choosing() -> bool:
@@ -234,7 +239,7 @@ func _show_next_player_options() -> bool:
 # main.gd:1162-1177), so it must never happen behind a pause menu.
 func _auto_pick_loop() -> void:
 	_auto_busy = true
-	_auto_progress_ms = OS.get_ticks_msec()
+	_auto_stall_ms = 0
 	var guard = 0
 	while guard < 60:
 		guard += 1
