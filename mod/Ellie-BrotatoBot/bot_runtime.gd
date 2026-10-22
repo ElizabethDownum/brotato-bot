@@ -8,7 +8,8 @@ extends Node
 #   config         BotConfig.load_from(BotConfig.DEFAULT_PATH), read at _ready
 #   run_id         the open run's id ("" when none)
 #   bot_state      "idle" | "acting" | "deciding" | "halted" | "complete"
-#   last_decision  the last sidecar decision record ({} when none)
+#   last_decision  the last decide() record {kind, id, source, response}
+#                  ({} when none); callers read .id for decision_applied
 #   status_text    one-line status shown top-left ("" hides it); Task 10's
 #                  overlay replaces this label
 #   focus_warned_run_id  run_id the pause_on_focus_lost warning was recorded for
@@ -20,6 +21,8 @@ extends Node
 const BotConfig = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_config.gd")
 const Guards = preload("res://mods-unpacked/Ellie-BrotatoBot/core/guards.gd")
 const StateExport = preload("res://mods-unpacked/Ellie-BrotatoBot/core/state_export.gd")
+const DecisionClient = preload("res://mods-unpacked/Ellie-BrotatoBot/core/decision_client.gd")
+const BotPaths = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_paths.gd")
 
 const NODE_NAME = "BotRuntime"
 const RECENT_MAX = 10
@@ -126,11 +129,13 @@ func set_status(text: String):
 
 
 # The single gate for every bot action (movement, shop, level-up picks): the
-# bot is "acting" and the game is on the bot profile. Acting on the wrong
+# bot is "acting" (or "deciding": waiting on the sidecar inside decide(), with
+# the tree paused, which must not switch the shop or level-up gates off) and
+# the game is on the bot profile. Acting on the wrong
 # profile halts the bot ("wrong profile") and returns false. Fails closed when
 # ProgressData is missing.
 func may_act() -> bool:
-	if bot_state != "acting":
+	if bot_state != "acting" and bot_state != "deciding":
 		return false
 	var progress = get_node_or_null("/root/ProgressData")
 	if progress == null:
@@ -228,6 +233,89 @@ func export_state(kind: String) -> String:
 	if recorder != null and recorder.is_open():
 		recorder.event("export", {"kind": kind, "path": path, "seq": seq})
 	return path
+
+
+# Asks the sidecar (coroutine; callers `yield(rt.decide(...), "completed")`).
+# Always yields at least once, so the caller's yield is safe on every path.
+#   1. Guard: bot_state must be "acting", else returns null at once (after one
+#      idle frame), with no request and no event.
+#   2. export_state(kind) writes state/<id>.json; the request id is
+#      "<run_id>-<seq:03>" for that same seq, so state and request match.
+#   3. Writes requests/<id>.json {kind, run_id, seq, state_path, options,
+#      deadline_ms (epoch ms)} via DecisionClient.
+#   4. bot_state "deciding", status "DECIDING: <kind>", tree paused; polls
+#      responses/ every POLL_S (timers process while paused) until a response
+#      or the timeout (config checkpoint_timeout_ms for "checkpoint", else
+#      request_timeout_ms), or until bot_state leaves "deciding" (a halt).
+#   5. Unpauses only if the tree was not already paused, returns bot_state to
+#      "acting" unless it became halted/complete meanwhile, restores the
+#      previous status if ours is still shown.
+#   6. Records a decision event {kind, id, source, response} with source
+#      "haiku" (valid response), "invalid" (a response that failed
+#      validate_response; its file is deleted all the same) or "timeout"
+#      (also used when the export or request write failed), stores the same
+#      record in last_decision, and returns the response or null.
+# The caller records what it actually did as a decision_applied event.
+const POLL_S = 0.25
+
+func decide(kind: String, options: Array):
+	if bot_state != "acting":
+		yield(get_tree(), "idle_frame")
+		return null
+	var timeout_key = "checkpoint_timeout_ms" if kind == "checkpoint" else "request_timeout_ms"
+	var timeout_ms = int(config.get(timeout_key, 120000 if kind == "checkpoint" else 45000))
+	var state_path = export_state(kind)
+	var rid = run_id if run_id != "" else StateExport.NORUN_ID
+	var client = DecisionClient.new(BotPaths.ROOT)
+	var id = ""
+	if state_path != "":
+		id = client.write_request({
+			"kind": kind,
+			"run_id": rid,
+			"seq": seq,
+			"state_path": state_path,
+			"options": options,
+			"deadline_ms": OS.get_system_time_msecs() + timeout_ms,
+		})
+	if id == "":
+		yield(get_tree(), "idle_frame")
+		_record_decision(kind, DecisionClient.request_id(rid, seq), "timeout", null)
+		return null
+	var prev_status = status_text
+	var status = "DECIDING: " + kind
+	var was_paused = get_tree().paused
+	bot_state = "deciding"
+	set_status(status)
+	get_tree().paused = true
+	var deadline = OS.get_ticks_msec() + timeout_ms
+	var response = null
+	while true:
+		yield(get_tree().create_timer(POLL_S, true), "timeout")
+		response = client.poll_response(id)
+		if response != null or OS.get_ticks_msec() >= deadline:
+			break
+		if bot_state != "deciding":
+			break   # halted (e.g. wrong profile) or completed meanwhile: stop waiting
+	if not was_paused:
+		get_tree().paused = false
+	if bot_state == "deciding":
+		bot_state = "acting"
+	if status_text == status:
+		set_status(prev_status)
+	var source = "timeout"
+	if response != null:
+		if DecisionClient.validate_response(response):
+			source = "haiku"
+		else:
+			source = "invalid"
+	_record_decision(kind, id, source, response)
+	return response if source == "haiku" else null
+
+
+func _record_decision(kind, id, source, response):
+	last_decision = {"kind": kind, "id": id, "source": source, "response": response}
+	if recorder != null and recorder.is_open():
+		recorder.event("decision", last_decision.duplicate(true))
 
 
 # Game quit with a run still open: close the file with an end line.

@@ -115,6 +115,53 @@ func test_plan_for_sees_rewritten_file():
 	assert_eq(gone.max_rerolls, 15, "deleted file falls back to built-in plan")
 
 
+func test_save_then_load_round_trips():
+	var dir = "user://brotato-bot/test-plan-save-%d" % OS.get_ticks_usec()
+	var path = dir.plus_file("plan.json")
+	var plan = {"plan_id": "p-1", "character_id": "character_well_rounded", "target_challenge": "",
+		"plan": {"max_rerolls": 3, "stats": {"stat_ranged_damage": 4.0}, "ask_on": ["item_anvil"]}}
+	assert_eq(PlanFile.save(path, plan), OK, "save returns OK")
+	assert_false(File.new().file_exists(path + ".tmp"), "no .tmp left")
+	var first = PlanFile.load_cached(path)
+	assert_eq(typeof(first), TYPE_DICTIONARY, "loads back")
+	if typeof(first) == TYPE_DICTIONARY:
+		assert_eq(first.plan_id, "p-1", "plan_id")
+		assert_eq(first.plan.max_rerolls, 3, "int key normalized")
+		assert_eq(first.plan.stats.stat_ranged_damage, 4.0, "nested stat")
+		assert_eq(first.plan.ask_on, ["item_anvil"], "ask_on kept")
+	# Same second: the mtime may not change, so save must drop the cache entry.
+	plan.plan.max_rerolls = 9
+	assert_eq(PlanFile.save(path, plan), OK, "second save")
+	var second = PlanFile.load_cached(path)
+	assert_true(typeof(second) == TYPE_DICTIONARY and second.plan.max_rerolls == 9,
+		"cache invalidated by save")
+	var d = Directory.new()
+	d.remove(path)
+	d.remove(dir)
+
+
+func test_apply_patch_merges_for_matching_character_only():
+	var dir = "user://brotato-bot/test-plan-patch-%d" % OS.get_ticks_usec()
+	var path = dir.plus_file("plan.json")
+	assert_eq(PlanFile.apply_patch(path, "character_well_rounded", {"max_rerolls": 2}, "new-1"), OK,
+		"missing file is created")
+	var a = PlanFile.load_cached(path)
+	assert_true(typeof(a) == TYPE_DICTIONARY and a.plan_id == "new-1" and a.plan.max_rerolls == 2,
+		"created with the patch")
+	assert_eq(PlanFile.apply_patch(path, "character_well_rounded",
+		{"stats": {"stat_armor": 3.0}, "max_rerolls": 5}, "ignored"), OK, "patch existing")
+	var b = PlanFile.load_cached(path)
+	assert_true(typeof(b) == TYPE_DICTIONARY and b.plan_id == "new-1" and b.plan.max_rerolls == 5
+		and b.plan.stats.stat_armor == 3.0, "merged, plan_id kept")
+	assert_eq(PlanFile.apply_patch(path, "character_brawler", {"max_rerolls": 9}, "x"), ERR_UNAVAILABLE,
+		"other character's file is not overwritten")
+	var c = PlanFile.load_cached(path)
+	assert_true(typeof(c) == TYPE_DICTIONARY and c.plan.max_rerolls == 5, "file unchanged")
+	var d = Directory.new()
+	d.remove(path)
+	d.remove(dir)
+
+
 # Godot 3 compares Dictionaries by identity, so == fails for equal contents.
 # Compare key sets and each value with the type-strict assert_eq.
 func _assert_dict_eq(a, b, msg):

@@ -7,6 +7,8 @@ extends "res://ui/menus/shop/base_shop.gd"
 const ShopAdvisor = preload("res://mods-unpacked/Ellie-BrotatoBot/shopping/shop_advisor.gd")
 const BotRuntime = preload("res://mods-unpacked/Ellie-BrotatoBot/bot_runtime.gd")
 const Coop = preload("res://mods-unpacked/Ellie-BrotatoBot/extensions/ui/menus/run/coop_mouse_select.gd")
+const DecisionClient = preload("res://mods-unpacked/Ellie-BrotatoBot/core/decision_client.gd")
+const PlanFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/plan_file.gd")
 
 const SETUP_WAIT = 0.35   # let _ready() finish populating the offering + UI
 const BUY_WAIT = 0.09     # container enforces a 0.05s buy lockout; clear it
@@ -414,12 +416,78 @@ func _auto_shop_player(pi) -> void:
 	# this shop and all future ones (added to banned_items). Done once up front so the
 	# buy loop and every later reroll are already clean.
 	_apply_bans(pi, plan)
+	var asked = false   # the sidecar is consulted at most once per shop visit
 	var actions = 0
 	while actions < MAX_ACTIONS:
 		actions += 1
 		var gold = RunData.get_player_gold(pi)
 		var container = _get_shop_items_container(pi)
 		var nodes = container._shop_items
+		# Sidecar decision, once per visit before the first buy: when the scored
+		# offering is a near-tie, weak, or holds an ask_on id, BotRuntime.decide
+		# pauses the game and waits for responses/<id>.json. The applied result
+		# is recorded as a decision_applied event; "rule" means BOTato's own
+		# choice below runs this iteration (timeout, invalid response, or an
+		# answer that cannot be carried out).
+		if not asked:
+			asked = true
+			var ask = _decision_options(nodes, gold, plan, pi)
+			var rt = BotRuntime.instance()
+			var why = DecisionClient.should_ask(ask.scores, ask.affordable, rt.config,
+				ask.ids, plan.get("ask_on", []))
+			if why != "":
+				var r = yield(rt.decide("pivot" if why == "pivot" else "shop", ask.options), "completed")
+				if not _should_autoshop(pi):
+					break   # halted while deciding: act no further (no GO either)
+				gold = RunData.get_player_gold(pi)
+				var act = str(r.action) if r != null else ""
+				var oi = int(r.get("option_index", -1)) if r != null else -1
+				var target = ask.nodes[oi] if oi >= 0 and oi < ask.nodes.size() else null
+				if target != null and (not is_instance_valid(target) or not target.active):
+					target = null
+				var applied = "rule"
+				if act == "buy" and target != null and int(target.value) <= gold:
+					tried[target.get_instance_id()] = true
+					if target.locked:
+						target.change_lock_status(false)
+						save_floor = gold_floor
+					bought.push_back("%s@%d(ai)" % [target.item_data.my_id, int(target.value)])
+					buys += 1
+					container.on_shop_item_buy_button_pressed(target)
+					applied = "buy"
+				elif act == "lock" and target != null:
+					if not target.locked:
+						target.change_lock_status(true)
+					tried[target.get_instance_id()] = true   # keep it, do not buy it this pass
+					save_floor = gold_floor + int(target.value)
+					saved_note = " lock=%s@%d(ai)" % [target.item_data.my_id, int(target.value)]
+					applied = "lock"
+				elif act == "reroll" and _reroll_price.size() > pi:
+					var rprice = _reroll_price[pi]
+					if rprice <= 0 or _free_rerolls[pi] > 0 or _has_bonus_free_reroll[pi] or gold >= rprice:
+						rerolls += 1
+						tried.clear()
+						_on_RerollButton_pressed(pi)
+						applied = "reroll"
+				elif act == "skip":
+					applied = "skip"
+				elif act == "revise_plan":
+					var cid = character.my_id if character != null else ""
+					if cid != "" and PlanFile.apply_patch(PlanFile.DEFAULT_PATH, cid, r.plan_patch,
+							"sidecar-" + str(rt.last_decision.get("id", ""))) == OK:
+						plan = ShopAdvisor.get_plan(cid)
+						applied = "revise_plan"
+				_record_applied(rt, r, applied)
+				if applied == "skip":
+					break
+				if applied == "buy":
+					yield(get_tree().create_timer(BUY_WAIT), "timeout")
+					continue
+				if applied == "reroll":
+					yield(get_tree().create_timer(REROLL_WAIT), "timeout")
+					continue
+				if applied != "rule":
+					continue   # lock / revise_plan: re-loop with the new state
 		# Pick the best affordable, buyable, not-yet-tried node -- but never dip
 		# below save_floor (the gold held for a weapon we locked to buy later).
 		# Locked nodes ARE considered here: a weapon we locked (this wave or a past
@@ -500,6 +568,47 @@ func _auto_shop_player(pi) -> void:
 	yield(get_tree().create_timer(GO_WAIT), "timeout")
 	if _should_autoshop(pi):
 		_on_GoButton_pressed(pi)
+
+# The scored offering for a sidecar decision. Only active nodes are options;
+# option i (options[i].index == i, the response's option_index) is nodes[i]:
+#   options     [{index, id, kind: "weapon"|"item", price, score}]
+#   nodes       the ShopItem node behind each option
+#   scores      each option's ShopAdvisor.score_shop_entry
+#   affordable  indices of the options whose price is <= gold
+#   ids         every offered item id (matched against the plan's ask_on)
+func _decision_options(nodes, gold, plan, pi) -> Dictionary:
+	var out = {"options": [], "nodes": [], "scores": [], "affordable": [], "ids": []}
+	for node in nodes:
+		if node == null or not is_instance_valid(node) or not node.active:
+			continue
+		var i = out.options.size()
+		var sc = float(ShopAdvisor.score_shop_entry([node.item_data, node.wave_value], plan, pi))
+		out.options.append({
+			"index": i,
+			"id": node.item_data.my_id,
+			"kind": "weapon" if node.item_data is WeaponData else "item",
+			"price": int(node.value),
+			"score": sc,
+		})
+		out.nodes.append(node)
+		out.scores.append(sc)
+		out.ids.append(node.item_data.my_id)
+		if int(node.value) <= gold:
+			out.affordable.append(i)
+	return out
+
+# Follow-up to BotRuntime's decision event: what the shop actually did.
+# {id, action (the response's, or null), option_index (or null), applied:
+# "buy"|"lock"|"reroll"|"skip"|"revise_plan"|"rule"}.
+func _record_applied(rt, r, applied) -> void:
+	if rt.recorder == null or not rt.recorder.is_open():
+		return
+	rt.recorder.event("decision_applied", {
+		"id": rt.last_decision.get("id", ""),
+		"action": r.action if r != null else null,
+		"option_index": r.get("option_index") if r != null else null,
+		"applied": applied,
+	})
 
 # The weapon on offer worth saving for: a strong weapon (tier 2+ / combine) we
 # cannot afford this wave but could next wave. Already-locked weapons always
