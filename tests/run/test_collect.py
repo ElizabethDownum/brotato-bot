@@ -206,9 +206,7 @@ def test_collect_keeps_every_decision_without_an_id(tmp_paths):
     decisions = tmp_paths.decisions_dir / f"{RUN_ID}.jsonl"
     unlabelled = {"run_id": RUN_ID, "kind": "shop", "decision": {"action": "reroll"}}
     decisions.write_text(
-        json.dumps(unlabelled) + "
-" + json.dumps(unlabelled) + "
-", encoding="utf-8"
+        json.dumps(unlabelled) + "\n" + json.dumps(unlabelled) + "\n", encoding="utf-8"
     )
     log = tmp_paths.decisions_dir / "experience.jsonl"
     collect.collect(RUN_ID, tmp_paths)
