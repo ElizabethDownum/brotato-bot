@@ -1,0 +1,10 @@
+{
+  "plan_id": "test-1",
+  "character_id": "character_well_rounded",
+  "target_challenge": "chal_test",
+  "plan": {
+    "weapon_type": "ranged",
+    "stats": {"stat_ranged_damage": 9.0},
+    "max_rerolls": 4
+  }
+}

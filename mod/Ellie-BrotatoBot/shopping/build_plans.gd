@@ -16,6 +16,8 @@ extends Reference
 #   max_rerolls  paid rerolls per shop visit (free rerolls are always taken)
 #   min_buy      do not buy an item scoring below this
 
+const PlanFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/plan_file.gd")
+
 const DEFAULT = {
 	"weapon_type": "any",
 	"stats": {
@@ -1591,10 +1593,19 @@ const PLANS = {
 	},
 }
 
+# The built-in plan, overlaid with user://brotato-bot/plan.json when that file
+# parses and names this character (PlanFile.apply). PlanFile.load_cached re-reads
+# the file only when its mtime changes, so calling this on every shop visit
+# picks up an edited plan without re-parsing an unchanged one.
 static func get_plan(character_id):
 	var p = DEFAULT.duplicate(true)
 	if PLANS.has(character_id):
 		var row = PLANS[character_id]
 		for k in row.keys():
 			p[k] = row[k]
-	return p
+	return PlanFile.apply(p, PlanFile.load_cached(PlanFile.DEFAULT_PATH), character_id)
+
+# Re-check the plan file's mtime now (main.gd calls this on end_of_the_wave).
+# Returns the loaded plan file dictionary or null.
+static func refresh_plan_file():
+	return PlanFile.load_cached(PlanFile.DEFAULT_PATH)
