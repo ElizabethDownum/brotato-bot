@@ -21,7 +21,10 @@ const AXIS_THRESHOLD = 0.5
 
 
 # True only when the game's current profile is the configured bot profile.
+# Profile 0 is the owner's own profile and is never the bot's, whatever the config says.
 static func profile_ok(current_profile_id, config) -> bool:
+	if int(current_profile_id) == 0:
+		return false
 	return int(current_profile_id) == int(config.get("bot_profile_id", 1))
 
 

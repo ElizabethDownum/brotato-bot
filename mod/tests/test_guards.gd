@@ -40,6 +40,11 @@ func test_profile_ok_only_for_bot_profile():
 	assert_false(Guards.profile_ok(0, {}), "default never allows profile 0")
 
 
+func test_profile_zero_is_never_the_bot_profile():
+	assert_false(Guards.profile_ok(0, {"bot_profile_id": 0}), "config 0 does not admit profile 0")
+	assert_false(Guards.profile_ok(0, {"bot_profile_id": 0.0}), "float config 0 either")
+
+
 func test_human_input_detects_move_actions():
 	assert_true(Guards.is_human_move(_key(KEY_W)), "W pressed")
 	assert_false(Guards.is_human_move(_key(KEY_F9)), "F9 pressed")

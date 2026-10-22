@@ -21,3 +21,8 @@ func test_partial_file_overrides_only_given_keys():
 	assert_eq(c.bot_profile_id, 1, "bot_profile_id default kept")
 	assert_eq(c.request_timeout_ms, 45000, "request_timeout_ms default kept")
 	assert_eq(c.export_hotkey, "F9", "export_hotkey default kept")
+
+
+func test_bot_profile_below_one_becomes_one():
+	var c = BotConfig.load_from("res://mod/tests/fixtures/config_profile_zero.json")
+	assert_eq(c.bot_profile_id, 1, "profile 0 in config is replaced with 1")

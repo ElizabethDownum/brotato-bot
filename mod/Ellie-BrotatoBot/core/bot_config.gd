@@ -8,7 +8,7 @@ extends Reference
 # missing, unreadable or invalid file yields the defaults alone.
 #
 # Types after load:
-#   int:    bot_profile_id, request_timeout_ms, checkpoint_timeout_ms
+#   int:    bot_profile_id (at least 1), request_timeout_ms, checkpoint_timeout_ms
 #           (JSON numbers parse as floats; these are converted with int())
 #   float:  ask_tie_margin, ask_floor
 #   String: target_challenge, export_hotkey
@@ -60,6 +60,10 @@ static func load_from(path):
 		else:
 			push_warning("BotConfig: %s must be a number; using default" % k)
 			cfg[k] = DEFAULTS[k]
+	# Profile 0 is the owner's own profile; the bot never plays on it.
+	if cfg.bot_profile_id < 1:
+		push_warning("BotConfig: bot_profile_id %d is below 1; using 1" % cfg.bot_profile_id)
+		cfg.bot_profile_id = 1
 	for k in FLOAT_KEYS:
 		var v = cfg[k]
 		if typeof(v) == TYPE_REAL or typeof(v) == TYPE_INT:
