@@ -984,8 +984,9 @@ collect are local. Decisions also need the authenticated `claude` CLI's model se
 2. Re-collecting a finished run is safe: report and index row are replaced;
    joined experience is appended only for unseen `(run_id, id)` pairs.
 3. Every run gets a report and an index row (with its `profile_id`), but
-   experience is appended only for a run on the bot profile (`config.json`
-   `bot_profile_id`, default 1), so the owner's own runs never reach it.
+   experience is appended only for a finished run (outcome `won` or `death`, not
+   `incomplete`) on the bot profile (`config.json` `bot_profile_id`, default 1),
+   so the owner's own runs never reach it and a run in progress is not frozen.
 
 | Project output | Contents |
 |---|---|

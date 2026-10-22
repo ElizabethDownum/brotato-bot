@@ -368,7 +368,8 @@ def append_index(index_path: Path, row: dict) -> None:
 def collect(run_id: str, paths: Paths) -> Path:
     """Summarize ``<runs_in>/<run_id>.jsonl``; write ``<runs_out>/<run_id>.md``, copy the
     JSONL beside it and update ``<runs_out>/index.json``. Returns the report path. Joined
-    decisions go to ``experience.jsonl`` only for a run on the bot profile.
+    decisions go to ``experience.jsonl`` only for a finished run (outcome not ``incomplete``)
+    on the bot profile.
 
     ``run_id`` must be a plain file name (ValueError otherwise). It names every file and
     the index row; a header run_id that disagrees is reported as a note."""
@@ -394,7 +395,8 @@ def collect(run_id: str, paths: Paths) -> Path:
             f"profile {summary.profile_id} is not the bot profile ({bot_pid}): "
             "no experience recorded"
         )
-    if on_bot_profile and decisions_path.is_file():
+    # A run still in progress is not joined: dedupe would freeze its rows before the end.
+    if on_bot_profile and summary.outcome != "incomplete" and decisions_path.is_file():
         experience_path = paths.decisions_dir / "experience.jsonl"
         seen = {(rec.get("run_id"), rec.get("id")) for rec in experience.read(experience_path)}
         joined = experience.join_outcomes(decisions_path, summary, run_jsonl=src)

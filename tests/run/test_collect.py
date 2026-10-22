@@ -411,3 +411,14 @@ def test_collect_records_experience_only_for_the_bot_profile(tmp_paths):
     _install_on_profile(tmp_paths, 2)
     collect.collect(RUN_ID, tmp_paths)
     assert len(collect.parse_jsonl(tmp_paths.decisions_dir / "experience.jsonl")) == 1
+
+
+def test_collect_records_no_experience_for_a_run_in_progress(tmp_paths):
+    _install(tmp_paths, "run_truncated.jsonl")
+    _install_decision(tmp_paths)
+    report = collect.collect(RUN_ID, tmp_paths)
+    assert report.is_file()
+    assert json.loads((tmp_paths.runs_out / "index.json").read_text("utf-8"))[0]["outcome"] == (
+        "incomplete"
+    )
+    assert not (tmp_paths.decisions_dir / "experience.jsonl").exists()
