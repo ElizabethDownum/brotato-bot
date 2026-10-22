@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from brotato_bot import cli, paths
@@ -14,10 +15,16 @@ def _build(args: argparse.Namespace) -> int:
     pck = Path(args.pck) if args.pck else p.pck
     out = Path(args.out) if args.out else p.data_dir / "brotato.json"
     extracted = p.data_dir / "extracted"
-    unpack.unpack(pck, extracted)
-    game_version = version.detect_game_version(pck)
-    print(f"Game version: {game_version}")
-    build.build_dataset(extracted, out, game_version)
+    # Detect the version first: it is a cheap scan, and a pck without one should
+    # fail before the full unpack.
+    try:
+        game_version = version.detect_game_version(pck)
+        print(f"Game version: {game_version}")
+        unpack.unpack(pck, extracted)
+        build.build_dataset(extracted, out, game_version)
+    except ValueError as exc:
+        print(f"dataset build failed: {exc}", file=sys.stderr)
+        return 1
     return 0
 
 

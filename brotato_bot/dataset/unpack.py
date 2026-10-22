@@ -4,12 +4,11 @@
 Parses the file index and extracts every entry, preserving the res:// path
 layout under an output directory. Stdlib only; no dependencies.
 
-Usage:
-    python unpack_pck.py <archive.pck> <output_dir>
+Raises ValueError on a bad magic, an unsupported pack format, or an entry whose
+destination would fall outside the output directory.
 """
 import os
 import struct
-import sys
 from collections import Counter
 
 MAGIC = b"GDPC"
@@ -23,11 +22,19 @@ def read_u64(f):
     return struct.unpack("<Q", f.read(8))[0]
 
 
+def _is_inside(root, dest):
+    """True if resolved ``dest`` is strictly below resolved ``root``."""
+    try:
+        return dest != root and os.path.commonpath([root, dest]) == root
+    except ValueError:  # different drives on Windows
+        return False
+
+
 def unpack(pck_path, out_dir):
     with open(pck_path, "rb") as f:
         magic = f.read(4)
         if magic != MAGIC:
-            sys.exit(f"Not a Godot PCK: magic={magic!r} (expected {MAGIC!r})")
+            raise ValueError(f"Not a Godot PCK: magic={magic!r} (expected {MAGIC!r})")
 
         pack_format = read_u32(f)
         ver_major = read_u32(f)
@@ -35,7 +42,7 @@ def unpack(pck_path, out_dir):
         ver_patch = read_u32(f)
         print(f"PCK format v{pack_format}, Godot {ver_major}.{ver_minor}.{ver_patch}")
         if pack_format != 1:
-            sys.exit(f"Only pack format v1 supported here (got v{pack_format}).")
+            raise ValueError(f"Only pack format v1 supported here (got v{pack_format}).")
 
         # 16 reserved uint32 fields
         f.read(16 * 4)
@@ -53,11 +60,21 @@ def unpack(pck_path, out_dir):
             f.read(16)  # md5, ignored
             entries.append((path, offset, size))
 
-        ext_counter = Counter()
-        total_bytes = 0
+        # Resolve and check every destination before writing anything, so a hostile
+        # entry (res://../x, an absolute or drive-qualified path) aborts the unpack
+        # with nothing written for it.
+        root = os.path.realpath(out_dir)
+        planned = []
         for path, offset, size in entries:
             rel = path[len("res://"):] if path.startswith("res://") else path.lstrip("/")
-            dest = os.path.join(out_dir, *rel.split("/"))
+            dest = os.path.realpath(os.path.join(root, *rel.split("/")))
+            if not _is_inside(root, dest):
+                raise ValueError(f"pck entry {path!r} resolves outside {out_dir}")
+            planned.append((rel, dest, offset, size))
+
+        ext_counter = Counter()
+        total_bytes = 0
+        for rel, dest, offset, size in planned:
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             f.seek(offset)
             data = f.read(size)
@@ -72,8 +89,3 @@ def unpack(pck_path, out_dir):
         print(f"  {ext or '(none)':10} {n}")
     return len(entries)
 
-
-if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        sys.exit("Usage: python unpack_pck.py <archive.pck> <output_dir>")
-    unpack(sys.argv[1], sys.argv[2])
