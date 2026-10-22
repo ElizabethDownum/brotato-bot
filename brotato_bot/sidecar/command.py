@@ -22,8 +22,13 @@ from brotato_bot.sidecar import decide, prompt
 DEADLINE_MS = {"checkpoint": "checkpoint_timeout_ms"}
 
 
+def _now_ms() -> int:
+    return time.time_ns() // 1_000_000
+
+
 def request_from_state(state: dict, state_path: Path, kind: str, cfg: dict) -> dict:
-    """A request as the mod writes one, with ``options`` built from the state file."""
+    """A request as the mod writes one, with ``options`` built from the state file and an
+    absolute ``deadline_ms`` (epoch ms) one request timeout from now."""
     if kind == "shop":
         options = [
             {"index": i, "id": s.get("id"), "kind": s.get("kind"), "price": s.get("price"),
@@ -50,7 +55,7 @@ def request_from_state(state: dict, state_path: Path, kind: str, cfg: dict) -> d
         "seq": seq,
         "state_path": str(state_path),
         "options": options,
-        "deadline_ms": cfg[DEADLINE_MS.get(kind, "request_timeout_ms")],
+        "deadline_ms": _now_ms() + cfg[DEADLINE_MS.get(kind, "request_timeout_ms")],
     }
 
 
@@ -90,7 +95,7 @@ def _decide_once(args: argparse.Namespace) -> int:
         print(user)
         return 0
     start = time.monotonic()
-    outcome = decide.decide(request, user, cfg, deadline_ms=request["deadline_ms"])
+    outcome = decide.decide(request, user, cfg, deadline_ms=request["deadline_ms"] - _now_ms())
     elapsed_ms = int((time.monotonic() - start) * 1000)
     print(json.dumps(outcome.to_dict(), indent=2, ensure_ascii=False))
     print(f"{request['id']} {args.kind} -> {outcome.source} in {elapsed_ms} ms")

@@ -56,15 +56,11 @@ from brotato_bot.report import render
 from brotato_bot.run import collect
 from brotato_bot.run.prepare import bot_profile_id
 from brotato_bot.sidecar import decide, experience, prompt
-from brotato_bot.sidecar.command import prompt_inputs
+from brotato_bot.sidecar.command import _now_ms, prompt_inputs
 
 ALIVE_FILE = "sidecar.alive"
 NEXT_MODEL = "claude-sonnet-5-5"
 NEXT_TIMEOUT_S = 600
-
-
-def _now_ms() -> int:
-    return time.time_ns() // 1_000_000
 
 
 def _header_profile(run_file: Path) -> object:

@@ -132,17 +132,21 @@ def test_outcome_is_json_serialisable():
     assert data["source"] == "haiku" and data["attempts"][0]["model"] == "claude-haiku-5-5"
 
 
-def test_decide_once_request_uses_option_positions(tmp_path):
+def test_decide_once_request_uses_option_positions(tmp_path, monkeypatch):
     from pathlib import Path
 
+    from brotato_bot.sidecar import command
     from brotato_bot.sidecar.command import request_from_state
+
+    monkeypatch.setattr(command, "_now_ms", lambda: 1_000_000)
 
     fixture = Path(__file__).parent / "fixtures" / "state_shop.json"
     state = json.loads(fixture.read_text(encoding="utf-8"))
     req = request_from_state(state, fixture, "shop", decide.settings({}))
     assert [o["index"] for o in req["options"]] == [0, 1]
     assert [o["id"] for o in req["options"]] == ["weapon_smg_1", "item_bag"]
-    assert req["options"][0]["score"] == 6.5 and req["deadline_ms"] == 45000
+    assert req["options"][0]["score"] == 6.5
+    assert req["deadline_ms"] == 1_045_000  # absolute epoch ms, as the mod writes it
     assert req["id"] == "20261022-201500-well_rounded-d0-002"
     assert request_from_state(state, fixture, "checkpoint", decide.settings({}))["options"] == []
 
@@ -242,13 +246,15 @@ def test_decide_once_forwards_request_deadline(tmp_path, monkeypatch, capsys):
     )
     monkeypatch.setattr(command.cache, "load_all", lambda _: [])
     monkeypatch.setattr(command.prompt, "build", lambda *args: "PROMPT")
+    monkeypatch.setattr(command, "_now_ms", lambda: 1_000_000)
     real_decide = decide.decide
     runner = _scripted(VALID)
     received = {}
 
     def fake_decide(request, context, cfg, **kwargs):
         received.update(kwargs)
-        assert kwargs["deadline_ms"] == request["deadline_ms"] == 45000
+        assert request["deadline_ms"] == 1_045_000  # absolute; the ladder gets the budget
+        assert kwargs["deadline_ms"] == 45000
         return real_decide(request, context, cfg, run=_run_with(runner), **kwargs)
 
     monkeypatch.setattr(command.decide, "decide", fake_decide)
