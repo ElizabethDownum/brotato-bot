@@ -204,16 +204,14 @@ var cautious = false                     # F4 burst caution active; read by ai_t
 
 
 func get_movement()->Vector2:
-	var options_node = $"/root/AutobattlerOptions"
-	var enabled = options_node.enable_autobattler
 	var player = get_parent()
 
-	# Guard: the bot steers only while BotRuntime says "acting" (set by the
-	# guarded Shift+Space enable, cleared by toggle-off and halt()).
+	# Guard: the bot steers only while BotRuntime.may_act() (acting on the bot
+	# profile; set by the guarded Shift+Space enable, cleared by toggle-off,
+	# halt() and the main menu). Acting implies enable_autobattler, which makes
+	# every slot a bot, so the old CoopService.is_bot_by_index clause is gone.
 	var rt = BotRuntime.instance()
-	var acting = rt != null and rt.bot_state == "acting"
-
-	if not acting or (not enabled and not CoopService.is_bot_by_index[player.player_index]):
+	if rt == null or not rt.may_act():
 		$"/root/Main/Camera".smoothing_enabled = false
 		return .get_movement()
 

@@ -87,10 +87,8 @@ func _bot_run_guards():
 		if rec != null:
 			rec.event("warning", {"reason": "pause_on_focus_lost is true"})
 		rt.set_status("Warning: pause_on_focus_lost is true")
-	var options = get_node_or_null("/root/AutobattlerOptions")
-	var bot_on = options != null and options.enable_autobattler
-	if bot_on and not Guards.profile_ok(ProgressData.current_profile_id, rt.config):
-		rt.halt("wrong profile")
+	# may_act() halts an acting bot that is on the wrong profile.
+	var _ok = rt.may_act()
 
 
 func _bot_recorder():

@@ -14,6 +14,7 @@ extends Node
 #   focus_warned_run_id  run_id the pause_on_focus_lost warning was recorded for
 
 const BotConfig = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_config.gd")
+const Guards = preload("res://mods-unpacked/Ellie-BrotatoBot/core/guards.gd")
 
 const NODE_NAME = "BotRuntime"
 
@@ -26,6 +27,7 @@ var status_text = ""
 var focus_warned_run_id = null
 
 var _status_label = null
+var _move_scancodes = null
 
 
 func _init():
@@ -50,6 +52,43 @@ func set_status(text: String):
 	if _status_label != null:
 		_status_label.text = text
 		_status_label.visible = text != ""
+
+
+# The single gate for every bot action (movement, shop, level-up picks): the
+# bot is "acting" and the game is on the bot profile. Acting on the wrong
+# profile halts the bot ("wrong profile") and returns false. Fails closed when
+# ProgressData is missing.
+func may_act() -> bool:
+	if bot_state != "acting":
+		return false
+	var progress = get_node_or_null("/root/ProgressData")
+	if progress == null:
+		return false
+	if not Guards.profile_ok(progress.current_profile_id, config):
+		halt("wrong profile")
+		return false
+	return true
+
+
+# Move-key scancodes for Guards.is_human_move, built from the InputMap once.
+func move_scancodes() -> Array:
+	if _move_scancodes == null:
+		_move_scancodes = Guards.default_move_scancodes()
+	return _move_scancodes
+
+
+# Back at the main menu: the bot is off for the next run (Continue loads the
+# shop directly, so enablement must not carry over). Not a halt: no event.
+func reset_for_menu():
+	bot_state = "idle"
+	var options = get_node_or_null("/root/AutobattlerOptions")
+	if options != null:
+		options.enable_autobattler = false
+		options.enable_autoshop = false
+		options.emit_signal("setting_changed", options.ENABLE_AUTOBATTLER_OPTION_NAME, false, options.MOD_NAME)
+		options.emit_signal("setting_changed", options.ENABLE_AUTOSHOP_OPTION_NAME, false, options.MOD_NAME)
+		options.save_configs()
+	set_status("")
 
 
 # Stops the bot at once: state "halted", both bot flags off on

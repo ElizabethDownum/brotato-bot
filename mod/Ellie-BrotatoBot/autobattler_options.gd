@@ -92,7 +92,10 @@ func _input(event):
 	# A human touching the move controls takes over at once. The event is left
 	# unhandled so the game moves the potato on this very input.
 	var rt = BotRuntime.instance()
-	if rt != null and rt.bot_state == "acting" and Guards.is_human_move(event):
+	if rt == null or rt.bot_state != "acting":
+		return
+	var mouse_only = ProgressData.settings.get("mouse_only", false) and not RunData.is_coop_run
+	if Guards.is_human_move(event, rt.move_scancodes(), null, mouse_only):
 		rt.halt("human input")
 
 

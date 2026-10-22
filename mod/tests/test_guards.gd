@@ -13,6 +13,13 @@ func _key(scancode, pressed = true):
 	return ev
 
 
+func _button(index, pressed):
+	var ev = InputEventJoypadButton.new()
+	ev.button_index = index
+	ev.pressed = pressed
+	return ev
+
+
 func _axis(axis, value):
 	var ev = InputEventJoypadMotion.new()
 	ev.axis = axis
@@ -43,6 +50,24 @@ func test_human_input_detects_move_actions():
 	assert_false(Guards.is_human_move(_axis(0, 0.1)), "axis 0 at 0.1")
 	assert_false(Guards.is_human_move(_axis(6, 1.0)), "trigger axis 6")
 	assert_false(Guards.is_human_move(InputEventMouseMotion.new()), "mouse ignored")
+	assert_true(Guards.is_human_move(_key(KEY_I)), "I is in the fallback set (button_move_up)")
+	assert_true(Guards.is_human_move(_key(KEY_L)), "L is in the fallback set")
+	var echo = _key(KEY_D)
+	echo.echo = true
+	assert_true(Guards.is_human_move(echo), "echo of a held move key counts")
+	assert_true(Guards.is_human_move(_button(12, true)), "d-pad button 12 pressed")
+	assert_true(Guards.is_human_move(_button(0, true)), "any pressed joypad button")
+	assert_false(Guards.is_human_move(_button(12, false)), "joypad button released")
+	assert_false(Guards.is_human_move(_button(0, true), null, [12, 13, 14, 15]), "custom button set excludes 0")
+	assert_true(Guards.is_human_move(InputEventMouseMotion.new(), null, null, true), "mouse motion in mouse_only")
+	assert_false(Guards.is_human_move(InputEventMouseMotion.new(), null, null, false), "mouse motion otherwise")
+	var click = InputEventMouseButton.new()
+	click.button_index = BUTTON_LEFT
+	click.pressed = true
+	assert_true(Guards.is_human_move(click, null, null, true), "mouse click in mouse_only")
+	assert_false(Guards.is_human_move(click), "mouse click otherwise")
+	click.pressed = false
+	assert_false(Guards.is_human_move(click, null, null, true), "mouse release in mouse_only")
 	# Explicit scancode set overrides the default.
 	assert_true(Guards.is_human_move(_key(KEY_J), [KEY_J]), "custom set J")
 	assert_false(Guards.is_human_move(_key(KEY_W), [KEY_J]), "custom set excludes W")

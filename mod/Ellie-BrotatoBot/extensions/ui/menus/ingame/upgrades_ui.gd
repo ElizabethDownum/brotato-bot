@@ -5,6 +5,7 @@ extends "res://ui/menus/ingame/upgrades_ui.gd"
 # any consumable/crate item. Gated by AutobattlerOptions.enable_autobattler.
 
 const ShopAdvisor = preload("res://mods-unpacked/Ellie-BrotatoBot/shopping/shop_advisor.gd")
+const BotRuntime = preload("res://mods-unpacked/Ellie-BrotatoBot/bot_runtime.gd")
 const Coop = preload("res://mods-unpacked/Ellie-BrotatoBot/extensions/ui/menus/run/coop_mouse_select.gd")
 
 const PICK_WAIT = 0.3    # pace between picks -- slow enough to watch each selection land
@@ -173,6 +174,11 @@ func _update_upg_hover(container, mouse, pi := 0) -> void:
 func _should_autopick(pi) -> bool:
 	var opts = get_node_or_null("/root/AutobattlerOptions")
 	if opts == null:
+		return false
+	# Guard (all slots, co-op bot slots included): the bot is acting on the bot
+	# profile. may_act() halts the bot when it is acting on the wrong profile.
+	var rt = BotRuntime.instance()
+	if rt == null or not rt.may_act():
 		return false
 	# A co-op bot slot (F1-added) uses its OWN per-slot AUTO-SHOP toggle, checked
 	# FIRST -- independent of the global AutoBattler switch, which may be on for the
