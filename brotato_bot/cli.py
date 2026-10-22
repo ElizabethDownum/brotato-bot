@@ -28,3 +28,11 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 2
     return int(func(args) or 0)
+
+
+def _register_builtin_commands() -> None:
+    # Command modules add themselves to COMMANDS on import; import them before parsing.
+    import brotato_bot.dataset.command  # noqa: F401
+
+
+_register_builtin_commands()

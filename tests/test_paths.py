@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from brotato_bot import paths
 
 
@@ -43,3 +45,9 @@ def test_child_override_wins_and_project_root_moves_children():
     )
     assert p.data_dir == Path("/p") / "data"
     assert p.advice_dir == Path("/elsewhere")
+
+
+def test_missing_appdata_raises(monkeypatch):
+    monkeypatch.delenv("APPDATA", raising=False)
+    with pytest.raises(RuntimeError, match="APPDATA"):
+        paths.load({})

@@ -41,7 +41,9 @@ def load(env: Mapping[str, str] | None = None) -> Paths:
         v = e.get(ENV_PREFIX + name.upper())
         return Path(v) if v else default
 
-    appdata = e.get("APPDATA") or os.environ.get("APPDATA", "")
+    appdata = e.get("APPDATA") or os.environ.get("APPDATA")
+    if not appdata:
+        raise RuntimeError("APPDATA is not set (in the passed mapping or os.environ)")
     brotato_appdata = Path(appdata) / "Brotato"
 
     game_dir = ov("game_dir", Path(DEFAULT_GAME_DIR))
