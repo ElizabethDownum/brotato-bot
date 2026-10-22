@@ -32,10 +32,10 @@ static func text(s: Dictionary) -> String:
 	return PoolStringArray(lines(s)).join("\n")
 
 
-# The block is shown while AI visuals are on, the bot is doing anything, or an
-# F9 export's status window is open (the export works with the bot off).
-static func visible(ai_visuals, bot_state, export_active = false) -> bool:
-	return bool(ai_visuals) or str(bot_state) != "idle" or bool(export_active)
+# The block is shown while AI visuals are on, the bot is not idle, or a status
+# is set (e.g. an F9 "Exported: ..." or a wave-start warning with the bot off).
+static func visible(ai_visuals, bot_state, status_text) -> bool:
+	return bool(ai_visuals) or str(bot_state) != "idle" or str(status_text) != ""
 
 
 static func _status_line(s):

@@ -53,9 +53,9 @@ var deciding_deadline_ms = 0
 # Export hotkey (config.export_hotkey, default "F9"): handled here because this
 # node keeps processing while the tree is paused, so the advisor export works
 # from the ESC pause menu too. The status block shows "Exported: <path>" as
-# its first line for EXPORT_STATUS_MS (even with the bot idle and AI visuals
-# off), then the previous status comes back unless something else (e.g. a
-# halt) replaced it meanwhile.
+# its first line for EXPORT_STATUS_MS (a set status_text keeps the block
+# visible even with the bot idle and AI visuals off), then the previous status
+# comes back unless something else (e.g. a halt) replaced it meanwhile.
 const EXPORT_STATUS_MS = 5000
 var _export_scancode = 0
 var _export_hotkey_warned = false
@@ -183,14 +183,14 @@ func _process(_delta):
 
 
 # Rebuilds the status block on the label: Overlay.text over the live state,
-# shown while enable_ai_visuals is on, the bot is not idle, or an F9 export's
-# status window is open.
+# shown while enable_ai_visuals is on, the bot is not idle, or status_text is
+# set (Overlay.visible).
 func _update_overlay():
 	if _status_label == null:
 		return
 	var options = get_node_or_null("/root/AutobattlerOptions")
 	var shown = Overlay.visible(options != null and options.enable_ai_visuals, bot_state,
-		_export_status_until_ms != 0)
+		status_text)
 	_status_label.visible = shown
 	if not shown:
 		return

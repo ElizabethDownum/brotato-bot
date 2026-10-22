@@ -120,14 +120,17 @@ func test_text_joins_lines_with_newlines():
 	assert_eq(t, "BOT acting\nplan p1 | target c1\n\n", "four lines")
 
 
-func test_visible_with_ai_visuals_or_a_non_idle_bot():
-	assert_false(Overlay.visible(false, "idle"), "hidden when idle and visuals off")
-	assert_true(Overlay.visible(true, "idle"), "visuals on")
-	assert_true(Overlay.visible(false, "acting"), "acting")
-	assert_true(Overlay.visible(false, "halted"), "halted")
+func test_visible_when_idle_with_a_status():
+	assert_true(Overlay.visible(false, "idle", "Exported: C:/x.json"), "idle + status")
 
 
-func test_visible_during_an_export_status_even_when_idle():
-	# The F9 export works with the bot off; its 5 s "Exported: <path>" must show.
-	assert_true(Overlay.visible(false, "idle", true), "export window open")
-	assert_false(Overlay.visible(false, "idle", false), "export window closed")
+func test_hidden_when_idle_without_status_or_visuals():
+	assert_false(Overlay.visible(false, "idle", ""), "idle, no status, visuals off")
+
+
+func test_visible_when_idle_with_ai_visuals():
+	assert_true(Overlay.visible(true, "idle", ""), "visuals on")
+
+
+func test_visible_when_acting_without_status():
+	assert_true(Overlay.visible(false, "acting", ""), "acting")
