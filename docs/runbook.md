@@ -836,4 +836,199 @@ Back up first, every time.
 
 ## Harness
 
-Filled in by the harness plan.
+### 1. One-time setup
+
+1. Open PowerShell in this checkout's root and run `uv sync`.
+   Package: `brotato_bot/`; Python >= 3.12; only runtime dependency: `pydantic>=2`.
+   The dev group adds pytest and ruff.
+2. Run the commands below from that root with `uv run python -m brotato_bot`.
+   The harness never launches Brotato or injects input. You launch the game,
+   start each run and enable the mod as described in Mod section 4.
+3. `brotato_bot/paths.py` resolves these defaults; set overrides before commands.
+
+| Environment override | Default / meaning |
+|---|---|
+| `BROTATO_BOT_GAME_DIR` | `D:\SteamLibrary\steamapps\common\Brotato` |
+| `BROTATO_BOT_PCK`, `BROTATO_BOT_DLC_PCK` | Game folder's `Brotato.pck`, `BrotatoAbyssalTerrors.pck` |
+| `BROTATO_BOT_SAVE_DIR` | Explicit save folder; takes priority over Steam ID discovery. |
+| `BROTATO_BOT_STEAM_ID` | Select `%APPDATA%\Brotato\<steam64 id>` by name. |
+| `BROTATO_BOT_SETTINGS_JSON` | Save folder's `settings.json` |
+| `BROTATO_BOT_MOD_USER_DIR` | `%APPDATA%\Brotato\brotato-bot` (the bot root) |
+| `BROTATO_BOT_PLAN_JSON`, `BROTATO_BOT_CONFIG_JSON` | Bot root's `plan.json`, `config.json` |
+| `BROTATO_BOT_RUNS_IN`, `BROTATO_BOT_STATE_DIR` | Bot root's `runs/`, `state/` |
+| `BROTATO_BOT_REQUESTS_DIR`, `BROTATO_BOT_RESPONSES_DIR` | Bot root's `requests/`, `responses/` |
+| `BROTATO_BOT_PROJECT_ROOT` | Directory containing `brotato_bot/` |
+| `BROTATO_BOT_DATA_DIR`, `BROTATO_BOT_KNOWLEDGE_DIR` | Project root's `data/`, `knowledge/` |
+| `BROTATO_BOT_KNOWLEDGE_CACHE` | Knowledge directory's `cache/` |
+| `BROTATO_BOT_RUNS_OUT`, `BROTATO_BOT_DECISIONS_DIR` | Project root's `runs/`, `decisions/` |
+| `BROTATO_BOT_PROPOSALS_DIR`, `BROTATO_BOT_ADVICE_DIR` | Project root's `proposals/`, `advice/` |
+
+Without an override, it selects the single 17-digit folder under `%APPDATA%\Brotato`.
+Zero or several matching folders raise
+`RuntimeError: cannot find the Brotato save folder`, with count and location.
+Set `BROTATO_BOT_SAVE_DIR` to the folder or `BROTATO_BOT_STEAM_ID` to its name.
+Discovery waits until a command needs the save; path loading requires `APPDATA`.
+
+### 2. After each game update
+
+1. Rebuild the local dataset:
+
+   ```powershell
+   uv run python -m brotato_bot dataset build
+   ```
+
+   Reads the base PCK, then the Abyssal Terrors DLC PCK into `data/extracted/`
+   and writes `data/brotato.json`. A missing DLC is reported and skipped.
+   `data/` is gitignored; commit none of the extracted or derived game data.
+   Optional flags are `--pck`, `--dlc-pck` (`none` skips DLC), repeatable
+   `--translations` (later CSVs win), and `--out`.
+2. Read profile id 1's save without changing it:
+
+   ```powershell
+   uv run python -m brotato_bot unlock-state --profile 1
+   ```
+
+   Reads `save_v3_1.json` and writes `data/unlock_state.json`, including the
+   `challenges` key used for the prompt's objective text. Profile ids are
+   0-based: id 1 is the menu's "Profile 2" (Mod section 3.1).
+   `--profile` defaults to 1; `--save`, `--translations`, `--out` override the
+   save, translation CSV and output JSON. Refresh after unlocks too.
+
+### 3. Knowledge
+
+1. Refresh wiki pages listed in `knowledge/sources.json`:
+
+   ```powershell
+   uv run python -m brotato_bot knowledge fetch
+   ```
+
+2. Use `--characters` to add dataset character pages before fetching, or
+   `--only SLUG` to refresh one source. Results land in `knowledge/cache/`.
+   Failed fetches keep the previous cached text. Bundled guide files there
+   are also loaded into prompts; fetch refreshes only listed sources.
+
+This is the only wiki/guide network operation; dataset, saves, prepare and
+collect are local. Decisions also need the authenticated `claude` CLI's model service.
+
+### 4. Each session
+
+1. Install a plan JSON (`FILE` is your file) and select a challenge:
+
+   ```powershell
+   uv run python -m brotato_bot prepare --plan FILE --target chal_gatherer_1
+   ```
+
+   `--plan FILE` requires non-empty `plan_id` and `character_id` strings and
+   a `plan` object. Prepare copies it to the mod's `plan.json`, and merges
+   `--target ID` into `config.json`'s `target_challenge`, preserving other keys.
+   Read its profile/focus warnings. Restart Brotato after a config target change.
+2. For no target, omit `--target`; prepare clears the config's stale target
+   to `""`. A non-empty target in the input plan still wins and triggers a
+   warning if it differs. Use `"target_challenge": ""` or omit that key in
+   the plan too. Both target keys absent or empty mean "no target".
+3. In its own terminal at the project root, start:
+
+   ```powershell
+   uv run python -m brotato_bot sidecar
+   ```
+
+   It prints the requests directory and whether auto-next is on. For each
+   handled decision it prints `[<id>] <kind> -> <action> via <source> in <ms> ms`.
+   It polls every 0.25 s and touches the bot root's `sidecar.alive` between
+   requests. The mod asks only while that heartbeat is under 10 s old; see
+   Mod section 4.10 Decision protocol for the request/response contract.
+4. Launch Brotato yourself, select profile id 1, start the run and press
+   Shift+Space (Mod section 4). The request's absolute `deadline_ms` gives
+   the sidecar its remaining total budget: normally 45000 ms, or 120000 ms
+   for checkpoints, less time already spent. Each CLI call gets at most
+   40% of the configured timeout (18 s / 48 s by default); later ladder
+   steps are skipped if a full call's budget no longer remains.
+   The ladder is `haiku`, `haiku-retry`, `repair`, then `fallback`.
+   On `fallback` no response is written: the mod times out and its rules
+   decide. Expired requests are deleted without a call.
+5. Press Ctrl+C in the sidecar terminal to stop it. Shutdown removes the
+   heartbeat, so the mod stops asking. An existing pending wait follows
+   the protocol in Mod section 4.10.
+
+### 5. Optional auto-next
+
+1. Start `uv run python -m brotato_bot sidecar --auto-next` instead.
+2. It tails the newest run recording by modification time, ignoring lines
+   already present at startup. On a new `end` line it collects in-process,
+   then runs `claude -p --model <next_model> /brotato-next` from the project
+   root with a 600 s timeout, once per run file; no CLI call if collect fails.
+3. While that call runs, the loop answers no requests and does not refresh
+   the heartbeat. After 10 s it is stale and the mod's rules decide until
+   the call returns. The flag is wired; the `/brotato-next` skill belongs
+   to plan 3 and lands later.
+
+### 6. After a run
+
+1. Collect the newest recording, or select one with `collect RUN_ID`:
+
+   ```powershell
+   uv run python -m brotato_bot collect --latest
+   ```
+
+   `--latest` is the default. Input is the bot root's `runs/<run_id>.jsonl`.
+2. Re-collecting a finished run is safe: report and index row are replaced;
+   joined experience is appended only for unseen `(run_id, id)` pairs.
+
+| Project output | Contents |
+|---|---|
+| `runs/<run_id>.md` | Run report; decisions table has `kind`, `action`, `source`, `confidence`, `rationale`, `outcome`. |
+| `runs/<run_id>.jsonl` | Copy of the mod's recording. |
+| `runs/index.json` | Run summary index. |
+| `runs/<run_id>-checkpoint.md` | Sidecar note written when it handles a checkpoint. |
+| `decisions/<run_id>.jsonl` | One sidecar record per handled decision. |
+| `decisions/experience.jsonl` | Decisions joined to run outcomes at collect time. |
+
+The sidecar record's fields, in write order, are `id`, `kind`, `ts`, `model`,
+`source`, `attempts`, `elapsed_ms`, `decision`, `prompt_sha256`, `run_id`,
+`screen`, `character_id`, `wave`, `options`, `response`. `ts` is UTC;
+`decision` and `response` are the same object, or null for fallback.
+Each attempt has `model`, `source_label`, `elapsed_ms`, `returncode`, `raw`,
+`errors`; inspect those when a call fails.
+
+Joined experience adds `action`, `chosen`, `confidence`, `outcome`,
+`death_wave`, `hp_next_wave` and `kept_to_end` to the identifying/context
+fields. The live loop feeds the latest 20 same-character, same-kind rows
+from `decisions/experience.jsonl` to the prompt's "Past decisions" section.
+
+### 7. Smoke without the game
+
+1. Use an F9 state export (Mod section 5 Advisor mode); `STATE_FILE` is its path.
+2. Print the prompt without calling the Claude CLI:
+
+   ```powershell
+   uv run python -m brotato_bot decide-once STATE_FILE --kind shop --plan FILE --print-prompt
+   ```
+
+3. Omit `--print-prompt` to run one real decision ladder and print its
+   outcome/attempts JSON. `--kind` is `shop` (default), `levelup` or `checkpoint`;
+   `--plan FILE` defaults to the mod's `plan.json`. No past experience is used
+   and no mod response is sent.
+
+### 8. Harness config
+
+The harness reads the bot root's `config.json`; missing/unreadable JSON uses
+defaults. `decide.settings` keeps non-null keys without type validation.
+Restart the sidecar after changes and the game for shared timeouts (Mod section 3.4).
+
+| Key | Default | Use |
+|---|---|---|
+| `model` | `claude-haiku-5-5` | First decision and retry. |
+| `repair_model` | `claude-sonnet-5-5` | Repair an invalid answer. |
+| `checkpoint_model` | `claude-sonnet-5-5` | Checkpoint first call and retry. |
+| `next_model` | `claude-sonnet-5-5` | Auto-next; default added by the sidecar loop. |
+| `request_timeout_ms` | `45000` | Normal decision timeout. |
+| `checkpoint_timeout_ms` | `120000` | Checkpoint timeout. |
+
+### 9. Troubleshooting
+
+| Symptom | Check / action |
+|---|---|
+| Sidecar prints `fallback` every time | Inspect `attempts` in the decision log for CLI startup, authentication, timeout or validation errors; check configured models and local dataset/cache. |
+| `RuntimeError: cannot find the Brotato save folder` | Set `BROTATO_BOT_SAVE_DIR` or `BROTATO_BOT_STEAM_ID`; create profile id 1 in game if its save is absent (Mod section 3.1). |
+| Mod never asks | Check heartbeat age, profile id (0 is your profile), bot enabled, and asking conditions. Two consecutive timeouts disable asking for that run; see Mod sections 4.10 and 6.6. |
+| `error_max_turns` or 4xx in attempts | The ladder stops early on `error_max_turns` and HTTP 400/401/403; inspect the recorded CLI error. The wrapper uses two turns for structured output; other 4xx are not all classified deterministic. |
