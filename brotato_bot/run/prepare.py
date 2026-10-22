@@ -55,7 +55,9 @@ def bot_profile_id(config: dict) -> int:
     1. As in the mod, a value below 1 counts as 1 (profile 0 is the owner's own)."""
     pid = config.get("bot_profile_id", DEFAULT_BOT_PROFILE_ID)
     # BotConfig.load_from: any finite number is truncated to int; else the default.
-    if isinstance(pid, bool) or not isinstance(pid, int | float) or not math.isfinite(pid):
+    if isinstance(pid, bool) or not isinstance(pid, int | float):
+        return DEFAULT_BOT_PROFILE_ID
+    if isinstance(pid, float) and not math.isfinite(pid):
         return DEFAULT_BOT_PROFILE_ID
     return max(int(pid), DEFAULT_BOT_PROFILE_ID)
 

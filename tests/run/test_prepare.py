@@ -63,7 +63,20 @@ def test_prepare_bot_profile_id_from_config(tmp_paths):
 
 @pytest.mark.parametrize(
     ("value", "expected"),
-    [(2, 2), (2.0, 2), (2.7, 2), (0, 1), (0.0, 1), (-3, 1), (True, 1), ("2", 1), (None, 1)],
+    [
+        (2, 2),
+        (2.0, 2),
+        (2.7, 2),
+        (0, 1),
+        (0.0, 1),
+        (-3, 1),
+        (True, 1),
+        ("2", 1),
+        (None, 1),
+        (float("nan"), 1),
+        (float("inf"), 1),
+        (10**400, 10**400),
+    ],
 )
 def test_bot_profile_id_normalizes_like_the_mod(value, expected):
     assert prepare.bot_profile_id({"bot_profile_id": value}) == expected
