@@ -13,6 +13,7 @@ COMMANDS: dict[str, Callable] = {}
 
 
 def build_parser() -> argparse.ArgumentParser:
+    _register_builtin_commands()
     parser = argparse.ArgumentParser(prog="brotato_bot")
     sub = parser.add_subparsers(dest="command")
     for name in sorted(COMMANDS):
@@ -31,12 +32,11 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _register_builtin_commands() -> None:
-    # Command modules add themselves to COMMANDS on import; import them before parsing.
+    # Command modules add themselves to COMMANDS on import. Imported here, when a parser
+    # is built, not when this module loads: command modules import this module, and an
+    # import-time registration would re-enter whichever of them is still loading.
     from brotato_bot.dataset import command, unlock_command  # noqa: F401
     from brotato_bot.knowledge import command as knowledge_command  # noqa: F401
     from brotato_bot.run import command as run_command  # noqa: F401
     from brotato_bot.sidecar import command as sidecar_command  # noqa: F401
     from brotato_bot.sidecar import loop as sidecar_loop  # noqa: F401
-
-
-_register_builtin_commands()

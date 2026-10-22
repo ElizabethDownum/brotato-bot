@@ -36,6 +36,13 @@ from typing import Any
 CLAUDE = "claude"
 MAX_TURNS = "2"
 _API_CREDENTIALS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
+
+
+def cli_env() -> dict[str, str]:
+    """The parent environment without API credentials: the CLI uses its login."""
+    return {k: v for k, v in os.environ.items() if k not in _API_CREDENTIALS}
+
+
 # Top-level keys a tool input_schema may not carry (API 400 "does not support oneOf,
 # allOf, or anyOf at the top level"); if/then/else only appear inside allOf here.
 _TOP_LEVEL_UNSUPPORTED = ("allOf", "anyOf", "oneOf", "if", "then", "else")
@@ -139,7 +146,7 @@ def run(
         errors="replace",
         timeout=timeout_s,
         shell=False,
-        env={k: v for k, v in os.environ.items() if k not in _API_CREDENTIALS},
+        env=cli_env(),
     )
     elapsed_ms = int((time.monotonic() - start) * 1000)
     raw = proc.stdout or ""

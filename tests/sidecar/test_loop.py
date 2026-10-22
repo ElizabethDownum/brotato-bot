@@ -198,6 +198,7 @@ def test_auto_next_triggers_on_end_event(p, monkeypatch):
         return subprocess.CompletedProcess(cmd, 0)
 
     monkeypatch.setattr(loop.subprocess, "run", fake_run)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     sidecar = loop.Sidecar(p, {}, decide_fn=FakeDecide(None), auto_next=True)
     assert sidecar.poll_once() == 0 and calls == []
 
@@ -210,12 +211,12 @@ def test_auto_next_triggers_on_end_event(p, monkeypatch):
     sidecar.poll_once()
     sidecar.poll_once()
 
-    assert calls == [
-        (
-            ["claude", "-p", "--model", "claude-sonnet-5-5", "/brotato-next"],
-            {"check": False, "cwd": p.project_root, "timeout": loop.NEXT_TIMEOUT_S},
-        )
-    ]
+    assert len(calls) == 1
+    cmd, kwargs = calls[0]
+    assert cmd == ["claude", "-p", "--model", "claude-sonnet-5-5", "/brotato-next"]
+    env = kwargs.pop("env")
+    assert "ANTHROPIC_API_KEY" not in env and "ANTHROPIC_AUTH_TOKEN" not in env
+    assert kwargs == {"check": False, "cwd": p.project_root, "timeout": loop.NEXT_TIMEOUT_S}
     assert loop.NEXT_TIMEOUT_S == 600
     assert (p.runs_out / "20261022-201500-well_rounded-d0.md").is_file()
 

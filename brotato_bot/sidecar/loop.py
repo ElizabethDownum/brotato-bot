@@ -55,7 +55,7 @@ from brotato_bot.fsutil import (
 from brotato_bot.report import render
 from brotato_bot.run import collect
 from brotato_bot.run.prepare import bot_profile_id
-from brotato_bot.sidecar import decide, experience, prompt
+from brotato_bot.sidecar import claude_cli, decide, experience, prompt
 from brotato_bot.sidecar.command import _now_ms, prompt_inputs
 
 ALIVE_FILE = "sidecar.alive"
@@ -264,7 +264,11 @@ class Sidecar:
         cmd = ["claude", "-p", "--model", self.cfg["next_model"], "/brotato-next"]
         try:
             result = subprocess.run(
-                cmd, check=False, cwd=self.paths.project_root, timeout=NEXT_TIMEOUT_S
+                cmd,
+                check=False,
+                cwd=self.paths.project_root,
+                timeout=NEXT_TIMEOUT_S,
+                env=claude_cli.cli_env(),
             )
         except subprocess.TimeoutExpired:
             print(f"WARNING: auto-next: /brotato-next timed out after {NEXT_TIMEOUT_S} s")
