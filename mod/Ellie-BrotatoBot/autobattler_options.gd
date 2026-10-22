@@ -96,12 +96,14 @@ func _input(event):
 		rt.halt("human input")
 
 
-# Shift+Space. Enabling goes through the profile and plan guards every time;
-# a refusal records a warning and leaves the bot off.
+# Shift+Space. The bot is one agent: enable/disable switches movement and
+# auto-shop together. Enabling goes through the profile and plan guards every
+# time; a refusal records a warning and leaves the bot off.
 func _toggle_bot():
 	var rt = BotRuntime.instance()
 	if enable_autobattler:
 		enable_autobattler = false
+		enable_autoshop = false
 		if rt != null:
 			rt.bot_state = "idle"
 			rt.set_status("")
@@ -116,10 +118,12 @@ func _toggle_bot():
 			rt.set_status("Bot refused: " + reason)
 			return
 		enable_autobattler = true
+		enable_autoshop = true
 		rt.bot_state = "acting"
 		rt.set_status("")
 	# Notify our own listeners (the player's ai_icon marker updates from this).
 	emit_signal("setting_changed", ENABLE_AUTOBATTLER_OPTION_NAME, enable_autobattler, MOD_NAME)
+	emit_signal("setting_changed", ENABLE_AUTOSHOP_OPTION_NAME, enable_autoshop, MOD_NAME)
 	save_configs()
 
 

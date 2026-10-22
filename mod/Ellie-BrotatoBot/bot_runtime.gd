@@ -62,6 +62,7 @@ func halt(reason: String):
 		options.enable_autobattler = false
 		options.enable_autoshop = false
 		options.emit_signal("setting_changed", options.ENABLE_AUTOBATTLER_OPTION_NAME, false, options.MOD_NAME)
+		options.emit_signal("setting_changed", options.ENABLE_AUTOSHOP_OPTION_NAME, false, options.MOD_NAME)
 		options.save_configs()
 	if recorder != null:
 		recorder.event("halt", {"reason": reason})
