@@ -165,6 +165,7 @@ def join_outcomes(
         confidence = resp.get("confidence") if resp else None
         out.append(
             {
+                "id": rec.get("id"),
                 "run_id": run_summary.run_id,
                 "kind": rec.get("kind"),
                 "character_id": rec.get("character_id") or run_summary.character_id,

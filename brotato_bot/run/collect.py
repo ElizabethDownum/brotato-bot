@@ -31,6 +31,7 @@ from brotato_bot.run.models import (
     ShopRow,
     WaveRow,
 )
+from brotato_bot.sidecar import experience
 
 END_OUTCOMES = {"won": "win", "death": "death"}  # abandoned / quit / no end line: incomplete
 
@@ -374,9 +375,22 @@ def collect(run_id: str, paths: Paths) -> Path:
     summary.run_id = run_id
     summary.target_challenge = resolve_target(summary, paths)
 
+    outcomes: dict[str, str] = {}
+    decisions_path = paths.decisions_dir / f"{run_id}.jsonl"
+    if decisions_path.is_file():
+        experience_path = paths.decisions_dir / "experience.jsonl"
+        seen = {(rec.get("run_id"), rec.get("id")) for rec in experience.read(experience_path)}
+        for record in experience.join_outcomes(decisions_path, summary, run_jsonl=src):
+            if record["id"]:
+                outcomes[record["id"]] = record["outcome"]
+            key = (record["run_id"], record["id"])
+            if key not in seen:
+                experience.append(experience_path, record)
+                seen.add(key)
+
     out_dir = paths.runs_out
     _atomic_copy(src, out_dir / f"{run_id}.jsonl")
     report = out_dir / f"{run_id}.md"
-    atomic_write_text(report, render.run_report(summary))
+    atomic_write_text(report, render.run_report(summary, outcomes))
     append_index(out_dir / "index.json", index_row(summary))
     return report

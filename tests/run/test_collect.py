@@ -145,6 +145,70 @@ def _install(tmp_paths, name, run_id=RUN_ID):
     return dst
 
 
+def _install_decision(paths):
+    paths.decisions_dir.mkdir(parents=True, exist_ok=True)
+    decision = {
+        "id": f"{RUN_ID}-001",
+        "run_id": RUN_ID,
+        "kind": "shop",
+        "character_id": "character_well_rounded",
+        "wave": 1,
+        "options": [{"index": 1, "id": "weapon_smg_1"}],
+        "decision": {"action": "buy", "option_index": 1, "confidence": 0.8},
+        "source": "haiku",
+    }
+    (paths.decisions_dir / f"{RUN_ID}.jsonl").write_text(
+        json.dumps({**decision, "run_id": "another-run", "id": "another-id"})
+        + "\n"
+        + json.dumps(decision)
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def test_collect_appends_experience(tmp_paths):
+    _install(tmp_paths, "run_small.jsonl")
+    _install_decision(tmp_paths)
+
+    report = collect.collect(RUN_ID, tmp_paths)
+
+    records = collect.parse_jsonl(tmp_paths.decisions_dir / "experience.jsonl")
+    assert len(records) == 1
+    assert records[0]["death_wave"] == 3
+    assert records[0]["id"] == f"{RUN_ID}-001"
+    assert records[0]["run_id"] == RUN_ID
+    assert records[0]["outcome"] == "death"
+    assert records[0]["chosen"] == "weapon_smg_1"
+    assert records[0]["kept_to_end"] is True
+    md = report.read_text(encoding="utf-8")
+    assert "| kind | action | source | confidence | rationale | outcome |" in md
+    assert "| shop | buy | haiku | 0.8 | cheap ranged damage | death |" in md
+    assert "| shop | buy | haiku | 0.6 | armor for wave 3 |  |" in md
+
+
+def test_collect_twice_does_not_duplicate_experience(tmp_paths):
+    _install(tmp_paths, "run_small.jsonl")
+    _install_decision(tmp_paths)
+    # A matching decision id in another run must not suppress this run's record.
+    log = tmp_paths.decisions_dir / "experience.jsonl"
+    log.write_text(json.dumps({"run_id": "older", "id": f"{RUN_ID}-001"}) + "\n", encoding="utf-8")
+    collect.collect(RUN_ID, tmp_paths)
+    before = log.read_bytes()
+    report = collect.collect(RUN_ID, tmp_paths)
+    assert log.read_bytes() == before
+    assert len(collect.parse_jsonl(log)) == 2
+    assert "| cheap ranged damage | death |" in report.read_text(encoding="utf-8")
+
+
+def test_collect_missing_decisions_leaves_experience_absent(tmp_paths):
+    _install(tmp_paths, "run_small.jsonl")
+    report = collect.collect(RUN_ID, tmp_paths)
+    assert not (tmp_paths.decisions_dir / "experience.jsonl").exists()
+    md = report.read_text(encoding="utf-8")
+    assert "| kind | action | source | confidence | rationale | outcome |" in md
+    assert "| cheap ranged damage |  |" in md
+
+
 def test_collect_writes_report_copy_and_index_row(tmp_paths):
     p = tmp_paths
     _install(p, "run_small.jsonl")

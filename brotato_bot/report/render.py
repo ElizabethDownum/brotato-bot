@@ -72,8 +72,9 @@ def _challenges_section(s: RunSummary) -> str:
     return out
 
 
-def run_report(summary: RunSummary) -> str:
+def run_report(summary: RunSummary, outcomes: dict[str, str] | None = None) -> str:
     s = summary
+    outcomes = outcomes or {}
     danger = s.danger if s.danger is not None else "?"
     plan_section = "\n".join(
         [
@@ -100,8 +101,11 @@ def run_report(summary: RunSummary) -> str:
         ],
     )
     decisions = _table(
-        ["kind", "action", "source", "confidence", "rationale"],
-        [(d.kind, d.action, d.source, d.confidence, d.rationale) for d in s.decisions],
+        ["kind", "action", "source", "confidence", "rationale", "outcome"],
+        [
+            (d.kind, d.action, d.source, d.confidence, d.rationale, outcomes.get(d.id, ""))
+            for d in s.decisions
+        ],
     )
     notes = "".join(f"- {n}\n" for n in s.notes)
     return TEMPLATE.read_text(encoding="utf-8").format(
