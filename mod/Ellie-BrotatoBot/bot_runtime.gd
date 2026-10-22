@@ -250,11 +250,12 @@ func export_state(kind: String) -> String:
 #   5. Unpauses only if the tree was not already paused, returns bot_state to
 #      "acting" unless it became halted/complete meanwhile, restores the
 #      previous status if ours is still shown.
-#   6. Records a decision event {kind, id, source, response} with source
+#   6. Records a decision event {request_kind, id, source, response} with source
 #      "haiku" (valid response), "invalid" (a response that failed
 #      validate_response; its file is deleted all the same) or "timeout"
-#      (also used when the export or request write failed), stores the same
-#      record in last_decision, and returns the response or null.
+#      (also used when the export or request write failed), stores
+#      {kind, id, source, response} in last_decision, and returns the
+#      response or null.
 # The caller records what it actually did as a decision_applied event.
 const POLL_S = 0.25
 
@@ -312,10 +313,13 @@ func decide(kind: String, options: Array):
 	return response if source == "haiku" else null
 
 
+# The recorder writes the event name into the line's "kind" (overwriting a data
+# key of that name), so the request kind is logged as "request_kind".
 func _record_decision(kind, id, source, response):
 	last_decision = {"kind": kind, "id": id, "source": source, "response": response}
 	if recorder != null and recorder.is_open():
-		recorder.event("decision", last_decision.duplicate(true))
+		recorder.event("decision", {"request_kind": kind, "id": id, "source": source,
+			"response": response.duplicate(true) if typeof(response) == TYPE_DICTIONARY else response})
 
 
 # Game quit with a run still open: close the file with an end line.
