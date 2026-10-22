@@ -935,7 +935,8 @@ collect are local. Decisions also need the authenticated `claude` CLI's model se
    It prints the requests directory and whether auto-next is on. For each
    handled decision it prints `[<id>] <kind> -> <action> via <source> in <ms> ms`.
    It polls every 0.25 s and touches the bot root's `sidecar.alive` between
-   requests. The mod asks only while that heartbeat is under 10 s old; see
+   requests. The mod asks only while that heartbeat is at most 10 s old (whole
+   seconds); see
    Mod section 4.10 Decision protocol for the request/response contract.
 4. Launch Brotato yourself, select profile id 1, start the run and press
    Shift+Space (Mod section 4). The request's absolute `deadline_ms` gives
@@ -958,7 +959,7 @@ collect are local. Decisions also need the authenticated `claude` CLI's model se
    then runs `claude -p --model <next_model> /brotato-next` from the project
    root with a 600 s timeout, once per run file; no CLI call if collect fails.
 3. While that call runs, the loop answers no requests and does not refresh
-   the heartbeat. After 10 s it is stale and the mod's rules decide until
+   the heartbeat. Once it is more than 10 s old the mod's rules decide until
    the call returns. The flag is wired; the `/brotato-next` skill belongs
    to plan 3 and lands later.
 
