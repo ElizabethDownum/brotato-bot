@@ -10,8 +10,11 @@ extends Node
 #   bot_state      "idle" | "acting" | "deciding" | "halted" | "complete"
 #   last_decision  the last decide() record {kind, id, source, response}
 #                  ({} when none); callers read .id for decision_applied
-#   status_text    one-line status shown top-left ("" hides it); Task 10's
-#                  overlay replaces this label
+#   status_text    one-line status ("" when none); line 1 of the overlay
+#                  status block when set (core/overlay.gd)
+#   run_outcome    complete()'s outcome ("" until the bot completes a run)
+#   deciding_deadline_ms  decide()'s OS.get_ticks_msec() deadline while it
+#                  waits (0 otherwise); the overlay counts down from it
 #   focus_warned_run_id  run_id the pause_on_focus_lost warning was recorded for
 #   seq            state exports written this run (reset at run start); the
 #                  next export file is <run_id>-<seq+1:03>.json
@@ -28,6 +31,7 @@ const DecisionClient = preload("res://mods-unpacked/Ellie-BrotatoBot/core/decisi
 const BotPaths = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_paths.gd")
 const PlanFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/plan_file.gd")
 const Checkpoint = preload("res://mods-unpacked/Ellie-BrotatoBot/core/checkpoint.gd")
+const Overlay = preload("res://mods-unpacked/Ellie-BrotatoBot/core/overlay.gd")
 
 const NODE_NAME = "BotRuntime"
 const RECENT_MAX = 10
@@ -43,12 +47,15 @@ var seq = 0
 var recent_snapshots = []
 var target_fired = false
 var checkpoint_done = false
+var run_outcome = ""
+var deciding_deadline_ms = 0
 
 # Export hotkey (config.export_hotkey, default "F9"): handled here because this
 # node keeps processing while the tree is paused, so the advisor export works
-# from the ESC pause menu too. The overlay shows "Exported: <path>" for
-# EXPORT_STATUS_MS, then the previous status comes back unless something else
-# (e.g. a halt) replaced it meanwhile.
+# from the ESC pause menu too. The status block shows "Exported: <path>" as
+# its first line for EXPORT_STATUS_MS (even with the bot idle and AI visuals
+# off), then the previous status comes back unless something else (e.g. a
+# halt) replaced it meanwhile.
 const EXPORT_STATUS_MS = 5000
 var _export_scancode = 0
 var _export_hotkey_warned = false
@@ -56,7 +63,15 @@ var _export_status_text = ""
 var _export_status_until_ms = 0
 var _status_before_export = ""
 
+# The status block (core/overlay.gd) owns _status_label: _process rebuilds its
+# text every frame. plan_id/target are cached at run start and after a plan
+# patch; plan.json's presence is rechecked every PLAN_CHECK_MS.
+const PLAN_CHECK_MS = 1000
 var _status_label = null
+var _overlay_plan_id = ""
+var _overlay_target = ""
+var _overlay_plan_present = true
+var _overlay_plan_checked_ms = -PLAN_CHECK_MS
 var _move_scancodes = null
 
 
@@ -73,8 +88,9 @@ func _ready():
 	_status_label = Label.new()
 	_status_label.set_name("StatusLabel")
 	_status_label.rect_position = Vector2(8, 8)
+	_status_label.visible = false
 	layer.add_child(_status_label)
-	set_status(status_text)
+	_refresh_plan_info()
 	# Added deferred by mod_main, so the game autoloads are already in the tree.
 	var challenges = get_node_or_null("/root/ChallengeService")
 	if challenges != null:
@@ -146,8 +162,11 @@ func _record_checkpoint(data):
 func apply_plan_patch(character_id, patch) -> bool:
 	if str(character_id) == "" or typeof(patch) != TYPE_DICTIONARY:
 		return false
-	return PlanFile.apply_patch(PlanFile.DEFAULT_PATH, str(character_id), patch,
+	var ok = PlanFile.apply_patch(PlanFile.DEFAULT_PATH, str(character_id), patch,
 		"sidecar-" + str(last_decision.get("id", ""))) == OK
+	if ok:
+		_refresh_plan_info()
+	return ok
 
 
 # Read-only: never shops, steers or changes bot_state. Any profile, bot on or off.
@@ -160,6 +179,55 @@ func _input(event):
 
 func _process(_delta):
 	_restore_status_after_export()
+	_update_overlay()
+
+
+# Rebuilds the status block on the label: Overlay.text over the live state,
+# shown while enable_ai_visuals is on, the bot is not idle, or an F9 export's
+# status window is open.
+func _update_overlay():
+	if _status_label == null:
+		return
+	var options = get_node_or_null("/root/AutobattlerOptions")
+	var shown = Overlay.visible(options != null and options.enable_ai_visuals, bot_state,
+		_export_status_until_ms != 0)
+	_status_label.visible = shown
+	if not shown:
+		return
+	var now = OS.get_ticks_msec()
+	if now - _overlay_plan_checked_ms >= PLAN_CHECK_MS:
+		_overlay_plan_checked_ms = now
+		_overlay_plan_present = Guards.plan_present(PlanFile.DEFAULT_PATH)
+	var progress = get_node_or_null("/root/ProgressData")
+	var t = Overlay.text({
+		"bot_state": bot_state,
+		"status_text": status_text,
+		"deciding_deadline_ms": deciding_deadline_ms,
+		"now_ms": now,
+		"outcome": run_outcome,
+		"plan_id": _overlay_plan_id,
+		"target": _overlay_target,
+		"last_decision": last_decision,
+		"focus_ok": progress == null or Guards.focus_setting_ok(progress.settings),
+		"plan_present": _overlay_plan_present,
+	})
+	if _status_label.text != t:
+		_status_label.text = t
+
+
+# Caches the overlay's plan_id (StateExport.effective_plan_id for player 0's
+# character, as the state export computes it; "" with no character) and
+# target (PlanFile.target_id). Called at _ready, run start and plan patches.
+func _refresh_plan_info():
+	var loaded = PlanFile.load_cached(PlanFile.DEFAULT_PATH)
+	_overlay_target = PlanFile.target_id(loaded, config)
+	_overlay_plan_id = ""
+	var rd = get_node_or_null("/root/RunData")
+	if rd != null and rd.get_player_count() > 0:
+		var ch = rd.get_player_character(0)
+		if ch != null:
+			_overlay_plan_id = StateExport.effective_plan_id(loaded, ch.my_id)
+	_overlay_plan_checked_ms = -PLAN_CHECK_MS
 
 
 # Scancode for config.export_hotkey. Cached only once resolved from a loaded
@@ -207,11 +275,9 @@ func _restore_status_after_export():
 		set_status(_status_before_export)
 
 
+# Line 1 of the status block (see _update_overlay), which owns the label.
 func set_status(text: String):
 	status_text = text
-	if _status_label != null:
-		_status_label.text = text
-		_status_label.visible = text != ""
 
 
 # The single gate for every bot action (movement, shop, level-up picks): the
@@ -270,6 +336,7 @@ func complete(outcome: String, extra: Dictionary):
 		push_warning("BrotatoBot: complete() got outcome '%s'; using death" % outcome)
 		outcome = "death"
 	bot_state = "complete"
+	run_outcome = outcome
 	_disable_flags()
 	if recorder != null:
 		recorder.event("complete", {"outcome": outcome, "wave": RunData.current_wave, "extra": extra})
@@ -297,6 +364,8 @@ func on_run_started():
 	recent_snapshots = []
 	target_fired = false
 	checkpoint_done = false
+	run_outcome = ""
+	_refresh_plan_info()
 
 
 # Called by ai_telemetry next to each recorder snapshot; keeps the last RECENT_MAX.
@@ -400,6 +469,7 @@ func decide(kind: String, options: Array):
 	set_status(status)
 	get_tree().paused = true
 	var deadline = OS.get_ticks_msec() + timeout_ms
+	deciding_deadline_ms = deadline
 	var response = null
 	var interrupted = false
 	while true:
@@ -412,6 +482,7 @@ func decide(kind: String, options: Array):
 			break
 		if bot_state != "deciding":
 			break   # halted (e.g. wrong profile) or completed meanwhile: stop waiting
+	deciding_deadline_ms = 0
 	if not was_paused:
 		get_tree().paused = false
 	# Status invariant: unless the bot was halted or completed meanwhile (their

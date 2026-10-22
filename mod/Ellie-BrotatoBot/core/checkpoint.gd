@@ -45,6 +45,7 @@ static func wanted(response, source, acting) -> Dictionary:
 		return {"applied": "skip", "reason": "halted"}
 	if response == null:
 		return {"applied": "timeout", "reason": ""}
-	if typeof(response) == TYPE_DICTIONARY and str(response.get("action", "")) == "revise_plan" 			and typeof(response.get("plan_patch")) == TYPE_DICTIONARY:
+	var is_revise = typeof(response) == TYPE_DICTIONARY and str(response.get("action", "")) == "revise_plan"
+	if is_revise and typeof(response.get("plan_patch")) == TYPE_DICTIONARY:
 		return {"applied": "revise_plan", "reason": ""}
 	return {"applied": "skip", "reason": ""}
