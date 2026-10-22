@@ -14,6 +14,10 @@ extends Reference
 #   responses/<id>.json  {action, option_index?, plan_patch?, confidence,
 #                        rationale?, tags?} -- see validate_response
 #
+#   sidecar.alive        touched by the sidecar while it runs; the mod asks only
+#                        while its mtime is fresh (sidecar_alive), so without
+#                        a sidecar the rules decide with no request and no pause
+#
 # Requests are written to <id>.json.tmp and renamed, so the sidecar never reads
 # a half-written file. Responses are read once and deleted; responses for any
 # other id are stale (an earlier decision timed out) and deleted unread.
@@ -25,7 +29,9 @@ const BotPaths = preload("bot_paths.gd")
 const ACTIONS = ["buy", "reroll", "lock", "skip", "pick", "revise_plan"]
 const INDEX_ACTIONS = ["buy", "lock", "pick"]
 const DEFAULT_TIE_MARGIN = 3.0
-const DEFAULT_FLOOR = 8.0
+const DEFAULT_FLOOR = 4.0
+const ALIVE_FILE = "sidecar.alive"
+const ALIVE_MAX_AGE_S = 10
 
 var root_dir = BotPaths.ROOT
 
@@ -44,6 +50,26 @@ func responses_dir() -> String:
 
 static func request_id(run_id, seq) -> String:
 	return "%s-%03d" % [str(run_id), int(seq)]
+
+
+# True when <root_dir>/sidecar.alive exists and its mtime (unix seconds) is at
+# most max_age_s before now_unix (pass OS.get_unix_time()).
+static func sidecar_alive(root_dir: String, now_unix: int, max_age_s: int = ALIVE_MAX_AGE_S) -> bool:
+	var path = root_dir.plus_file(ALIVE_FILE)
+	var f = File.new()
+	if not f.file_exists(path):
+		return false
+	return now_unix - int(f.get_modified_time(path)) <= max_age_s
+
+
+# Deletes responses/<id>.json if present, so a leftover answer from an earlier
+# session that reused the id (e.g. a norun id) is not taken as this answer.
+# Call before write_request.
+func discard_response(id: String) -> void:
+	var path = responses_dir().plus_file(id + ".json")
+	var d = Directory.new()
+	if d.file_exists(path):
+		d.remove(path)
 
 
 # Whether to ask the sidecar, and why:

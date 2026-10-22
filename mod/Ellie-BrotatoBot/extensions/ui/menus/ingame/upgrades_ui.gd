@@ -8,6 +8,7 @@ const ShopAdvisor = preload("res://mods-unpacked/Ellie-BrotatoBot/shopping/shop_
 const BotRuntime = preload("res://mods-unpacked/Ellie-BrotatoBot/bot_runtime.gd")
 const Coop = preload("res://mods-unpacked/Ellie-BrotatoBot/extensions/ui/menus/run/coop_mouse_select.gd")
 const DecisionClient = preload("res://mods-unpacked/Ellie-BrotatoBot/core/decision_client.gd")
+const BotPaths = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_paths.gd")
 
 const PICK_WAIT = 0.3    # pace between picks -- slow enough to watch each selection land
                          # (also must exceed the container's 0.1s ButtonDelayTimer, or a
@@ -249,8 +250,11 @@ func _auto_pick_loop() -> void:
 					var plan = _plan_for(pi)
 					var ask = _levelup_options(ups, plan, pi)
 					var rt = BotRuntime.instance()
-					var why = DecisionClient.should_ask(ask.scores, ask.affordable, rt.config,
-						ask.ids, plan.get("ask_on", []))
+					# Ask only while a sidecar is alive; otherwise source stays "rule".
+					var why = ""
+					if DecisionClient.sidecar_alive(BotPaths.ROOT, OS.get_unix_time()):
+						why = DecisionClient.should_ask(ask.scores, ask.affordable, rt.config,
+							ask.ids, plan.get("ask_on", []))
 					var source = "rule"
 					var idx = -1
 					if why != "":

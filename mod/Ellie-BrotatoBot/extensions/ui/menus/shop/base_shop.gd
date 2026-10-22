@@ -9,6 +9,7 @@ const BotRuntime = preload("res://mods-unpacked/Ellie-BrotatoBot/bot_runtime.gd"
 const Coop = preload("res://mods-unpacked/Ellie-BrotatoBot/extensions/ui/menus/run/coop_mouse_select.gd")
 const DecisionClient = preload("res://mods-unpacked/Ellie-BrotatoBot/core/decision_client.gd")
 const PlanFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/plan_file.gd")
+const BotPaths = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_paths.gd")
 
 const SETUP_WAIT = 0.35   # let _ready() finish populating the offering + UI
 const BUY_WAIT = 0.09     # container enforces a 0.05s buy lockout; clear it
@@ -423,7 +424,9 @@ func _auto_shop_player(pi) -> void:
 		var gold = RunData.get_player_gold(pi)
 		var container = _get_shop_items_container(pi)
 		var nodes = container._shop_items
-		# Sidecar decision, once per visit before the first buy: when the scored
+		# Sidecar decision, once per visit before the first buy, and only while a
+		# sidecar is alive (fresh sidecar.alive; otherwise no request, no pause,
+		# no decision events -- the rules decide): when the scored
 		# offering is a near-tie, weak, or holds an ask_on id, BotRuntime.decide
 		# pauses the game and waits for responses/<id>.json. The applied result
 		# is recorded as a decision_applied event; "rule" means BOTato's own
@@ -433,8 +436,10 @@ func _auto_shop_player(pi) -> void:
 			asked = true
 			var ask = _decision_options(nodes, gold, plan, pi)
 			var rt = BotRuntime.instance()
-			var why = DecisionClient.should_ask(ask.scores, ask.affordable, rt.config,
-				ask.ids, plan.get("ask_on", []))
+			var why = ""
+			if DecisionClient.sidecar_alive(BotPaths.ROOT, OS.get_unix_time()):
+				why = DecisionClient.should_ask(ask.scores, ask.affordable, rt.config,
+					ask.ids, plan.get("ask_on", []))
 			if why != "":
 				var r = yield(rt.decide("pivot" if why == "pivot" else "shop", ask.options), "completed")
 				if not _should_autoshop(pi):

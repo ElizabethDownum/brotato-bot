@@ -153,6 +153,32 @@ func test_validate_response_rejects_bad_action():
 	assert_false(DecisionClient.validate_response(null), "null")
 
 
+func test_sidecar_alive_requires_fresh_file():
+	var root = _make_root("decision-alive")
+	var now = OS.get_unix_time()
+	assert_false(DecisionClient.sidecar_alive(root, now), "missing file")
+	_write(root.plus_file("sidecar.alive"), "")
+	now = OS.get_unix_time()
+	assert_true(DecisionClient.sidecar_alive(root, now), "just written")
+	assert_false(DecisionClient.sidecar_alive(root, now + 60), "60 s later")
+	assert_true(DecisionClient.sidecar_alive(root, now + 60, 120), "custom max age")
+	_remove_tree(root)
+
+
+func test_discard_response_removes_only_that_id():
+	var root = _make_root("decision-discard")
+	var client = DecisionClient.new(root)
+	var mine = root.plus_file("responses").plus_file("test-run-001.json")
+	var other = root.plus_file("responses").plus_file("test-run-002.json")
+	_write(mine, '{"action":"skip","confidence":0.5}')
+	_write(other, '{"action":"skip","confidence":0.5}')
+	client.discard_response("test-run-001")
+	assert_false(File.new().file_exists(mine), "leftover response removed")
+	assert_true(File.new().file_exists(other), "other id untouched")
+	client.discard_response("test-run-003")   # missing: no error
+	_remove_tree(root)
+
+
 func test_validate_response_coerces_float_index():
 	var r = {"action": "pick", "option_index": 2.0, "confidence": 0.8}
 	assert_true(DecisionClient.validate_response(r), "whole float index accepted")

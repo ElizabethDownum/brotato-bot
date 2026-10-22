@@ -106,6 +106,12 @@ func _export_advise():
 	var msg = "Export failed (see log)"
 	if path != "":
 		msg = "Exported: " + ProjectSettings.globalize_path(path)
+	if bot_state == "deciding":
+		# decide() puts its own pre-decision status back when it ends; a
+		# timed restore here would bring "DECIDING: ..." back afterwards.
+		_export_status_until_ms = 0
+		set_status(msg)
+		return
 	if _export_status_until_ms == 0:
 		_status_before_export = status_text
 	_export_status_text = msg
@@ -241,15 +247,17 @@ func export_state(kind: String) -> String:
 #      idle frame), with no request and no event.
 #   2. export_state(kind) writes state/<id>.json; the request id is
 #      "<run_id>-<seq:03>" for that same seq, so state and request match.
+#      A leftover responses/<id>.json is deleted before the request is written.
 #   3. Writes requests/<id>.json {kind, run_id, seq, state_path, options,
 #      deadline_ms (epoch ms)} via DecisionClient.
 #   4. bot_state "deciding", status "DECIDING: <kind>", tree paused; polls
 #      responses/ every POLL_S (timers process while paused) until a response
 #      or the timeout (config checkpoint_timeout_ms for "checkpoint", else
 #      request_timeout_ms), or until bot_state leaves "deciding" (a halt).
-#   5. Unpauses only if the tree was not already paused, returns bot_state to
-#      "acting" unless it became halted/complete meanwhile, restores the
-#      previous status if ours is still shown.
+#   5. Unpauses only if the tree was not already paused; unless bot_state
+#      became halted/complete meanwhile, returns it to "acting" and restores
+#      the status shown before decide() (an F9 export meanwhile included).
+#   Callers ask only while DecisionClient.sidecar_alive(...) is true.
 #   6. Records a decision event {request_kind, id, source, response} with source
 #      "haiku" (valid response), "invalid" (a response that failed
 #      validate_response; its file is deleted all the same) or "timeout"
@@ -270,6 +278,7 @@ func decide(kind: String, options: Array):
 	var client = DecisionClient.new(BotPaths.ROOT)
 	var id = ""
 	if state_path != "":
+		client.discard_response(DecisionClient.request_id(rid, seq))
 		id = client.write_request({
 			"kind": kind,
 			"run_id": rid,
@@ -282,7 +291,14 @@ func decide(kind: String, options: Array):
 		yield(get_tree(), "idle_frame")
 		_record_decision(kind, DecisionClient.request_id(rid, seq), "timeout", null)
 		return null
+	# The status to put back afterwards. During an F9 export's 5 s window that
+	# is the status the export will restore, not the "Exported: ..." text;
+	# the export's own timed restore is cancelled.
 	var prev_status = status_text
+	if _export_status_until_ms != 0:
+		if status_text == _export_status_text:
+			prev_status = _status_before_export
+		_export_status_until_ms = 0
 	var status = "DECIDING: " + kind
 	var was_paused = get_tree().paused
 	bot_state = "deciding"
@@ -299,9 +315,10 @@ func decide(kind: String, options: Array):
 			break   # halted (e.g. wrong profile) or completed meanwhile: stop waiting
 	if not was_paused:
 		get_tree().paused = false
+	# Status invariant: unless the bot was halted or completed meanwhile (their
+	# status stays), the status is again what it was before decide() started.
 	if bot_state == "deciding":
 		bot_state = "acting"
-	if status_text == status:
 		set_status(prev_status)
 	var source = "timeout"
 	if response != null:
