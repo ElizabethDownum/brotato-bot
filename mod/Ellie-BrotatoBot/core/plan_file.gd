@@ -11,7 +11,11 @@ extends Reference
 # null when the file is missing, unreadable, invalid JSON, not an object, or
 # lacks plan_id / character_id / plan. Reasons are logged with push_warning.
 
-const DEFAULT_PATH = "user://brotato-bot/plan.json"
+# Relative preload: resolves in the game (res://mods-unpacked/...) and in the
+# headless test project (res://mod/...) alike.
+const BotPaths = preload("bot_paths.gd")
+
+const DEFAULT_PATH = BotPaths.ROOT + "/plan.json"
 
 # Keys merged one level deep by merge(); every other key is replaced wholesale.
 const DEEP_KEYS = ["stats", "item_bonus"]

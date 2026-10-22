@@ -13,7 +13,11 @@ extends Reference
 #   float:  ask_tie_margin, ask_floor
 #   String: target_challenge, export_hotkey
 
-const DEFAULT_PATH = "user://brotato-bot/config.json"
+# Relative preload: resolves in the game (res://mods-unpacked/...) and in the
+# headless test project (res://mod/...) alike.
+const BotPaths = preload("bot_paths.gd")
+
+const DEFAULT_PATH = BotPaths.ROOT + "/config.json"
 
 const DEFAULTS = {
 	"bot_profile_id": 1,
