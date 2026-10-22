@@ -62,7 +62,8 @@ func get_remapped_player_device(player_index:int) -> int:
 # run save (ProgressData.save_run_state extension) and re-apply it when the run is
 # resumed (RunData.resume_from_state extension). Keyed by player_count so a
 # differently-shaped run never inherits stale bot flags.
-const COOP_STATE_PATH = "user://ellie-brotatobot-coop.cfg"
+const COOP_STATE_DIR = "user://brotato-bot"
+const COOP_STATE_PATH = "user://brotato-bot/coop_state.cfg"
 
 func persist_run_coop_state() -> void:
 	var any_bot = false
@@ -74,6 +75,10 @@ func persist_run_coop_state() -> void:
 	cfg.set_value("run", "is_bot_by_index", is_bot_by_index)
 	cfg.set_value("run", "autoshop_by_index", autoshop_by_index)
 	cfg.set_value("run", "player_count", RunData.get_player_count())
+	# ConfigFile.save does not create missing directories in Godot 3.
+	var dir = Directory.new()
+	if not dir.dir_exists(COOP_STATE_DIR):
+		var _mk = dir.make_dir_recursive(COOP_STATE_DIR)
 	var _e = cfg.save(COOP_STATE_PATH)
 
 
