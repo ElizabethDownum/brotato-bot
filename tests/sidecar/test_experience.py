@@ -203,3 +203,53 @@ def test_append_after_a_truncated_line_starts_a_new_line(tmp_path):
     assert [r["wave"] for r in experience.query(log, "c", "shop")] == [1, 2]
     assert log.read_bytes().endswith(b"\n")
     assert log.read_bytes().count(b"\n") == 3
+
+
+def _resp(action, index=None):
+    r = {"action": action, "confidence": 0.7, "rationale": "r", "tags": []}
+    return r if index is None else {**r, "option_index": index}
+
+
+def test_join_outcomes_reads_what_the_mod_applied(tmp_path):
+    decisions = tmp_path / "decisions.jsonl"
+    opts = [{"index": 0, "id": "item_bag", "kind": "item", "price": 20, "score": 2.0}]
+    ups = [{"index": 0, "id": "upgrade_armor_1"}, {"index": 1, "id": "upgrade_range_1"}]
+    rows = [
+        _decision(1, 1, _resp("buy", 0), opts),  # applied
+        _decision(2, 1, _resp("buy", 0), opts),  # the mod fell back to its rules
+        {**_decision(3, 1, _resp("pick", 1), ups), "kind": "levelup", "screen": "levelup"},
+        {**_decision(4, 2, _resp("pick", 0), ups), "kind": "levelup", "screen": "levelup"},
+        {**_decision(5, 2, _resp("revise_plan"), []), "kind": "checkpoint", "screen": "checkpoint"},
+        {**_decision(6, 2, _resp("skip"), []), "kind": "checkpoint", "screen": "checkpoint"},
+        _decision(7, 2, _resp("buy", 0), opts),  # no matching event in the recording
+    ]
+    for r in rows:
+        experience.append(decisions, r)
+    rid = f"{RUN_ID}-00"
+    events = [
+        {"kind": "header", "run_id": RUN_ID, "t": 0},
+        {"kind": "decision_applied", "id": f"{rid}1", "action": "buy", "option_index": 0,
+         "applied": "buy"},
+        {"kind": "decision_applied", "id": f"{rid}2", "action": "buy", "option_index": 0,
+         "applied": "rule"},
+        {"kind": "levelup", "id": f"{rid}3", "picked": "upgrade_range_1", "source": "haiku"},
+        {"kind": "levelup", "id": f"{rid}4", "picked": "upgrade_range_1", "source": "rule"},
+        {"kind": "checkpoint", "id": f"{rid}5", "action": "revise_plan", "applied": "skip",
+         "reason": "patch_not_applied"},
+        {"kind": "checkpoint", "id": f"{rid}6", "action": "skip", "applied": "skip", "reason": ""},
+    ]  # fmt: skip
+    run = tmp_path / "run.jsonl"
+    run.write_text("".join(json.dumps(x) + "\n" for x in events), encoding="utf-8")
+    out = experience.join_outcomes(decisions, _summary(), run_jsonl=run)
+    got = [(r["applied"], r["chosen"]) for r in out]
+    assert got == [
+        (True, "item_bag"),
+        (False, None),
+        (True, "upgrade_range_1"),
+        (False, None),
+        (False, None),
+        (True, "skip"),
+        (None, "item_bag"),
+    ]
+    assert out[0]["kept_to_end"] is True and out[1]["kept_to_end"] is None
+    assert experience.join_outcomes(decisions, _summary())[1]["applied"] is None

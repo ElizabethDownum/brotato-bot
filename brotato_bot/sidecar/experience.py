@@ -19,11 +19,15 @@ A line carrying ``decision`` instead of ``response`` is read the same way.
 ``decisions/experience.jsonl`` -- written at collect time (Task 10) from
 ``join_outcomes``, one record per decision::
 
-    {"run_id", "kind", "character_id", "wave", "options", "action", "chosen", "source",
-     "confidence", "outcome", "death_wave", "hp_next_wave", "kept_to_end"}
+    {"run_id", "kind", "character_id", "wave", "options", "action", "applied", "chosen",
+     "source", "confidence", "outcome", "death_wave", "hp_next_wave", "kept_to_end"}
 
-``action`` is the response's action (null without one). ``chosen`` is the option id for
-an indexed action (buy/lock/pick), the action word otherwise, null without a response.
+``action`` is the response's action (null without one). ``applied`` is whether the mod
+applied it, read from the run recording's ``decision_applied`` (shop), ``levelup``
+(``source`` ``haiku``) and ``checkpoint`` (``applied`` with no ``reason``) lines for the
+decision id; null when the recording has none. ``chosen`` is the option id for an indexed
+action (buy/lock/pick), the action word otherwise, null without a response or when
+``applied`` is false (``kept_to_end`` is then null too).
 ``hp_next_wave`` is the HP at the end of the wave after the decision's wave (0 when the
 player died in it; null when the run never got there). ``kept_to_end`` is set for buys
 only: whether the bought id is in the final build -- the ``death`` line's build, or the
@@ -120,6 +124,24 @@ def _kept(item_id: str, build: set[str] | None) -> bool | None:
     return fam != item_id and any(_family(b) == fam for b in build)
 
 
+def _applied_actions(run_jsonl: Path | None) -> dict[str, str]:
+    """Decision id -> what the mod did with the answer: the shop's ``applied`` word, ``pick``
+    for a level-up the answer picked (else its source), a checkpoint's ``applied`` word (its
+    ``reason`` when it has one)."""
+    out: dict[str, str] = {}
+    for e in read(run_jsonl) if run_jsonl is not None else []:
+        did, kind = e.get("id"), e.get("kind")
+        if not isinstance(did, str) or not did:
+            continue
+        if kind == "decision_applied":
+            out[did] = str(e.get("applied"))
+        elif kind == "levelup":
+            out[did] = "pick" if e.get("source") == "haiku" else str(e.get("source"))
+        elif kind == "checkpoint":
+            out[did] = str(e.get("reason") or e.get("applied"))
+    return out
+
+
 def _chosen_option(options: Any, index: Any) -> dict | None:
     if not isinstance(options, list) or not isinstance(index, int) or isinstance(index, bool):
         return None
@@ -135,9 +157,10 @@ def join_outcomes(
     """Experience records for ``run_summary``'s decisions in ``decisions_jsonl``.
 
     Lines whose ``run_id`` names another run are skipped. ``run_jsonl`` (the mod's run
-    recording) is read only when the run has no death build, for a later line with one.
+    recording) gives ``applied`` and, when the run has no death build, the final build.
     """
     hp_end = {w.wave: (w.hp_end if w.completed else 0) for w in run_summary.waves}
+    applied_as = _applied_actions(run_jsonl)
     build: set[str] | None = None
     build_loaded = False
     out: list[dict] = []
@@ -149,9 +172,13 @@ def join_outcomes(
         resp = resp if isinstance(resp, dict) else None
         action = resp.get("action") if resp else None
         options = rec.get("options") if isinstance(rec.get("options"), list) else []
+        did = rec.get("id")
+        applied = action == applied_as[did] if did in applied_as else None
         chosen: str | None = None
         kept: bool | None = None
-        if action in INDEXED_ACTIONS:
+        if applied is False:
+            pass  # the mod did something else: no chosen option, nothing kept
+        elif action in INDEXED_ACTIONS:
             opt = _chosen_option(options, resp.get("option_index"))
             chosen = str(opt.get("id")) if opt and opt.get("id") else None
         elif isinstance(action, str):
@@ -165,13 +192,14 @@ def join_outcomes(
         confidence = resp.get("confidence") if resp else None
         out.append(
             {
-                "id": rec.get("id"),
+                "id": did,
                 "run_id": run_summary.run_id,
                 "kind": rec.get("kind"),
                 "character_id": rec.get("character_id") or run_summary.character_id,
                 "wave": wave,
                 "options": options,
                 "action": action,
+                "applied": applied,
                 "chosen": chosen,
                 "source": rec.get("source"),
                 "confidence": confidence if isinstance(confidence, (int, float)) else None,

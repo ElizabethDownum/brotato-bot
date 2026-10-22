@@ -354,3 +354,16 @@ def test_levelup_and_checkpoint_without_options_say_so():
     )
     options = checkpoint[checkpoint.find("## Options") : checkpoint.find("## Plan")]
     assert "No options at a checkpoint: answer `skip` or `revise_plan`." in options
+
+
+def test_past_decisions_mark_unapplied_answers():
+    rows = [
+        {**EXPERIENCE[0], "applied": False, "chosen": None, "kept_to_end": None},
+        {**EXPERIENCE[0], "applied": True},
+    ]
+    text = prompt.build(_request(), _state(), PLAN, DATASET, _unlock_state(), KNOWLEDGE, rows)
+    pos = _sections_positions(text)
+    past = text[pos[5] : pos[6]].splitlines()
+    lines = [line for line in past if line.startswith("- run")]
+    assert "answered buy (not applied: rule)" in lines[0] and "chose" not in lines[0]
+    assert "chose weapon_smg_1" in lines[1]

@@ -997,9 +997,12 @@ The sidecar record's fields, in write order, are `id`, `kind`, `ts`, `model`,
 Each attempt has `model`, `source_label`, `elapsed_ms`, `returncode`, `raw`,
 `errors`; inspect those when a call fails.
 
-Joined experience adds `action`, `chosen`, `confidence`, `outcome`,
-`death_wave`, `hp_next_wave` and `kept_to_end` to the identifying/context
-fields. The live loop feeds the latest 20 same-character, same-kind rows
+Joined experience adds `action`, `applied`, `chosen`, `confidence`,
+`outcome`, `death_wave`, `hp_next_wave` and `kept_to_end` to the
+identifying/context fields. `applied` comes from the run file's
+`decision_applied`, `levelup` and `checkpoint` lines for the decision id
+(null when there is none); when the mod did not apply the answer, `chosen`
+and `kept_to_end` are null and the prompt shows the row as not applied. The live loop feeds the latest 20 same-character, same-kind rows
 from `decisions/experience.jsonl` to the prompt's "Past decisions" section.
 
 ### 7. Smoke without the game

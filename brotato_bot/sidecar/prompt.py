@@ -303,9 +303,14 @@ def _past_lines(experience: list[dict]) -> list[str]:
     for r in experience:
         conf = r.get("confidence")
         conf_s = f" (confidence {_num(conf)})" if conf is not None else ""
+        chose = (
+            f"answered {r.get('action')} (not applied: rule)"
+            if r.get("applied") is False
+            else f"chose {r.get('chosen')}"
+        )
         lines.append(
-            f"- run {r.get('run_id')} wave {r.get('wave')} {r.get('kind')}: chose "
-            f"{r.get('chosen')} via {r.get('source')}{conf_s} -> {r.get('outcome')}, "
+            f"- run {r.get('run_id')} wave {r.get('wave')} {r.get('kind')}: {chose} "
+            f"via {r.get('source')}{conf_s} -> {r.get('outcome')}, "
             f"death_wave {r.get('death_wave')}, hp_next_wave {r.get('hp_next_wave')}, "
             f"kept_to_end {r.get('kept_to_end')}"
         )
