@@ -23,13 +23,28 @@ static func due(target_fired, checkpoint_done, current_wave, nb_of_waves, is_end
 	return true
 
 
-# What a checkpoint response asks for: "timeout" (null: no valid answer),
-# "revise_plan" (action revise_plan with a plan_patch dictionary) or "skip"
-# (skip, and every other action, which means nothing at a checkpoint).
-static func wanted(response) -> String:
+# Decision sources that explain a null answer without being a plain timeout
+# (BotRuntime.decide: "interrupted" = a human unpaused the game, "invalid" = the
+# response failed validation, "busy" = another decision was in flight).
+const EXPLICIT_SOURCES = ["interrupted", "invalid", "busy"]
+
+
+# What the checkpoint does with decide()'s result. response is its return
+# value, source the decision event's source (last_decision.source), acting
+# whether bot_state is "acting" after decide returned. Returns
+# {applied: "revise_plan" | "skip" | "timeout", reason: String ("" when none)}:
+#   source interrupted / invalid / busy  -> skip, reason = source
+#   not acting (halted or completed)      -> skip, "halted" (nothing applied)
+#   null response                         -> timeout
+#   revise_plan with a plan_patch dict    -> revise_plan
+#   anything else (skip, buy, ...)        -> skip
+static func wanted(response, source, acting) -> Dictionary:
+	if str(source) in EXPLICIT_SOURCES:
+		return {"applied": "skip", "reason": str(source)}
+	if not acting:
+		return {"applied": "skip", "reason": "halted"}
 	if response == null:
-		return "timeout"
-	if typeof(response) == TYPE_DICTIONARY and str(response.get("action", "")) == "revise_plan" \
-			and typeof(response.get("plan_patch")) == TYPE_DICTIONARY:
-		return "revise_plan"
-	return "skip"
+		return {"applied": "timeout", "reason": ""}
+	if typeof(response) == TYPE_DICTIONARY and str(response.get("action", "")) == "revise_plan" 			and typeof(response.get("plan_patch")) == TYPE_DICTIONARY:
+		return {"applied": "revise_plan", "reason": ""}
+	return {"applied": "skip", "reason": ""}

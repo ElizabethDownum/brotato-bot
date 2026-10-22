@@ -87,8 +87,11 @@ func _ready():
 # the first time it completes on this profile. Records a challenge event
 # {id, is_target} while a run file is open. The first completion matching the
 # target (PlanFile.target_id: the plan file's target_challenge, else the
-# config's) sets target_fired and shows "TARGET: <id> DONE"; main.gd then
-# checkpoints at the next wave end.
+# config's) sets target_fired; main.gd then checkpoints at the next wave end.
+# "TARGET: <id> DONE" is shown only while the bot plays (acting/deciding), so a
+# HALTED or RUN COMPLETE status stays. If it fires while deciding, decide()
+# puts its pre-decision status back afterwards and the TARGET text goes
+# (accepted).
 func _on_challenge_completed(chal):
 	var id = ""
 	if chal != null and "my_id" in chal:
@@ -99,7 +102,41 @@ func _on_challenge_completed(chal):
 		recorder.event("challenge", {"id": id, "is_target": is_target})
 	if is_target and not target_fired:
 		target_fired = true
-		set_status("TARGET: %s DONE" % id)
+		if bot_state == "acting" or bot_state == "deciding":
+			set_status("TARGET: %s DONE" % id)
+
+
+# The target checkpoint (coroutine). main.gd starts it at a wave end once
+# Checkpoint.due(...) holds and the bot is acting; it lives here, on the
+# persistent autoload, because main is freed by the scene change. Marks the
+# checkpoint done, then:
+#   - no live sidecar (decide()'s contract): no request, no pause; checkpoint
+#     {applied: "skip", reason: "no_sidecar"}
+#   - else decide("checkpoint", []), mapped by Checkpoint.wanted(response,
+#     last_decision.source, bot_state == "acting"): a revise_plan answer is
+#     applied with apply_plan_patch for player 0's character (a failed save is
+#     skip / "patch_not_applied"); interrupted, invalid, busy and halted are
+#     skips with that reason; no answer is "timeout".
+# Records checkpoint {id, action, applied, reason} (reason "" when none).
+func checkpoint():
+	checkpoint_done = true
+	if not DecisionClient.sidecar_alive(BotPaths.ROOT, OS.get_unix_time()):
+		_record_checkpoint({"id": "", "action": null, "applied": "skip", "reason": "no_sidecar"})
+		return
+	var r = yield(decide("checkpoint", []), "completed")
+	var out = Checkpoint.wanted(r, last_decision.get("source", ""), bot_state == "acting")
+	if out.applied == "revise_plan":
+		var ch = RunData.get_player_character(0) if RunData.get_player_count() > 0 else null
+		if not apply_plan_patch(ch.my_id if ch != null else "", r.plan_patch):
+			out = {"applied": "skip", "reason": "patch_not_applied"}
+	_record_checkpoint({"id": last_decision.get("id", ""),
+		"action": r.get("action") if r != null else null,
+		"applied": out.applied, "reason": out.reason})
+
+
+func _record_checkpoint(data):
+	if recorder != null and recorder.is_open():
+		recorder.event("checkpoint", data)
 
 
 # Applies a revise_plan response's plan_patch to plan.json for character_id
@@ -290,6 +327,9 @@ func export_state(kind: String) -> String:
 
 # Asks the sidecar (coroutine; callers `yield(rt.decide(...), "completed")`).
 # Always yields at least once, so the caller's yield is safe on every path.
+#   0. Non-reentrant: while another decide() is waiting (bot_state
+#      "deciding"), returns null after one idle frame with a decision event of
+#      source "busy" (id "", no export, no request).
 #   1. Guard: bot_state must be "acting", else returns null at once (after one
 #      idle frame), with no request and no event.
 #   2. export_state(kind) writes state/<id>.json; the request id is
@@ -300,21 +340,29 @@ func export_state(kind: String) -> String:
 #   4. bot_state "deciding", status "DECIDING: <kind>", tree paused; polls
 #      responses/ every POLL_S (timers process while paused) until a response
 #      or the timeout (config checkpoint_timeout_ms for "checkpoint", else
-#      request_timeout_ms), or until bot_state leaves "deciding" (a halt).
+#      request_timeout_ms), or until bot_state leaves "deciding" (a halt),
+#      or until something else unpaused the tree that decide() paused (the
+#      pause menu's ESC: a human intervened, and the human wins -- no
+#      re-pause, source "interrupted", the rules decide).
 #   5. Unpauses only if the tree was not already paused; unless bot_state
 #      became halted/complete meanwhile, returns it to "acting" and restores
 #      the status shown before decide() (an F9 export meanwhile included).
 #   Callers ask only while DecisionClient.sidecar_alive(...) is true.
 #   6. Records a decision event {request_kind, id, source, response} with source
 #      "haiku" (valid response), "invalid" (a response that failed
-#      validate_response; its file is deleted all the same) or "timeout"
-#      (also used when the export or request write failed), stores
+#      validate_response; its file is deleted all the same), "interrupted"
+#      (human unpause, step 4), "busy" (step 0) or "timeout" (also used when
+#      the export or request write failed, or on a halt), stores
 #      {kind, id, source, response} in last_decision, and returns the
 #      response or null.
 # The caller records what it actually did as a decision_applied event.
 const POLL_S = 0.25
 
 func decide(kind: String, options: Array):
+	if bot_state == "deciding":
+		yield(get_tree(), "idle_frame")
+		_record_decision(kind, "", "busy", null)
+		return null
 	if bot_state != "acting":
 		yield(get_tree(), "idle_frame")
 		return null
@@ -353,8 +401,12 @@ func decide(kind: String, options: Array):
 	get_tree().paused = true
 	var deadline = OS.get_ticks_msec() + timeout_ms
 	var response = null
+	var interrupted = false
 	while true:
 		yield(get_tree().create_timer(POLL_S, true), "timeout")
+		if not was_paused and not get_tree().paused:
+			interrupted = true   # a human unpaused (pause menu): stop asking
+			break
 		response = client.poll_response(id)
 		if response != null or OS.get_ticks_msec() >= deadline:
 			break
@@ -367,7 +419,7 @@ func decide(kind: String, options: Array):
 	if bot_state == "deciding":
 		bot_state = "acting"
 		set_status(prev_status)
-	var source = "timeout"
+	var source = "interrupted" if interrupted else "timeout"
 	if response != null:
 		if DecisionClient.validate_response(response):
 			source = "haiku"
