@@ -72,6 +72,7 @@ func _bot_start_recording():
 		"mod_version": mod_version,
 		"start_wave": RunData.current_wave,
 	})
+	rt.on_run_started()
 
 
 # Every wave start: warn once per run if the game would pause when the window

@@ -12,11 +12,17 @@ extends Node
 #   status_text    one-line status shown top-left ("" hides it); Task 10's
 #                  overlay replaces this label
 #   focus_warned_run_id  run_id the pause_on_focus_lost warning was recorded for
+#   seq            state exports written this run (reset at run start); the
+#                  next export file is <run_id>-<seq+1:03>.json
+#   recent_snapshots  the last RECENT_MAX snapshot dicts ai_telemetry recorded
+#                  (cleared at run start); read by StateExport.collect
 
 const BotConfig = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_config.gd")
 const Guards = preload("res://mods-unpacked/Ellie-BrotatoBot/core/guards.gd")
+const StateExport = preload("res://mods-unpacked/Ellie-BrotatoBot/core/state_export.gd")
 
 const NODE_NAME = "BotRuntime"
+const RECENT_MAX = 10
 
 var recorder = null
 var config = {}
@@ -25,6 +31,8 @@ var bot_state = "idle"
 var last_decision = {}
 var status_text = ""
 var focus_warned_run_id = null
+var seq = 0
+var recent_snapshots = []
 
 var _status_label = null
 var _move_scancodes = null
@@ -106,6 +114,36 @@ func halt(reason: String):
 	if recorder != null:
 		recorder.event("halt", {"reason": reason})
 	set_status("HALTED: " + reason)
+
+
+# A new run file was opened: export numbering and snapshot history restart.
+func on_run_started():
+	seq = 0
+	recent_snapshots = []
+
+
+# Called by ai_telemetry next to each recorder snapshot; keeps the last RECENT_MAX.
+func push_snapshot(snap: Dictionary):
+	recent_snapshots.append(snap.duplicate(true))
+	while recent_snapshots.size() > RECENT_MAX:
+		recent_snapshots.pop_front()
+
+
+# Writes user://brotato-bot/state/<run_id>-<seq:03>.json (run_id "norun" when
+# no run is open) for player 0 and returns the path ("" when it could not be
+# written). Read-only towards the game and the bot: it never shops, picks,
+# steers or changes bot_state. Records an "export" event on an open recorder.
+func export_state(kind: String) -> String:
+	seq += 1
+	var rid = run_id if run_id != "" else "norun"
+	var parts = StateExport.collect(0)
+	var data = StateExport.serialize(parts, {"kind": kind, "run_id": rid, "seq": seq, "clock": OS.get_datetime()})
+	var path = StateExport.write(StateExport.STATE_DIR, rid, seq, data)
+	if path == "":
+		return ""
+	if recorder != null and recorder.is_open():
+		recorder.event("export", {"kind": kind, "path": path, "seq": seq})
+	return path
 
 
 # Game quit with a run still open: close the file with an end line.

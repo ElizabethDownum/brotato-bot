@@ -282,6 +282,9 @@ func _tick():
 			"ticks": hs[5], "breaks": hs[6]}
 
 	rec.snapshot(snap)
+	var rt = get_node_or_null("/root/BotRuntime")
+	if rt != null:
+		rt.push_snapshot(snap)
 
 
 # Called by main.gd from _on_player_died, synchronously, before the game cleans

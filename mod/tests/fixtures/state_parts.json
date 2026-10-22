@@ -1,0 +1,35 @@
+{
+  "wave": 7,
+  "danger": 2,
+  "character_id": "character_well_rounded",
+  "hp": 14,
+  "max_hp": 22,
+  "gold": 63,
+  "stats": {"stat_max_hp": 12, "stat_armor": 2, "stat_ranged_damage": 3.5, "stat_harvesting": 8},
+  "weapons": [
+    {"id": "weapon_smg_1", "tier": 0, "type": "ranged", "set_ids": ["set_gun"]},
+    {"id": "weapon_knife_2", "tier": 1, "type": "melee", "set_ids": ["set_precise", "set_blade"]}
+  ],
+  "items": [
+    {"id": "item_alien_eyes", "tier": 2},
+    {"id": "item_coupon", "tier": 0},
+    {"id": "item_alien_eyes", "tier": 2},
+    {"id": "item_scope", "tier": 1}
+  ],
+  "shop": [
+    {"id": "weapon_smg_1", "kind": "weapon", "tier": 0, "price": 25, "advisor_score": 31.5, "locked": false},
+    {"id": "item_helmet", "kind": "item", "tier": 0, "price": 14, "advisor_score": 4.0, "locked": true},
+    {"id": "item_lens", "kind": "item", "tier": 1, "price": 33, "advisor_score": 0.0, "locked": false},
+    {"id": "weapon_pistol_1", "kind": "weapon", "tier": 0, "price": 18, "advisor_score": -1.0, "locked": false}
+  ],
+  "levelup_options": [],
+  "unlocks_this_run": ["chal_well_rounded"],
+  "recent": [
+    {"wave": 7, "hp": 20, "i": 0}, {"wave": 7, "hp": 19, "i": 1}, {"wave": 7, "hp": 18, "i": 2},
+    {"wave": 7, "hp": 18, "i": 3}, {"wave": 7, "hp": 17, "i": 4}, {"wave": 7, "hp": 16, "i": 5},
+    {"wave": 7, "hp": 16, "i": 6}, {"wave": 7, "hp": 15, "i": 7}, {"wave": 7, "hp": 15, "i": 8},
+    {"wave": 7, "hp": 14, "i": 9}, {"wave": 7, "hp": 14, "i": 10}, {"wave": 7, "hp": 14, "i": 11}
+  ],
+  "plan_id": "wr-ranged-v2",
+  "target_challenge": "chal_well_rounded"
+}

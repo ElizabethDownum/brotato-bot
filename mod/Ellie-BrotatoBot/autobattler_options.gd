@@ -57,6 +57,15 @@ const BUMPER_DISTANCE_OPTION_NAME = "BUMPER_DISTANCE"
 
 const DEFAULT_COOLDOWN = .2
 var _last_ss_ms = 0   # OS.get_ticks_msec of the last Shift+Space toggle (debounce)
+
+# F9 (config.export_hotkey) state export: the overlay shows "Exported: <path>"
+# for EXPORT_STATUS_MS, then the previous status text comes back unless
+# something else (e.g. a halt) replaced it meanwhile.
+const EXPORT_STATUS_MS = 5000
+var _export_scancode = 0
+var _export_status_text = ""
+var _export_status_until_ms = 0
+var _status_before_export = ""
 var option_cooldown = DEFAULT_COOLDOWN
 
 const MOD_NAME = "Ellie-BrotatoBot"
@@ -80,6 +89,12 @@ func _ready():
 func _input(event):
 	# `pressed` + `echo` guards stop a toggle firing twice per press / on auto-repeat.
 	if event is InputEventKey and event.pressed and not event.echo:
+		# Export hotkey: any profile, bot on or off. Read-only -- it never shops,
+		# steers or changes bot state.
+		if event.scancode == _export_hotkey_scancode():
+			_export_advise()
+			get_tree().set_input_as_handled()
+			return
 		if event.shift and event.scancode == KEY_SPACE:
 			# Debounce with a wall-clock timestamp -- Shift+Space arrives as a double
 			# event per physical press (~0.2-0.3s apart), which the old delta cooldown
@@ -97,6 +112,47 @@ func _input(event):
 	var mouse_only = ProgressData.settings.get("mouse_only", false) and not RunData.is_coop_run
 	if Guards.is_human_move(event, rt.move_scancodes(), null, mouse_only):
 		rt.halt("human input")
+
+
+# Scancode for config.export_hotkey (default "F9"); an unknown key name falls
+# back to F9 with a warning. Resolved once.
+func _export_hotkey_scancode() -> int:
+	if _export_scancode != 0:
+		return _export_scancode
+	var key_name = "F9"
+	var rt = BotRuntime.instance()
+	if rt != null:
+		key_name = str(rt.config.get("export_hotkey", "F9"))
+	_export_scancode = OS.find_scancode_from_string(key_name)
+	if _export_scancode == 0:
+		push_warning("BrotatoBot: unknown export_hotkey '%s'; using F9" % key_name)
+		_export_scancode = KEY_F9
+	return _export_scancode
+
+
+func _export_advise():
+	var rt = BotRuntime.instance()
+	if rt == null:
+		push_warning("BrotatoBot: /root/BotRuntime missing; state not exported")
+		return
+	var path = rt.export_state("advise")
+	var msg = "Export failed (see log)"
+	if path != "":
+		msg = "Exported: " + ProjectSettings.globalize_path(path)
+	if _export_status_until_ms == 0:
+		_status_before_export = rt.status_text
+	_export_status_text = msg
+	_export_status_until_ms = OS.get_ticks_msec() + EXPORT_STATUS_MS
+	rt.set_status(msg)
+
+
+func _restore_status_after_export():
+	if _export_status_until_ms == 0 or OS.get_ticks_msec() < _export_status_until_ms:
+		return
+	_export_status_until_ms = 0
+	var rt = BotRuntime.instance()
+	if rt != null and rt.status_text == _export_status_text:
+		rt.set_status(_status_before_export)
 
 
 # Shift+Space. The bot is one agent: enable/disable switches movement and
@@ -132,6 +188,7 @@ func _toggle_bot():
 
 func _process(delta):
 	option_cooldown -= delta
+	_restore_status_after_export()
 
 
 func load_mod_options():
