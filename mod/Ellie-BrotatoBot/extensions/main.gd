@@ -7,6 +7,8 @@ const RunRecorder = preload("res://mods-unpacked/Ellie-BrotatoBot/core/run_recor
 const BotPaths = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_paths.gd")
 const PlanFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/plan_file.gd")
 const Guards = preload("res://mods-unpacked/Ellie-BrotatoBot/core/guards.gd")
+const Checkpoint = preload("res://mods-unpacked/Ellie-BrotatoBot/core/checkpoint.gd")
+const DecisionClient = preload("res://mods-unpacked/Ellie-BrotatoBot/core/decision_client.gd")
 
 const MOD_ID = "Ellie-BrotatoBot"
 
@@ -109,16 +111,59 @@ func _bot_player0():
 
 func _bot_on_end_of_the_wave():
 	var rec = _bot_recorder()
-	if rec == null:
+	if rec != null:
+		var p = _bot_player0()
+		rec.event("wave_end", {
+			"wave": RunData.current_wave,
+			"hp": int(p.current_stats.health) if p != null else 0,
+			"gold": RunData.get_player_gold(0),
+			"damage_taken": ai_telemetry.damage_taken_this_wave(),
+			"kills": _bot_kills_this_wave,
+		})
+	var _cp = _bot_checkpoint()
+
+
+# Target checkpoint (coroutine, started from the end_of_the_wave handler).
+# end_of_the_wave is emitted from _on_WaveTimer_timeout; once this yields, the
+# base game carries on into clean_up_room (which runs _set_run_states) with the
+# tree paused, and the scene change waits for EndWaveTimer, which does not run
+# while paused. Due once per run after the target fired, never on the final
+# wave of a normal run (Checkpoint.due: the completion gate owns it). Waits
+# while the bot is not acting (stays pending for a later wave end). Without a
+# live sidecar it is recorded as skipped with reason "no_sidecar", no pause
+# (decide()'s contract: ask only while sidecar_alive). Otherwise
+# decide("checkpoint", []) pauses up to checkpoint_timeout_ms; a revise_plan
+# answer is applied like the shop's (BotRuntime.apply_plan_patch), anything
+# else is a skip. Records checkpoint {id, action, applied: "revise_plan" |
+# "skip" | "timeout"} (plus reason when skipped without asking or when the
+# patch could not be saved).
+func _bot_checkpoint():
+	var rt = get_node_or_null("/root/BotRuntime")
+	if rt == null or rt.bot_state != "acting":
 		return
-	var p = _bot_player0()
-	rec.event("wave_end", {
-		"wave": RunData.current_wave,
-		"hp": int(p.current_stats.health) if p != null else 0,
-		"gold": RunData.get_player_gold(0),
-		"damage_taken": ai_telemetry.damage_taken_this_wave(),
-		"kills": _bot_kills_this_wave,
-	})
+	if not Checkpoint.due(rt.target_fired, rt.checkpoint_done, RunData.current_wave,
+			RunData.nb_of_waves, RunData.is_endless_run):
+		return
+	rt.checkpoint_done = true
+	if not DecisionClient.sidecar_alive(BotPaths.ROOT, OS.get_unix_time()):
+		_bot_record_checkpoint(rt, {"id": "", "action": null, "applied": "skip", "reason": "no_sidecar"})
+		return
+	var r = yield(rt.decide("checkpoint", []), "completed")
+	var applied = Checkpoint.wanted(r)
+	var entry = {"id": rt.last_decision.get("id", ""),
+		"action": r.get("action") if r != null else null}
+	if applied == "revise_plan":
+		var ch = RunData.get_player_character(0) if RunData.get_player_count() > 0 else null
+		if not rt.apply_plan_patch(ch.my_id if ch != null else "", r.plan_patch):
+			applied = "skip"
+			entry["reason"] = "patch_not_applied"
+	entry["applied"] = applied
+	_bot_record_checkpoint(rt, entry)
+
+
+func _bot_record_checkpoint(rt, data):
+	if rt.recorder != null and rt.recorder.is_open():
+		rt.recorder.event("checkpoint", data)
 
 
 func _on_enemy_died(enemy: Enemy, args: Entity.DieArgs) -> void:

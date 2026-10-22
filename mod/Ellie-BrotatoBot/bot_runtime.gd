@@ -17,12 +17,17 @@ extends Node
 #                  next export file is <run_id>-<seq+1:03>.json
 #   recent_snapshots  the last RECENT_MAX snapshot dicts ai_telemetry recorded
 #                  (cleared at run start); read by StateExport.collect
+#   target_fired   the target challenge completed during this run (reset at
+#                  run start); main.gd checkpoints at the next wave end
+#   checkpoint_done  that checkpoint has been handled this run (reset at run start)
 
 const BotConfig = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_config.gd")
 const Guards = preload("res://mods-unpacked/Ellie-BrotatoBot/core/guards.gd")
 const StateExport = preload("res://mods-unpacked/Ellie-BrotatoBot/core/state_export.gd")
 const DecisionClient = preload("res://mods-unpacked/Ellie-BrotatoBot/core/decision_client.gd")
 const BotPaths = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_paths.gd")
+const PlanFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/plan_file.gd")
+const Checkpoint = preload("res://mods-unpacked/Ellie-BrotatoBot/core/checkpoint.gd")
 
 const NODE_NAME = "BotRuntime"
 const RECENT_MAX = 10
@@ -36,6 +41,8 @@ var status_text = ""
 var focus_warned_run_id = null
 var seq = 0
 var recent_snapshots = []
+var target_fired = false
+var checkpoint_done = false
 
 # Export hotkey (config.export_hotkey, default "F9"): handled here because this
 # node keeps processing while the tree is paused, so the advisor export works
@@ -68,6 +75,42 @@ func _ready():
 	_status_label.rect_position = Vector2(8, 8)
 	layer.add_child(_status_label)
 	set_status(status_text)
+	# Added deferred by mod_main, so the game autoloads are already in the tree.
+	var challenges = get_node_or_null("/root/ChallengeService")
+	if challenges != null:
+		var _e = challenges.connect("challenge_completed", self, "_on_challenge_completed")
+	else:
+		push_warning("BrotatoBot: /root/ChallengeService missing; no challenge events")
+
+
+# ChallengeService emits challenge_completed(chal_data) once per challenge,
+# the first time it completes on this profile. Records a challenge event
+# {id, is_target} while a run file is open. The first completion matching the
+# target (PlanFile.target_id: the plan file's target_challenge, else the
+# config's) sets target_fired and shows "TARGET: <id> DONE"; main.gd then
+# checkpoints at the next wave end.
+func _on_challenge_completed(chal):
+	var id = ""
+	if chal != null and "my_id" in chal:
+		id = str(chal.my_id)
+	var target = PlanFile.target_id(PlanFile.load_cached(PlanFile.DEFAULT_PATH), config)
+	var is_target = Checkpoint.is_target(id, target)
+	if recorder != null and recorder.is_open():
+		recorder.event("challenge", {"id": id, "is_target": is_target})
+	if is_target and not target_fired:
+		target_fired = true
+		set_status("TARGET: %s DONE" % id)
+
+
+# Applies a revise_plan response's plan_patch to plan.json for character_id
+# (PlanFile.apply_patch; a newly created file gets plan_id
+# "sidecar-<last decision id>"). Shared by the shop and the wave-end
+# checkpoint. Returns true when the patched plan was saved.
+func apply_plan_patch(character_id, patch) -> bool:
+	if str(character_id) == "" or typeof(patch) != TYPE_DICTIONARY:
+		return false
+	return PlanFile.apply_patch(PlanFile.DEFAULT_PATH, str(character_id), patch,
+		"sidecar-" + str(last_decision.get("id", ""))) == OK
 
 
 # Read-only: never shops, steers or changes bot_state. Any profile, bot on or off.
@@ -210,10 +253,13 @@ func _disable_flags():
 	options.save_configs()
 
 
-# A new run file was opened: export numbering and snapshot history restart.
+# A new run file was opened: export numbering, snapshot history and the
+# target checkpoint restart.
 func on_run_started():
 	seq = 0
 	recent_snapshots = []
+	target_fired = false
+	checkpoint_done = false
 
 
 # Called by ai_telemetry next to each recorder snapshot; keeps the last RECENT_MAX.
@@ -226,7 +272,8 @@ func push_snapshot(snap: Dictionary):
 # Writes user://brotato-bot/state/<run_id>-<seq:03>.json (or
 # norun-<YYYYMMDD-HHMMSS>-<seq:03>.json when no run is open) for player 0 and returns the path ("" when it could not be
 # written). Read-only towards the game and the bot: it never shops, picks,
-# steers or changes bot_state. Records an "export" event on an open recorder.
+# steers or changes bot_state. Records an "export" event on an open recorder
+# (the export kind as "export_kind": the recorder overwrites a "kind" key).
 func export_state(kind: String) -> String:
 	seq += 1
 	var rid = run_id if run_id != "" else StateExport.NORUN_ID
@@ -237,7 +284,7 @@ func export_state(kind: String) -> String:
 	if path == "":
 		return ""
 	if recorder != null and recorder.is_open():
-		recorder.event("export", {"kind": kind, "path": path, "seq": seq})
+		recorder.event("export", {"export_kind": kind, "path": path, "seq": seq})
 	return path
 
 

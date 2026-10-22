@@ -8,7 +8,6 @@ const ShopAdvisor = preload("res://mods-unpacked/Ellie-BrotatoBot/shopping/shop_
 const BotRuntime = preload("res://mods-unpacked/Ellie-BrotatoBot/bot_runtime.gd")
 const Coop = preload("res://mods-unpacked/Ellie-BrotatoBot/extensions/ui/menus/run/coop_mouse_select.gd")
 const DecisionClient = preload("res://mods-unpacked/Ellie-BrotatoBot/core/decision_client.gd")
-const PlanFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/plan_file.gd")
 const BotPaths = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_paths.gd")
 
 const SETUP_WAIT = 0.35   # let _ready() finish populating the offering + UI
@@ -478,8 +477,7 @@ func _auto_shop_player(pi) -> void:
 					applied = "skip"
 				elif act == "revise_plan":
 					var cid = character.my_id if character != null else ""
-					if cid != "" and PlanFile.apply_patch(PlanFile.DEFAULT_PATH, cid, r.plan_patch,
-							"sidecar-" + str(rt.last_decision.get("id", ""))) == OK:
+					if rt.apply_plan_patch(cid, r.plan_patch):
 						plan = ShopAdvisor.get_plan(cid)
 						applied = "revise_plan"
 				_record_applied(rt, r, applied)
