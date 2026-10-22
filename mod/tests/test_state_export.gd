@@ -132,6 +132,16 @@ func test_export_state_writes_file():
 	var data = StateExport.serialize(_parts(), _meta())
 	var path = StateExport.write(dir, "20261021-090000-well_rounded-d2", 3, data)
 	assert_eq(path, dir + "/20261021-090000-well_rounded-d2-003.json", "returned path")
+	var listed = []
+	var ld = Directory.new()
+	if ld.open(dir) == OK:
+		ld.list_dir_begin(true, true)
+		var fn = ld.get_next()
+		while fn != "":
+			listed.append(fn)
+			fn = ld.get_next()
+		ld.list_dir_end()
+	assert_eq(listed, ["20261021-090000-well_rounded-d2-003.json"], "written atomically: no .tmp left")
 	var f = File.new()
 	if f.open(path, File.READ) != OK:
 		failures.append("cannot read back %s" % path)
@@ -147,3 +157,11 @@ func test_export_state_writes_file():
 	d.remove(path)
 	d.remove(dir)
 	assert_false(d.dir_exists(dir), "test dir cleaned up")
+
+
+func test_export_id_matches_the_file_name():
+	var clock = {"year": 2026, "month": 10, "day": 22, "hour": 10, "minute": 15, "second": 0}
+	assert_eq(StateExport.export_id("norun", 7, clock), "norun-20261022-101500-007", "norun id")
+	assert_eq(StateExport.export_id("run-a", 3, clock), "run-a-003", "run id")
+	assert_eq(StateExport.export_id("norun", 7, clock) + ".json", StateExport.file_name("norun", 7, clock),
+		"id is the state file's base name")

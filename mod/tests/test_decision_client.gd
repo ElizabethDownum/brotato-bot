@@ -209,3 +209,14 @@ func test_screen_for_kind():
 	assert_eq(DecisionClient.SCREENS, ["shop", "levelup", "checkpoint"], "screens")
 	var r = DecisionClient.build_request("checkpoint", "checkpoint", "r", 1, "p", [], 0)
 	assert_eq(r.get("screen"), "checkpoint", "checkpoint screen")
+
+
+func test_write_request_honours_an_explicit_id():
+	var root = _make_root("decision-explicit-id")
+	var client = DecisionClient.new(root)
+	var req = _req(7)
+	req["id"] = "norun-20261022-101500-007"
+	var id = client.write_request(req)
+	assert_eq(id, "norun-20261022-101500-007", "explicit id kept")
+	assert_eq(_list(root.plus_file("requests")), ["norun-20261022-101500-007.json"], "file named by it")
+	_remove_tree(root)

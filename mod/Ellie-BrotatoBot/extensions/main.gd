@@ -33,11 +33,6 @@ func _ready():
 	_bot_run_guards()
 	var _e = connect("end_of_the_wave", self, "_bot_on_end_of_the_wave")
 
-func free():
-	remove_child(canvas_layer)
-	.free()
-
-
 # Opens the run file on the first wave of a run. main.tscn reloads every wave,
 # so a later wave continues the open run (same profile and character); a later
 # wave with no open run (a resumed save, or a retried wave after the run ended)

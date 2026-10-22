@@ -483,8 +483,9 @@ func export_state(kind: String) -> String:
 #      source "busy" (id "", no export, no request).
 #   1. Guard: bot_state must be "acting", else returns null at once (after one
 #      idle frame), with no request and no event.
-#   2. export_state(kind) writes state/<id>.json; the request id is
-#      "<run_id>-<seq:03>" for that same seq, so state and request match.
+#   2. export_state(kind) writes state/<id>.json; the request id is that
+#      file's base name ("<run_id>-<seq:03>", or "norun-<stamp>-<seq:03>"
+#      with no open run), so state and request always match.
 #      A leftover responses/<id>.json is deleted before the request is written.
 #   3. Writes requests/<id>.json {kind, screen, run_id, seq, state_path,
 #      options, deadline_ms (epoch ms)} via DecisionClient.build_request;
@@ -533,13 +534,19 @@ func decide(kind: String, options: Array, screen: String = ""):
 	var rid = run_id if run_id != "" else StateExport.NORUN_ID
 	var client = DecisionClient.new(BotPaths.ROOT)
 	var id = ""
+	# The request id is the state file's base name (StateExport.export_id):
+	# "<run_id>-<seq:03>", or "norun-<stamp>-<seq:03>" with no open run.
+	var want_id = DecisionClient.request_id(rid, seq)
 	if state_path != "":
-		client.discard_response(DecisionClient.request_id(rid, seq))
-		id = client.write_request(DecisionClient.build_request(kind, screen, rid, seq,
-			state_path, options, OS.get_system_time_msecs() + timeout_ms))
+		want_id = state_path.get_file().get_basename()
+		client.discard_response(want_id)
+		var req = DecisionClient.build_request(kind, screen, rid, seq,
+			state_path, options, OS.get_system_time_msecs() + timeout_ms)
+		req["id"] = want_id
+		id = client.write_request(req)
 	if id == "":
 		yield(get_tree(), "idle_frame")
-		_record_decision(kind, DecisionClient.request_id(rid, seq), "timeout", null)
+		_record_decision(kind, want_id, "timeout", null)
 		return null
 	# The status to put back afterwards. During an F9 export's 5 s window that
 	# is the status the export will restore, not the "Exported: ..." text;

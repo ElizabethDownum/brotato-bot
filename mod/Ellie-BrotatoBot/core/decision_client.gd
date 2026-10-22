@@ -121,9 +121,11 @@ static func build_request(kind, screen, run_id, seq, state_path, options, deadli
 
 # Writes requests/<id>.json atomically (tmp file, then rename) and returns the
 # id, or "" (with a push_warning) when it cannot be written. The written object
-# is req plus "id".
+# is req plus "id". id is req.id when given (BotRuntime passes the state
+# file's base name, StateExport.export_id, so a norun request and its state
+# file share norun-<stamp>-NNN), else request_id(run_id, seq).
 func write_request(req: Dictionary) -> String:
-	var id = request_id(req.get("run_id", ""), req.get("seq", 0))
+	var id = str(req.id) if req.get("id") != null else request_id(req.get("run_id", ""), req.get("seq", 0))
 	var dir_path = requests_dir()
 	var d = Directory.new()
 	if not d.dir_exists(dir_path) and d.make_dir_recursive(dir_path) != OK:

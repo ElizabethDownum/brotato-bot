@@ -4,6 +4,7 @@ const Guards = preload("res://mod/Ellie-BrotatoBot/core/guards.gd")
 const BotPaths = preload("res://mod/Ellie-BrotatoBot/core/bot_paths.gd")
 
 const TEST_DIR = "user://brotato-bot/test-guards"
+const VALID_PLAN = '{"plan_id": "t", "character_id": "character_well_rounded", "plan": {}}'
 
 
 func _key(scancode, pressed = true):
@@ -108,9 +109,17 @@ func test_enable_refusal_reason():
 	var path = TEST_DIR.plus_file("plan.json")
 	var f = File.new()
 	if f.open(path, File.WRITE) == OK:
-		f.store_string("{}")
+		f.store_string(VALID_PLAN)
 		f.close()
 	assert_eq(Guards.enable_refusal(1, cfg, path), "", "allowed")
 	assert_eq(Guards.enable_refusal(0, cfg, path), "wrong profile (0)", "plan does not override profile")
 	d.remove(path)
 	d.remove(TEST_DIR)
+
+
+func test_enable_refusal_for_an_invalid_plan():
+	var cfg = {"bot_profile_id": 1}
+	var bad = "res://mod/tests/fixtures/plan_invalid.json"
+	assert_eq(Guards.enable_refusal(1, cfg, bad), "invalid plan at %s" % bad, "malformed plan.json")
+	assert_eq(Guards.enable_refusal(0, cfg, bad), "wrong profile (0)", "profile still checked first")
+	assert_eq(Guards.enable_refusal(1, cfg, "res://mod/tests/fixtures/plan_valid.json"), "", "valid plan")

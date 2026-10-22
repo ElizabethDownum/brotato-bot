@@ -3,6 +3,7 @@ extends SceneTree
 # Headless runner: godot --path . --no-window --script mod/tests/run_tests.gd
 # Loads every res://mod/tests/test_*.gd, calls each test_* method, prints
 # PASS/FAIL per method and an "N passed, M failed" summary, exits 1 on failure.
+# A method that makes no assert_* call fails ("no assertions").
 
 const TEST_DIR = "res://mod/tests"
 
@@ -29,7 +30,12 @@ func _init():
 			continue
 		for name in _test_methods(inst):
 			inst.failures = []
+			inst.assertions = 0
 			inst.call(name)
+			if inst.failures.empty() and inst.assertions == 0:
+				# Also what a test that hit a runtime error before its first
+				# assertion looks like (Godot 3 cannot catch it).
+				inst.failures.append("no assertions")
 			if inst.failures.empty():
 				print("PASS %s" % name)
 				passed += 1

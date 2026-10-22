@@ -13,9 +13,10 @@ const PlanFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/plan_file.gd
 var enable_autobattler : bool = false
 const ENABLE_AUTOBATTLER_OPTION_NAME = "ENABLE_AUTOBATTLER"
 
-# Automatic shopping for the pure-AutoBattler mode (every slot a bot). Default
-# OFF; the WaveLab test harness sets it true explicitly. Co-op bot slots do NOT
-# use this flag -- each opts in via CoopService.autoshop_by_index (its panel toggle).
+# Automatic shopping and level-up picks for the bot (every slot a bot). Default
+# OFF; set together with enable_autobattler by the guarded Shift+Space toggle.
+# Co-op bot slots do NOT use this flag -- each opts in via
+# CoopService.autoshop_by_index (its panel toggle).
 var enable_autoshop : bool = false
 const ENABLE_AUTOSHOP_OPTION_NAME = "ENABLE_AUTOSHOP"
 
@@ -55,9 +56,7 @@ const EGG_WEIGHT_OPTION_NAME = "EGG_WEIGHT"
 var bumper_distance : float = 300
 const BUMPER_DISTANCE_OPTION_NAME = "BUMPER_DISTANCE"
 
-const DEFAULT_COOLDOWN = .2
 var _last_ss_ms = 0   # OS.get_ticks_msec of the last Shift+Space toggle (debounce)
-var option_cooldown = DEFAULT_COOLDOWN
 
 const MOD_NAME = "Ellie-BrotatoBot"
 const CONFIG_DIR = "user://brotato-bot"
@@ -69,8 +68,8 @@ func _ready():
 	reset_defaults()
 	load_mod_options()
 
-	# Benchmarks pick the controller on the command line; it must win over the
-	# saved config so a bench run never inherits whatever was toggled by hand.
+	# Arbiter weight overrides from --arb-<name>=<value> startup args (read by
+	# player_movement_behavior.gd).
 	var startup_args = Utils.get_startup_arguments()
 	for key in startup_args.keys():
 		if key.begins_with("arb-"):
@@ -88,6 +87,9 @@ func _input(event):
 			if now - _last_ss_ms >= 350:
 				_last_ss_ms = now
 				_toggle_bot()
+			# Consume it: Space is also ui_accept (decompiled project.godot:2823),
+			# which would press the focused control (a level-up option, GO).
+			get_viewport().set_input_as_handled()
 			return
 	# A human touching the move controls takes over at once. The event is left
 	# unhandled so the game moves the potato on this very input.
@@ -128,10 +130,6 @@ func _toggle_bot():
 	emit_signal("setting_changed", ENABLE_AUTOBATTLER_OPTION_NAME, enable_autobattler, MOD_NAME)
 	emit_signal("setting_changed", ENABLE_AUTOSHOP_OPTION_NAME, enable_autoshop, MOD_NAME)
 	save_configs()
-
-
-func _process(delta):
-	option_cooldown -= delta
 
 
 func load_mod_options():

@@ -348,7 +348,7 @@ func _handle_shop_popup(popup, event) -> void:
 
 # Should the bot auto-shop for this player slot? Mirrors the combat AI's dispatch
 # (player_movement_behavior.gd): the global enable_autobattler toggle makes EVERY
-# slot a bot (pure AutoBattler / WaveLab), while CoopService.is_bot_by_index[pi]
+# slot a bot (the guarded Shift+Space toggle), while CoopService.is_bot_by_index[pi]
 # flags an individual co-op slot added with F1. Then each bot slot's per-bot
 # autoshop toggle (CoopService.autoshop_by_index[pi], default on) gates its shop +
 # level-ups, so the shop layer can be turned off per bot, independently of combat.
@@ -369,8 +369,8 @@ func _should_autoshop(pi) -> bool:
 	var coop = get_node_or_null("/root/CoopService")
 	if coop != null and pi < coop.is_bot_by_index.size() and coop.is_bot_by_index[pi]:
 		return pi < coop.autoshop_by_index.size() and coop.autoshop_by_index[pi]
-	# Otherwise pure-AutoBattler / WaveLab (every slot a bot): the global
-	# enable_autoshop flag decides. Default OFF; WaveLab sets it true explicitly.
+	# Otherwise the bot plays every slot: the global enable_autoshop flag
+	# decides (default OFF; Shift+Space sets it with enable_autobattler).
 	if opts.enable_autobattler:
 		return opts.enable_autoshop
 	return false

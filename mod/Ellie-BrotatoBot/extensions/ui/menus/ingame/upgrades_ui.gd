@@ -8,6 +8,7 @@ const ShopAdvisor = preload("res://mods-unpacked/Ellie-BrotatoBot/shopping/shop_
 const BotRuntime = preload("res://mods-unpacked/Ellie-BrotatoBot/bot_runtime.gd")
 const Coop = preload("res://mods-unpacked/Ellie-BrotatoBot/extensions/ui/menus/run/coop_mouse_select.gd")
 const DecisionClient = preload("res://mods-unpacked/Ellie-BrotatoBot/core/decision_client.gd")
+const PickWatchdog = preload("res://mods-unpacked/Ellie-BrotatoBot/core/pick_watchdog.gd")
 
 const PICK_WAIT = 0.3    # pace between picks -- slow enough to watch each selection land
                          # (also must exceed the container's 0.1s ButtonDelayTimer, or a
@@ -16,7 +17,7 @@ const PICK_WAIT = 0.3    # pace between picks -- slow enough to watch each selec
 var _auto_busy = false
 var _auto_heartbeat = 0        # bumped each pick; the _process watchdog watches it for stalls
 var _auto_seen_heartbeat = 0
-var _auto_stall_frames = 0
+var _auto_progress_ms = 0     # OS.get_ticks_msec() of the loop's last progress (or a non-stall frame)
 var _auto_deciding = false     # a sidecar decision is pending: the watchdog must not reclaim the loop
 var _focus_outline = null
 
@@ -32,7 +33,7 @@ func _ready() -> void:
 # Should THIS player slot's level-up be auto-picked by the bot? Mirrors the shop
 # dispatch in base_shop._should_autoshop so combat, shopping and level-ups all
 # agree on which slots are bot-controlled: global enable_autobattler makes every
-# slot a bot (pure AutoBattler/WaveLab), otherwise it is the per-slot co-op flag
+# slot a bot (the guarded Shift+Space toggle), otherwise it is the per-slot co-op flag
 # (F1-added bots). Each bot slot's per-bot autoshop toggle (CoopService.
 # autoshop_by_index, default on) then gates shopping AND level-ups for that slot.
 # A human slot in a mixed run returns false so the player picks it.
@@ -51,25 +52,25 @@ func _process(_delta: float) -> void:
 	# loop ever exits early, or (defensively) if its coroutine dies mid-drain leaving
 	# _auto_busy stuck true. Every frame: start the loop when a bot is waiting and
 	# none is running; and if a loop is marked busy but has made no progress for
-	# ~0.6s while a bot still waits, treat it as dead and reclaim it. Without this a
-	# single stall freezes the whole run on the level-up screen.
+	# PickWatchdog.STALL_MS (1.5 s, wall time) while a bot still waits, treat it as
+	# dead and reclaim it. Without this a single stall freezes the whole run on the
+	# level-up screen. A paused tree or a pending decision is never a stall.
+	var now = OS.get_ticks_msec()
 	if not _bot_is_choosing():
-		_auto_stall_frames = 0
+		_auto_progress_ms = now
 		return
 	if not _auto_busy:
 		_auto_pick_loop()
 		return
-	if _auto_deciding:
-		_auto_stall_frames = 0   # waiting on the sidecar is not a stall
+	if _auto_deciding or get_tree().paused:
+		_auto_progress_ms = now   # waiting on the sidecar / a frozen pick timer is not a stall
 		return
 	if _auto_heartbeat != _auto_seen_heartbeat:
 		_auto_seen_heartbeat = _auto_heartbeat
-		_auto_stall_frames = 0
-	else:
-		_auto_stall_frames += 1
-		if _auto_stall_frames > 40:
-			_auto_busy = false
-			_auto_stall_frames = 0
+		_auto_progress_ms = now
+	elif PickWatchdog.stalled(now, _auto_progress_ms, get_tree().paused):
+		_auto_busy = false
+		_auto_progress_ms = now
 
 
 func _bot_is_choosing() -> bool:
@@ -193,8 +194,8 @@ func _should_autopick(pi) -> bool:
 	var coop = get_node_or_null("/root/CoopService")
 	if coop != null and pi < coop.is_bot_by_index.size() and coop.is_bot_by_index[pi]:
 		return pi < coop.autoshop_by_index.size() and coop.autoshop_by_index[pi]
-	# Otherwise pure-AutoBattler / WaveLab (every slot a bot): the global
-	# enable_autoshop flag decides (default OFF; WaveLab sets it true).
+	# Otherwise the bot plays every slot: the global enable_autoshop flag
+	# decides (default OFF; Shift+Space sets it with enable_autobattler).
 	if opts.enable_autobattler:
 		return opts.enable_autoshop
 	return false
@@ -233,7 +234,7 @@ func _show_next_player_options() -> bool:
 # main.gd:1162-1177), so it must never happen behind a pause menu.
 func _auto_pick_loop() -> void:
 	_auto_busy = true
-	_auto_stall_frames = 0
+	_auto_progress_ms = OS.get_ticks_msec()
 	var guard = 0
 	while guard < 60:
 		guard += 1
@@ -291,8 +292,13 @@ func _auto_pick_loop() -> void:
 					if idx < 0:
 						idx = ShopAdvisor.pick_upgrade(ups, plan, pi)
 					idx = int(clamp(idx, 0, ups.size() - 1))
-					_record_levelup(rt, ups[idx], ask.options, source, decision_id)
+					# The container's choose handler no-ops while its button delay runs
+					# (decompiled upgrades_ui_player_container.gd:203-206): record
+					# only a pick that actually lands.
+					var landed = not container._button_pressed
 					container._on_choose_button_pressed(ups[idx])
+					if landed:
+						_record_levelup(rt, ups[idx], ask.options, source, decision_id)
 			elif container._items_container.visible:
 				# A crate/consumable item is shown. Items are free stats -- take
 				# them. But an off-plan WEAPON (wrong set/type, e.g. a plank for
