@@ -2,6 +2,10 @@ extends Node
 
 signal setting_changed(setting_name, value, mod_name)
 
+const BotRuntime = preload("res://mods-unpacked/Ellie-BrotatoBot/bot_runtime.gd")
+const Guards = preload("res://mods-unpacked/Ellie-BrotatoBot/core/guards.gd")
+const PlanFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/plan_file.gd")
+
 # Runtime option store for the BrotatoBot mod. Values are mirrored as plain vars
 # for short reads and persisted to a ConfigFile directly. Toggled via the hotkey
 # below and the per-bot AUTO-SHOP panel toggle.
@@ -83,10 +87,40 @@ func _input(event):
 			var now = OS.get_ticks_msec()
 			if now - _last_ss_ms >= 350:
 				_last_ss_ms = now
-				enable_autobattler = not enable_autobattler
-				# Notify our own listeners (the player's ai_icon marker updates from this).
-				emit_signal("setting_changed", ENABLE_AUTOBATTLER_OPTION_NAME, enable_autobattler, MOD_NAME)
-				save_configs()
+				_toggle_bot()
+			return
+	# A human touching the move controls takes over at once. The event is left
+	# unhandled so the game moves the potato on this very input.
+	var rt = BotRuntime.instance()
+	if rt != null and rt.bot_state == "acting" and Guards.is_human_move(event):
+		rt.halt("human input")
+
+
+# Shift+Space. Enabling goes through the profile and plan guards every time;
+# a refusal records a warning and leaves the bot off.
+func _toggle_bot():
+	var rt = BotRuntime.instance()
+	if enable_autobattler:
+		enable_autobattler = false
+		if rt != null:
+			rt.bot_state = "idle"
+			rt.set_status("")
+	else:
+		if rt == null:
+			push_warning("BrotatoBot: /root/BotRuntime missing; bot not enabled")
+			return
+		var reason = Guards.enable_refusal(ProgressData.current_profile_id, rt.config, PlanFile.DEFAULT_PATH)
+		if reason != "":
+			if rt.recorder != null:
+				rt.recorder.event("warning", {"reason": reason})
+			rt.set_status("Bot refused: " + reason)
+			return
+		enable_autobattler = true
+		rt.bot_state = "acting"
+		rt.set_status("")
+	# Notify our own listeners (the player's ai_icon marker updates from this).
+	emit_signal("setting_changed", ENABLE_AUTOBATTLER_OPTION_NAME, enable_autobattler, MOD_NAME)
+	save_configs()
 
 
 func _process(delta):
@@ -97,8 +131,11 @@ func load_mod_options():
 	var config = ConfigFile.new()
 	if config.load(CONFIG_FILENAME) != OK:
 		return
-	enable_autobattler = config.get_value(CONFIG_SECTION, ENABLE_AUTOBATTLER_OPTION_NAME, false)
-	enable_autoshop    = config.get_value(CONFIG_SECTION, ENABLE_AUTOSHOP_OPTION_NAME, false)
+	# The bot never starts a session enabled: ENABLE_AUTOBATTLER / ENABLE_AUTOSHOP
+	# are written by save_configs but deliberately not restored. Only the guarded
+	# Shift+Space toggle turns the bot on.
+	enable_autobattler = false
+	enable_autoshop    = false
 	enable_ai_visuals  = config.get_value(CONFIG_SECTION, ENABLE_AI_VISUALS_OPTION_NAME, false)
 	enable_ai_marker   = config.get_value(CONFIG_SECTION, ENABLE_AI_MARKER_OPTION_NAME, true)
 	enable_smoothing   = config.get_value(CONFIG_SECTION, ENABLE_SMOOTHING_OPTION_NAME, true)

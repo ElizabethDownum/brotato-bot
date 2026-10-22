@@ -5,6 +5,7 @@ extends "res://entities/units/movement_behaviors/player_movement_behavior.gd"
 # human slots fall through to the base movement.
 const Arbiter = preload("res://mods-unpacked/Ellie-BrotatoBot/steering/arbiter.gd")
 const WorldView = preload("res://mods-unpacked/Ellie-BrotatoBot/steering/world_view.gd")
+const BotRuntime = preload("res://mods-unpacked/Ellie-BrotatoBot/bot_runtime.gd")
 
 # -- Tap-move tuning (fire_still characters; see the interleave in _arbiter_move) --
 const TAP_MOVE = 2               # frames of travel per tap cycle (4 -> 2: half the
@@ -207,7 +208,12 @@ func get_movement()->Vector2:
 	var enabled = options_node.enable_autobattler
 	var player = get_parent()
 
-	if not enabled and not CoopService.is_bot_by_index[player.player_index]:
+	# Guard: the bot steers only while BotRuntime says "acting" (set by the
+	# guarded Shift+Space enable, cleared by toggle-off and halt()).
+	var rt = BotRuntime.instance()
+	var acting = rt != null and rt.bot_state == "acting"
+
+	if not acting or (not enabled and not CoopService.is_bot_by_index[player.player_index]):
 		$"/root/Main/Camera".smoothing_enabled = false
 		return .get_movement()
 

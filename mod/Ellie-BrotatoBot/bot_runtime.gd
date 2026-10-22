@@ -9,6 +9,9 @@ extends Node
 #   run_id         the open run's id ("" when none)
 #   bot_state      "idle" | "acting" | "deciding" | "halted" | "complete"
 #   last_decision  the last sidecar decision record ({} when none)
+#   status_text    one-line status shown top-left ("" hides it); Task 10's
+#                  overlay replaces this label
+#   focus_warned_run_id  run_id the pause_on_focus_lost warning was recorded for
 
 const BotConfig = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_config.gd")
 
@@ -19,6 +22,10 @@ var config = {}
 var run_id = ""
 var bot_state = "idle"
 var last_decision = {}
+var status_text = ""
+var focus_warned_run_id = null
+
+var _status_label = null
 
 
 func _init():
@@ -27,6 +34,38 @@ func _init():
 
 func _ready():
 	config = BotConfig.load_from(BotConfig.DEFAULT_PATH)
+	var layer = CanvasLayer.new()
+	layer.layer = 100
+	layer.pause_mode = PAUSE_MODE_PROCESS
+	add_child(layer)
+	_status_label = Label.new()
+	_status_label.set_name("StatusLabel")
+	_status_label.rect_position = Vector2(8, 8)
+	layer.add_child(_status_label)
+	set_status(status_text)
+
+
+func set_status(text: String):
+	status_text = text
+	if _status_label != null:
+		_status_label.text = text
+		_status_label.visible = text != ""
+
+
+# Stops the bot at once: state "halted", both bot flags off on
+# /root/AutobattlerOptions (persisted), a halt event, and the HALTED status.
+# A later Shift+Space goes through the enable guards again.
+func halt(reason: String):
+	bot_state = "halted"
+	var options = get_node_or_null("/root/AutobattlerOptions")
+	if options != null:
+		options.enable_autobattler = false
+		options.enable_autoshop = false
+		options.emit_signal("setting_changed", options.ENABLE_AUTOBATTLER_OPTION_NAME, false, options.MOD_NAME)
+		options.save_configs()
+	if recorder != null:
+		recorder.event("halt", {"reason": reason})
+	set_status("HALTED: " + reason)
 
 
 # Game quit with a run still open: close the file with an end line.

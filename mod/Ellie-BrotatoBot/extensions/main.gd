@@ -6,6 +6,7 @@ const CoopFocusHud = preload("res://mods-unpacked/Ellie-BrotatoBot/extensions/co
 const RunRecorder = preload("res://mods-unpacked/Ellie-BrotatoBot/core/run_recorder.gd")
 const BotPaths = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_paths.gd")
 const PlanFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/plan_file.gd")
+const Guards = preload("res://mods-unpacked/Ellie-BrotatoBot/core/guards.gd")
 
 const MOD_ID = "Ellie-BrotatoBot"
 
@@ -26,6 +27,7 @@ func _ready():
 	coop_focus_hud = CoopFocusHud.new()
 	add_child(coop_focus_hud)
 	_bot_start_recording()
+	_bot_run_guards()
 	var _e = connect("end_of_the_wave", self, "_bot_on_end_of_the_wave")
 
 func free():
@@ -70,6 +72,25 @@ func _bot_start_recording():
 		"mod_version": mod_version,
 		"start_wave": RunData.current_wave,
 	})
+
+
+# Every wave start: warn once per run if the game would pause when the window
+# loses focus, then halt a bot that is on while the profile is not the bot
+# profile (e.g. the profile changed after enabling). Halt last so its status wins.
+func _bot_run_guards():
+	var rt = get_node_or_null("/root/BotRuntime")
+	if rt == null:
+		return
+	if not Guards.focus_setting_ok(ProgressData.settings) and rt.focus_warned_run_id != rt.run_id:
+		rt.focus_warned_run_id = rt.run_id
+		var rec = _bot_recorder()
+		if rec != null:
+			rec.event("warning", {"reason": "pause_on_focus_lost is true"})
+		rt.set_status("Warning: pause_on_focus_lost is true")
+	var options = get_node_or_null("/root/AutobattlerOptions")
+	var bot_on = options != null and options.enable_autobattler
+	if bot_on and not Guards.profile_ok(ProgressData.current_profile_id, rt.config):
+		rt.halt("wrong profile")
 
 
 func _bot_recorder():
