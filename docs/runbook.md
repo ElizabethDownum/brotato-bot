@@ -15,7 +15,7 @@ Paths used throughout:
 | Game folder | `D:\SteamLibrary\steamapps\common\Brotato` |
 | Installed mod | `D:\SteamLibrary\steamapps\common\Brotato\mods-unpacked\Ellie-BrotatoBot` |
 | Bot root (`user://brotato-bot`) | `%APPDATA%\Brotato\brotato-bot` |
-| Save folder | `%APPDATA%\Brotato\<steam64 id>` |
+| Save folder | `%APPDATA%\Brotato\<steam64 id>` (the one 17-digit folder there) |
 | Game logs | `%APPDATA%\Brotato\logs` (`godot.log`, `modloader.log`) |
 
 ### 1. What this is, and the three rules
@@ -308,7 +308,7 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    | Kind | Data | When |
    |---|---|---|
    | `header` | `character_id`, `danger`, `plan_id`, `profile_id`, `game_version`, `mod_version`, `start_wave`, `run_id` | first line |
-   | `bot_state` | `state` (`acting`, `idle`, `halted`), `reason` (`enabled`, `toggle_off`, `main_menu`, `run_start`, or the halt reason) | Shift+Space on or off, a halt, the main menu, and right after the header (the bot's state when the file opened) |
+   | `bot_state` | `state` (`acting`, `idle`, `halted`, `complete`), `reason` (`enabled`, `toggle_off`, `main_menu`, `run_start`, or the halt reason) | Shift+Space on or off, a halt, the main menu, and right after the header (the bot's state when the file opened) |
    | `snapshot` | position, heading, threats, ... | about 1 Hz, only while the bot is enabled |
    | `damage`, `dash`, `bullet_hell` | — | only while the bot is enabled |
    | `death` | `wave`, `position`, `killer`, `last_threats`, `build`, `dmg_w` | player 0 dies |
