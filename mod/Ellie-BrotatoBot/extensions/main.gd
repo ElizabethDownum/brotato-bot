@@ -39,9 +39,9 @@ func free():
 
 
 # Opens the run file on the first wave of a run. main.tscn reloads every wave,
-# so a later wave continues the open run; a later wave with no open run (a
-# resumed save, or a retried wave after the run ended) starts a new file whose
-# header carries start_wave.
+# so a later wave continues the open run (same profile and character); a later
+# wave with no open run (a resumed save, or a retried wave after the run ended)
+# starts a new file whose header carries start_wave.
 func _bot_start_recording():
 	var rt = get_node_or_null("/root/BotRuntime")
 	if rt == null:
@@ -49,13 +49,16 @@ func _bot_start_recording():
 		return
 	if RunData.get_player_count() < 1 or RunData.get_player_character(0) == null:
 		return
+	var character_id = RunData.get_player_character(0).my_id
 	var open = rt.recorder != null and rt.recorder.is_open()
-	if open and RunData.current_wave > 1:
+	# Continue only the same run: a later wave on the profile and character the
+	# open file's header names (final review I2).
+	if open and RunData.current_wave > 1 \
+			and rt.recorder.continues(ProgressData.current_profile_id, character_id):
 		return
 	if open:
-		# Wave 1 again with a run still open: the last run was left via the menu.
+		# Wave 1 again, or a different profile/character: the open run was left.
 		rt.recorder.end_run({"outcome": "abandoned", "wave": null, "hp": null, "gold": null})
-	var character_id = RunData.get_player_character(0).my_id
 	var plan_id = "builtin"
 	var loaded = PlanFile.load_cached(PlanFile.DEFAULT_PATH)
 	if typeof(loaded) == TYPE_DICTIONARY and loaded.character_id == str(character_id):
@@ -76,6 +79,8 @@ func _bot_start_recording():
 		"start_wave": RunData.current_wave,
 	})
 	rt.on_run_started()
+	# The bot is often enabled before the file opens: log its state now.
+	rt.record_bot_state("run_start")
 
 
 # Every wave start: warn once per run if the game would pause when the window

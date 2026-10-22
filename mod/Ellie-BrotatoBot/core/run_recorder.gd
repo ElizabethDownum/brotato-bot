@@ -16,6 +16,7 @@ extends Reference
 # local time from OS.get_datetime().
 
 var run_id = ""
+var header = {}   # the open run's header line ({} when none)
 
 var _root_dir = ""
 var _file = null
@@ -54,6 +55,7 @@ func start_run(header):
 	_start_ms = OS.get_ticks_msec()
 	var h = header.duplicate(true)
 	h["run_id"] = run_id
+	self.header = h
 	event("header", h)
 	return run_id
 
@@ -84,6 +86,36 @@ func end_run(outcome):
 func _close():
 	_file.close()
 	_file = null
+	header = {}
+
+
+# True when a run file is open and its header names this profile and
+# character: only then may a later wave continue it (final review I2).
+func continues(profile_id, character_id) -> bool:
+	return is_open() and same_run(header, profile_id, character_id)
+
+
+static func same_run(h, profile_id, character_id) -> bool:
+	if typeof(h) != TYPE_DICTIONARY or not h.has("profile_id") or h.get("profile_id") == null:
+		return false
+	return int(h.profile_id) == int(profile_id) and str(h.get("character_id", "")) == str(character_id)
+
+
+# One shop event (spec 7.1): every bot buy / reroll / lock / ban / GO.
+#   wave, price, gold_after  ints (price null for go; the reroll's cost for reroll)
+#   item_id                  String, or null (reroll / go)
+#   score                    float, or null (reroll / ban / go)
+#   source                   "rule" | "haiku" (the sidecar's applied answer)
+static func shop_event(wave, action, item_id, price, score, source, gold_after) -> Dictionary:
+	return {
+		"wave": int(wave),
+		"action": str(action),
+		"item_id": null if item_id == null else str(item_id),
+		"price": null if price == null else int(price),
+		"score": null if score == null else float(score),
+		"source": str(source),
+		"gold_after": int(gold_after),
+	}
 
 
 # YYYYMMDD-HHMMSS-<character without "character_">-d<danger>.

@@ -8,7 +8,7 @@ const ShopAdvisor = preload("res://mods-unpacked/Ellie-BrotatoBot/shopping/shop_
 const BotRuntime = preload("res://mods-unpacked/Ellie-BrotatoBot/bot_runtime.gd")
 const Coop = preload("res://mods-unpacked/Ellie-BrotatoBot/extensions/ui/menus/run/coop_mouse_select.gd")
 const DecisionClient = preload("res://mods-unpacked/Ellie-BrotatoBot/core/decision_client.gd")
-const BotPaths = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_paths.gd")
+const RunRecorder = preload("res://mods-unpacked/Ellie-BrotatoBot/core/run_recorder.gd")
 
 const SETUP_WAIT = 0.35   # let _ready() finish populating the offering + UI
 const BUY_WAIT = 0.09     # container enforces a 0.05s buy lockout; clear it
@@ -473,11 +473,11 @@ func _auto_shop_player(pi) -> void:
 			var ask = _decision_options(nodes, gold, plan, pi)
 			var rt = BotRuntime.instance()
 			var why = ""
-			if DecisionClient.sidecar_alive(BotPaths.ROOT, OS.get_unix_time()):
+			if rt.sidecar_ready():
 				why = DecisionClient.should_ask(ask.scores, ask.affordable, rt.config,
 					ask.ids, plan.get("ask_on", []))
 			if why != "":
-				var r = yield(rt.decide("pivot" if why == "pivot" else "shop", ask.options), "completed")
+				var r = yield(rt.decide("pivot" if why == "pivot" else "shop", ask.options, "shop"), "completed")
 				if not _bot_continue(pi):
 					abandoned = true
 					break   # halted or Ellie paused while deciding: act no further, no GO
@@ -487,6 +487,7 @@ func _auto_shop_player(pi) -> void:
 				var target = ask.nodes[oi] if oi >= 0 and oi < ask.nodes.size() else null
 				if target != null and (not is_instance_valid(target) or not target.active):
 					target = null
+				var target_score = ask.scores[oi] if target != null else null
 				var applied = "rule"
 				if act == "buy" and target != null and int(target.value) <= gold:
 					tried[target.get_instance_id()] = true
@@ -495,7 +496,10 @@ func _auto_shop_player(pi) -> void:
 						save_floor = gold_floor
 					bought.push_back("%s@%d(ai)" % [target.item_data.my_id, int(target.value)])
 					buys += 1
+					var t_id = target.item_data.my_id
+					var t_price = int(target.value)
 					container.on_shop_item_buy_button_pressed(target)
+					_record_shop(pi, "buy", t_id, t_price, target_score, "haiku")
 					applied = "buy"
 				elif act == "lock" and target != null:
 					if not target.locked:
@@ -503,13 +507,16 @@ func _auto_shop_player(pi) -> void:
 					tried[target.get_instance_id()] = true   # keep it, do not buy it this pass
 					save_floor = gold_floor + int(target.value)
 					saved_note = " lock=%s@%d(ai)" % [target.item_data.my_id, int(target.value)]
+					_record_shop(pi, "lock", target.item_data.my_id, int(target.value), target_score, "haiku")
 					applied = "lock"
 				elif act == "reroll" and _reroll_price.size() > pi:
 					var rprice = _reroll_price[pi]
 					if rprice <= 0 or _free_rerolls[pi] > 0 or _has_bonus_free_reroll[pi] or gold >= rprice:
 						rerolls += 1
 						tried.clear()
+						var paid = 0 if (rprice <= 0 or _free_rerolls[pi] > 0 or _has_bonus_free_reroll[pi]) else rprice
 						_on_RerollButton_pressed(pi)
+						_record_shop(pi, "reroll", null, paid, null, "haiku")
 						applied = "reroll"
 				elif act == "skip":
 					applied = "skip"
@@ -536,6 +543,7 @@ func _auto_shop_player(pi) -> void:
 		# save_floor -- it IS the thing we were saving for.
 		var best_node = null
 		var best_score = plan["min_buy"]
+		var best_raw_score = 0.0   # best_node's score without the locked bonus (shop event)
 		for node in nodes:
 			if node == null or not node.active:
 				continue
@@ -546,10 +554,12 @@ func _auto_shop_player(pi) -> void:
 			if not node.locked and gold - int(node.value) < save_floor:
 				continue
 			var sc = ShopAdvisor.score_shop_entry([node.item_data, node.wave_value], plan, pi)
+			var raw_sc = sc
 			if node.locked:
 				sc += 1000.0   # buy what we committed to first
 			if sc > best_score:
 				best_score = sc
+				best_raw_score = raw_sc
 				best_node = node
 		if best_node != null:
 			tried[best_node.get_instance_id()] = true
@@ -558,7 +568,10 @@ func _auto_shop_player(pi) -> void:
 				save_floor = gold_floor                # target acquired -> back to the plan's floor
 			bought.push_back("%s@%d(%.0f)" % [best_node.item_data.my_id, int(best_node.value), best_score])
 			buys += 1
+			var b_id = best_node.item_data.my_id
+			var b_price = int(best_node.value)
 			container.on_shop_item_buy_button_pressed(best_node)
+			_record_shop(pi, "buy", b_id, b_price, best_raw_score, "rule")
 			yield(get_tree().create_timer(BUY_WAIT, false), "timeout")
 			continue
 		# Nothing affordable to buy. If a strong weapon is on offer that we cannot
@@ -570,6 +583,8 @@ func _auto_shop_player(pi) -> void:
 			if target != null:
 				if not target.locked:
 					target.change_lock_status(true)
+					_record_shop(pi, "lock", target.item_data.my_id, int(target.value),
+						ShopAdvisor.score_weapon(target.item_data, plan, pi), "rule")
 				save_floor = gold_floor + int(target.value)
 				saved_note = " lock=%s@%d" % [target.item_data.my_id, int(target.value)]
 				continue   # re-loop: keep shopping with the rest of the gold
@@ -601,6 +616,7 @@ func _auto_shop_player(pi) -> void:
 			rerolls += 1
 			tried.clear()   # a reroll replaces the offering
 			_on_RerollButton_pressed(pi)
+			_record_shop(pi, "reroll", null, 0 if free else price, null, "rule")
 			yield(get_tree().create_timer(REROLL_WAIT, false), "timeout")
 			continue
 		break
@@ -614,6 +630,7 @@ func _auto_shop_player(pi) -> void:
 	# base_shop.gd:301), so a pause here would drop GO silently: check first.
 	if _bot_continue(pi):
 		_on_GoButton_pressed(pi)
+		_record_shop(pi, "go", null, null, null, "rule")
 
 # The scored offering for a sidecar decision. Only active nodes are options;
 # option i (options[i].index == i, the response's option_index) is nodes[i]:
@@ -642,6 +659,17 @@ func _decision_options(nodes, gold, plan, pi) -> Dictionary:
 		if int(node.value) <= gold:
 			out.affordable.append(i)
 	return out
+
+# One shop event per bot action (RunRecorder.shop_event): action "buy" |
+# "reroll" | "lock" | "ban" | "go", source "rule" | "haiku", gold_after read
+# right after the action (the base buy / reroll handlers update gold
+# synchronously -- unverified in game). The BOTLOG SHOP summary line stays.
+func _record_shop(pi, action, item_id, price, score, source) -> void:
+	var rt = BotRuntime.instance()
+	if rt == null or rt.recorder == null or not rt.recorder.is_open():
+		return
+	rt.recorder.event("shop", RunRecorder.shop_event(RunData.current_wave, action, item_id,
+		price, score, source, RunData.get_player_gold(pi)))
 
 # Follow-up to BotRuntime's decision event: what the shop actually did.
 # {id, action (the response's, or null), option_index (or null), applied:
@@ -718,7 +746,10 @@ func _apply_bans(pi, plan) -> void:
 		if pdata.remaining_ban_token <= 0:
 			break
 		if bans.has(node.item_data.my_id) and not pdata.banned_items.has(node.item_data.my_id_hash):
+			var ban_id = node.item_data.my_id
+			var ban_price = int(node.value)
 			container.on_shop_item_ban_button_pressed(node)
+			_record_shop(pi, "ban", ban_id, ban_price, null, "rule")
 			print("BOTLOG BAN player=%d wave=%d item=%s tokens_left=%d" % [
 				pi, RunData.current_wave, node.item_data.my_id, pdata.remaining_ban_token])
 	CoopService.auto_banning = false

@@ -134,3 +134,9 @@ func test_visible_when_idle_with_ai_visuals():
 
 func test_visible_when_acting_without_status():
 	assert_true(Overlay.visible(false, "acting", ""), "acting")
+
+
+func test_line4_sidecar_off():
+	assert_eq(_line(3, {"asking_off": true}), "sidecar: off", "breaker tripped")
+	assert_eq(_line(3, {"asking_off": true, "plan_present": false}), "no plan.json | sidecar: off", "with another warning")
+	assert_eq(_line(3, {"asking_off": false}), "", "asking on")

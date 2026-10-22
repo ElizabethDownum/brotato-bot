@@ -8,7 +8,6 @@ const ShopAdvisor = preload("res://mods-unpacked/Ellie-BrotatoBot/shopping/shop_
 const BotRuntime = preload("res://mods-unpacked/Ellie-BrotatoBot/bot_runtime.gd")
 const Coop = preload("res://mods-unpacked/Ellie-BrotatoBot/extensions/ui/menus/run/coop_mouse_select.gd")
 const DecisionClient = preload("res://mods-unpacked/Ellie-BrotatoBot/core/decision_client.gd")
-const BotPaths = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_paths.gd")
 
 const PICK_WAIT = 0.3    # pace between picks -- slow enough to watch each selection land
                          # (also must exceed the container's 0.1s ButtonDelayTimer, or a
@@ -264,16 +263,18 @@ func _auto_pick_loop() -> void:
 					var rt = BotRuntime.instance()
 					# Ask only while a sidecar is alive; otherwise source stays "rule".
 					var why = ""
-					if DecisionClient.sidecar_alive(BotPaths.ROOT, OS.get_unix_time()):
+					if rt.sidecar_ready():
 						why = DecisionClient.should_ask(ask.scores, ask.affordable, rt.config,
 							ask.ids, plan.get("ask_on", []))
 					var source = "rule"
+					var decision_id = ""
 					var idx = -1
 					if why != "":
 						_auto_deciding = true
-						var r = yield(rt.decide("pivot" if why == "pivot" else "levelup", ask.options), "completed")
+						var r = yield(rt.decide("pivot" if why == "pivot" else "levelup", ask.options, "levelup"), "completed")
 						_auto_deciding = false
 						_auto_heartbeat += 1
+						decision_id = str(rt.last_decision.get("id", ""))
 						if not _bot_may_continue():
 							_auto_busy = false
 							return   # halted, or a pause menu is open: no pick
@@ -290,7 +291,7 @@ func _auto_pick_loop() -> void:
 					if idx < 0:
 						idx = ShopAdvisor.pick_upgrade(ups, plan, pi)
 					idx = int(clamp(idx, 0, ups.size() - 1))
-					_record_levelup(rt, ups[idx], ask.options, source)
+					_record_levelup(rt, ups[idx], ask.options, source, decision_id)
 					container._on_choose_button_pressed(ups[idx])
 			elif container._items_container.visible:
 				# A crate/consumable item is shown. Items are free stats -- take
@@ -334,10 +335,12 @@ func _levelup_options(ups, plan, pi) -> Dictionary:
 		out.ids.append(u.my_id)
 	return out
 
-# One levelup event per bot pick: {picked (upgrade id), alternatives (every
-# option offered, with scores), source: "haiku" (the sidecar's pick), "rule"
-# (not asked, or the answer was invalid / not a usable pick) or "timeout"}.
-func _record_levelup(rt, picked, options, source) -> void:
+# One levelup event per bot pick: {wave, id (the decision's id, "" when not
+# asked), picked (upgrade id), alternatives (every option offered, with
+# scores), source: "haiku" (the sidecar's pick), "rule" (not asked, or the
+# answer was invalid / not a usable pick) or "timeout"}.
+func _record_levelup(rt, picked, options, source, decision_id) -> void:
 	if rt.recorder == null or not rt.recorder.is_open():
 		return
-	rt.recorder.event("levelup", {"picked": picked.my_id, "alternatives": options, "source": source})
+	rt.recorder.event("levelup", {"wave": RunData.current_wave, "id": decision_id,
+		"picked": picked.my_id, "alternatives": options, "source": source})

@@ -108,7 +108,7 @@ func _toggle_bot():
 		enable_autobattler = false
 		enable_autoshop = false
 		if rt != null:
-			rt.bot_state = "idle"
+			rt.set_bot_state("idle", "toggle_off")
 			rt.set_status("")
 	else:
 		if rt == null:
@@ -122,7 +122,7 @@ func _toggle_bot():
 			return
 		enable_autobattler = true
 		enable_autoshop = true
-		rt.bot_state = "acting"
+		rt.set_bot_state("acting", "enabled")
 		rt.set_status("")
 	# Notify our own listeners (the player's ai_icon marker updates from this).
 	emit_signal("setting_changed", ENABLE_AUTOBATTLER_OPTION_NAME, enable_autobattler, MOD_NAME)

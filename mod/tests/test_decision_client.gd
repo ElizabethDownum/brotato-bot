@@ -188,3 +188,24 @@ func test_validate_response_coerces_float_index():
 	var c = {"action": "skip", "confidence": 1}
 	assert_true(DecisionClient.validate_response(c), "int confidence accepted")
 	assert_eq(c.get("confidence"), 1.0, "confidence coerced to float")
+
+
+func test_build_request_carries_screen_and_kind():
+	var opts = [{"index": 0, "id": "item_anvil"}]
+	var r = DecisionClient.build_request("pivot", "levelup", "run-a", 4, "user://s.json", opts, 99)
+	assert_eq(r.get("kind"), "pivot", "kind stays pivot")
+	assert_eq(r.get("screen"), "levelup", "screen says which screen")
+	assert_eq(r.get("run_id"), "run-a", "run_id")
+	assert_eq(r.get("seq"), 4, "seq")
+	assert_eq(r.get("state_path"), "user://s.json", "state_path")
+	assert_eq(r.get("options"), opts, "options")
+	assert_eq(r.get("deadline_ms"), 99, "deadline_ms")
+	var keys = r.keys()
+	keys.sort()
+	assert_eq(keys, ["deadline_ms", "kind", "options", "run_id", "screen", "seq", "state_path"], "exact fields")
+
+
+func test_screen_for_kind():
+	assert_eq(DecisionClient.SCREENS, ["shop", "levelup", "checkpoint"], "screens")
+	var r = DecisionClient.build_request("checkpoint", "checkpoint", "r", 1, "p", [], 0)
+	assert_eq(r.get("screen"), "checkpoint", "checkpoint screen")

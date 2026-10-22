@@ -27,6 +27,8 @@ extends Node
 #                  decision) and no decide() consumed it; bot coroutines stop
 #                  (bot_may_continue). Cleared by begin_bot_screen() at a shop
 #                  visit's start and when a decision starts
+#   ask_policy     AskPolicy timeout breaker for this run (reset at run start);
+#                  callers ask only while sidecar_ready()
 
 const BotConfig = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_config.gd")
 const Guards = preload("res://mods-unpacked/Ellie-BrotatoBot/core/guards.gd")
@@ -37,6 +39,7 @@ const PlanFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/plan_file.gd
 const Checkpoint = preload("res://mods-unpacked/Ellie-BrotatoBot/core/checkpoint.gd")
 const Overlay = preload("res://mods-unpacked/Ellie-BrotatoBot/core/overlay.gd")
 const HumanPause = preload("res://mods-unpacked/Ellie-BrotatoBot/core/human_pause.gd")
+const AskPolicy = preload("res://mods-unpacked/Ellie-BrotatoBot/core/ask_policy.gd")
 
 const NODE_NAME = "BotRuntime"
 const RECENT_MAX = 10
@@ -55,6 +58,7 @@ var checkpoint_done = false
 var run_outcome = ""
 var deciding_deadline_ms = 0
 var human_paused = false
+var ask_policy = AskPolicy.new()
 var _halt_after_decide = false   # a move key during a decision: halt once it ends
 var _pause_menu_ref = null       # weakref to the shop's PauseMenu (on_human_pause)
 
@@ -135,7 +139,8 @@ func _on_challenge_completed(chal):
 # persistent autoload, because main is freed by the scene change. Marks the
 # checkpoint done, then:
 #   - no live sidecar (decide()'s contract): no request, no pause; checkpoint
-#     {applied: "skip", reason: "no_sidecar"}
+#     {applied: "skip", reason: "no_sidecar"}; with asking off for the run
+#     (AskPolicy breaker) the reason is "asking_disabled"
 #   - else decide("checkpoint", []), mapped by Checkpoint.wanted(response,
 #     last_decision.source, bot_state == "acting"): a revise_plan answer is
 #     applied with apply_plan_patch for player 0's character (a failed save is
@@ -144,10 +149,13 @@ func _on_challenge_completed(chal):
 # Records checkpoint {id, action, applied, reason} (reason "" when none).
 func checkpoint():
 	checkpoint_done = true
+	if not ask_policy.allowed():
+		_record_checkpoint({"id": "", "action": null, "applied": "skip", "reason": "asking_disabled"})
+		return
 	if not DecisionClient.sidecar_alive(BotPaths.ROOT, OS.get_unix_time()):
 		_record_checkpoint({"id": "", "action": null, "applied": "skip", "reason": "no_sidecar"})
 		return
-	var r = yield(decide("checkpoint", []), "completed")
+	var r = yield(decide("checkpoint", [], "checkpoint"), "completed")
 	var out = Checkpoint.wanted(r, last_decision.get("source", ""), bot_state == "acting")
 	if out.applied == "revise_plan":
 		var ch = RunData.get_player_character(0) if RunData.get_player_count() > 0 else null
@@ -258,6 +266,7 @@ func _update_overlay():
 		"last_decision": last_decision,
 		"focus_ok": progress == null or Guards.focus_setting_ok(progress.settings),
 		"plan_present": _overlay_plan_present,
+		"asking_off": not ask_policy.allowed(),
 	})
 	if _status_label.text != t:
 		_status_label.text = t
@@ -354,18 +363,36 @@ func move_scancodes() -> Array:
 
 
 # Back at the main menu: the bot is off for the next run (Continue loads the
-# shop directly, so enablement must not carry over). Not a halt: no event.
+# shop directly, so enablement must not carry over). Not a halt: a bot_state
+# event {idle, main_menu}, then the open run file is closed as abandoned so a
+# different run (another profile's Continue) never lands in it (final review I2).
 func reset_for_menu():
-	bot_state = "idle"
+	set_bot_state("idle", "main_menu")
 	_disable_flags()
 	set_status("")
+	if recorder != null and recorder.is_open():
+		recorder.end_run({"outcome": "abandoned", "wave": null, "hp": null, "gold": null})
+	run_id = ""
+
+
+# Sets bot_state and records a bot_state event {state, reason} on an open run
+# file (enable, toggle-off, halt, menu reset; main.gd also logs the state at
+# run start, since the bot is often enabled before the file opens).
+func set_bot_state(state: String, reason: String):
+	bot_state = state
+	record_bot_state(reason)
+
+
+func record_bot_state(reason: String):
+	if recorder != null and recorder.is_open():
+		recorder.event("bot_state", {"state": bot_state, "reason": reason})
 
 
 # Stops the bot at once: state "halted", both bot flags off on
 # /root/AutobattlerOptions (persisted), a halt event, and the HALTED status.
 # A later Shift+Space goes through the enable guards again.
 func halt(reason: String):
-	bot_state = "halted"
+	set_bot_state("halted", reason)
 	_disable_flags()
 	if recorder != null:
 		recorder.event("halt", {"reason": reason})
@@ -413,7 +440,14 @@ func on_run_started():
 	target_fired = false
 	checkpoint_done = false
 	run_outcome = ""
+	ask_policy.reset()
 	_refresh_plan_info()
+
+
+# Callers ask the sidecar only while this holds: the AskPolicy breaker has not
+# turned asking off for this run, and sidecar.alive is fresh.
+func sidecar_ready() -> bool:
+	return ask_policy.allowed() and DecisionClient.sidecar_alive(BotPaths.ROOT, OS.get_unix_time())
 
 
 # Called by ai_telemetry next to each recorder snapshot; keeps the last RECENT_MAX.
@@ -452,8 +486,9 @@ func export_state(kind: String) -> String:
 #   2. export_state(kind) writes state/<id>.json; the request id is
 #      "<run_id>-<seq:03>" for that same seq, so state and request match.
 #      A leftover responses/<id>.json is deleted before the request is written.
-#   3. Writes requests/<id>.json {kind, run_id, seq, state_path, options,
-#      deadline_ms (epoch ms)} via DecisionClient.
+#   3. Writes requests/<id>.json {kind, screen, run_id, seq, state_path,
+#      options, deadline_ms (epoch ms)} via DecisionClient.build_request;
+#      screen is "shop" | "levelup" | "checkpoint" (default: kind).
 #   4. bot_state "deciding", status "DECIDING: <kind>", tree paused; polls
 #      responses/ every POLL_S (timers process while paused) until a response
 #      or the timeout (config checkpoint_timeout_ms for "checkpoint", else
@@ -470,17 +505,19 @@ func export_state(kind: String) -> String:
 #      to "acting" and restores the status shown before decide() (an F9
 #      export meanwhile included). A move key then halts ("human input").
 #   Callers ask only while DecisionClient.sidecar_alive(...) is true.
-#   6. Records a decision event {request_kind, id, source, response} with source
+#   6. Records a decision event {request_kind, id, wave, source, response} with source
 #      "haiku" (valid response), "invalid" (a response that failed
 #      validate_response; its file is deleted all the same), "interrupted"
 #      (human unpause, step 4), "busy" (step 0) or "timeout" (also used when
 #      the export or request write failed, or on a halt), stores
 #      {kind, id, source, response} in last_decision, and returns the
-#      response or null.
+#      response or null. The source goes to ask_policy: the second
+#      consecutive timeout turns asking off for the run, with a warning event
+#      {message: AskPolicy.WARNING}; the overlay then shows "sidecar: off".
 # The caller records what it actually did as a decision_applied event.
 const POLL_S = 0.25
 
-func decide(kind: String, options: Array):
+func decide(kind: String, options: Array, screen: String = ""):
 	if bot_state == "deciding":
 		yield(get_tree(), "idle_frame")
 		_record_decision(kind, "", "busy", null)
@@ -488,6 +525,8 @@ func decide(kind: String, options: Array):
 	if bot_state != "acting":
 		yield(get_tree(), "idle_frame")
 		return null
+	if screen == "":
+		screen = kind
 	var timeout_key = "checkpoint_timeout_ms" if kind == "checkpoint" else "request_timeout_ms"
 	var timeout_ms = int(config.get(timeout_key, 120000 if kind == "checkpoint" else 45000))
 	var state_path = export_state(kind)
@@ -496,14 +535,8 @@ func decide(kind: String, options: Array):
 	var id = ""
 	if state_path != "":
 		client.discard_response(DecisionClient.request_id(rid, seq))
-		id = client.write_request({
-			"kind": kind,
-			"run_id": rid,
-			"seq": seq,
-			"state_path": state_path,
-			"options": options,
-			"deadline_ms": OS.get_system_time_msecs() + timeout_ms,
-		})
+		id = client.write_request(DecisionClient.build_request(kind, screen, rid, seq,
+			state_path, options, OS.get_system_time_msecs() + timeout_ms))
 	if id == "":
 		yield(get_tree(), "idle_frame")
 		_record_decision(kind, DecisionClient.request_id(rid, seq), "timeout", null)
@@ -555,6 +588,8 @@ func decide(kind: String, options: Array):
 		else:
 			source = "invalid"
 	_record_decision(kind, id, source, response)
+	if ask_policy.record(source) and recorder != null and recorder.is_open():
+		recorder.event("warning", {"message": AskPolicy.WARNING})
 	if _halt_after_decide:
 		_halt_after_decide = false
 		if bot_state == "acting":
@@ -567,8 +602,15 @@ func decide(kind: String, options: Array):
 func _record_decision(kind, id, source, response):
 	last_decision = {"kind": kind, "id": id, "source": source, "response": response}
 	if recorder != null and recorder.is_open():
-		recorder.event("decision", {"request_kind": kind, "id": id, "source": source,
+		recorder.event("decision", {"request_kind": kind, "id": id, "wave": current_wave(),
+			"source": source,
 			"response": response.duplicate(true) if typeof(response) == TYPE_DICTIONARY else response})
+
+
+# RunData.current_wave, or null without RunData.
+func current_wave():
+	var rd = get_node_or_null("/root/RunData")
+	return rd.current_wave if rd != null else null
 
 
 # Game quit with a run still open: close the file with an end line.

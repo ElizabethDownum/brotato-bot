@@ -13,6 +13,7 @@ extends Reference
 #   plan_id, target       plan in effect and target challenge ("" when none)
 #   last_decision         {kind, id, source, response} ({} when none)
 #   focus_ok, plan_present  Guards.focus_setting_ok / Guards.plan_present
+#   asking_off            the AskPolicy breaker tripped (no sidecar asks this run)
 # and returns four lines (any may be ""):
 #   1. status_text, else "RUN COMPLETE: <outcome>" when complete, else
 #      "BOT <bot_state>"; while deciding with a deadline, " <seconds left>s"
@@ -20,7 +21,8 @@ extends Reference
 #   2. "plan <plan_id> | target <target or none>" ("-" for an unknown plan)
 #   3. "<kind>: <action> #<option_index> via <source>" for the last decision
 #      ("#<option_index>" only when the response has one, "-" for no action)
-#   4. warnings joined by " | ": "focus: pause_on_focus_lost", "no plan.json"
+#   4. warnings joined by " | ": "focus: pause_on_focus_lost", "no plan.json",
+#      "sidecar: off"
 
 
 static func lines(s: Dictionary) -> Array:
@@ -81,4 +83,6 @@ static func _warning_line(s):
 		w.append("focus: pause_on_focus_lost")
 	if not s.get("plan_present", true):
 		w.append("no plan.json")
+	if s.get("asking_off", false):
+		w.append("sidecar: off")
 	return PoolStringArray(w).join(" | ")

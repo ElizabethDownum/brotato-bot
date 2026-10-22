@@ -6,8 +6,11 @@ extends Reference
 # script.
 #
 # Files under root (BotPaths.ROOT in the game):
-#   requests/<id>.json   {id, kind, run_id, seq, state_path, options, deadline_ms}
+#   requests/<id>.json   {id, kind, screen, run_id, seq, state_path, options,
+#                        deadline_ms} (build_request plus id)
 #                        kind: "shop" | "levelup" | "pivot" | "checkpoint";
+#                        screen: "shop" | "levelup" | "checkpoint" (which
+#                        screen asks: a pivot comes from the shop or a level-up);
 #                        id = "<run_id>-<seq:03>" (seq is the state export's,
 #                        so state/<id>.json is the matching state file);
 #                        deadline_ms is absolute epoch ms (OS.get_system_time_msecs)
@@ -32,6 +35,7 @@ const DEFAULT_TIE_MARGIN = 3.0
 const DEFAULT_FLOOR = 4.0
 const ALIVE_FILE = "sidecar.alive"
 const ALIVE_MAX_AGE_S = 10
+const SCREENS = ["shop", "levelup", "checkpoint"]
 
 var root_dir = BotPaths.ROOT
 
@@ -99,6 +103,20 @@ static func should_ask(scores: Array, affordable: Array, cfg: Dictionary,
 	if best - second < margin or best < floor_v:
 		return "ask"
 	return ""
+
+
+# The request body (write_request adds "id"). option_index in a response
+# indexes options[] only, never the state file's shop[].index.
+static func build_request(kind, screen, run_id, seq, state_path, options, deadline_ms) -> Dictionary:
+	return {
+		"kind": str(kind),
+		"screen": str(screen),
+		"run_id": str(run_id),
+		"seq": int(seq),
+		"state_path": str(state_path),
+		"options": options,
+		"deadline_ms": deadline_ms,
+	}
 
 
 # Writes requests/<id>.json atomically (tmp file, then rename) and returns the
