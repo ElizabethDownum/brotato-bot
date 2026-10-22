@@ -15,9 +15,10 @@ character. Every other challenge is character-agnostic (``requires_character`` i
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from brotato_bot.dataset.keys import generate_hash
 from brotato_bot.dataset.spud.builders.localization import parse_translations_csv
@@ -183,3 +184,36 @@ def unlock_state(graph: list[Challenge], save: dict, profile_id: int) -> dict:
         "characters": dict(sorted(characters.items())),
         "progress": progress,
     }
+
+
+_FORMAT_ARG = re.compile(r"\{(\d+)\}")
+
+
+def _fmt(template: str, args: list[str]) -> str:
+    return _FORMAT_ARG.sub(
+        lambda m: args[int(m.group(1))] if int(m.group(1)) < len(args) else m.group(0), template
+    )
+
+
+def challenge_texts(graph: Iterable[Any], dataset: dict | None = None) -> dict[str, dict]:
+    """``{challenge_id: {"name", "description"}}`` in English, formatted as the game does
+    (``ChallengeData.get_name_text`` / ``get_description_text``): the name takes the
+    challenge's ``number``; a "win a run with" description takes the character's name,
+    any other the completion ``value`` and the stat. ``graph`` is ``unlocks.build_graph``.
+    """
+    chars = {c.get("id"): c for c in (dataset or {}).get("characters") or []}
+    out: dict[str, dict] = {}
+    for c in graph:
+        if c.requires_character:
+            who = c.name_en
+            if not who or who == c.name_key:
+                rec = chars.get(c.requires_character) or {}
+                who = rec.get("display_name") or rec.get("name") or c.requires_character
+            args = [who]
+        else:
+            args = [str(c.value), c.stat.removeprefix("stat_").replace("_", " ")]
+        out[c.id] = {
+            "name": _fmt(c.name_en, [str(c.number)]),
+            "description": _fmt(c.desc_en, args),
+        }
+    return out

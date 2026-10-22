@@ -1,7 +1,9 @@
-"""Render a RunSummary as markdown through ``templates/run.md.tmpl`` (``str.format``)."""
+"""Render a RunSummary as markdown through ``templates/run.md.tmpl``, and a sidecar
+checkpoint through ``templates/checkpoint.md.tmpl`` (both ``str.format``)."""
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
@@ -9,6 +11,7 @@ from typing import Any
 from brotato_bot.run.models import RunSummary
 
 TEMPLATE = Path(__file__).parent / "templates" / "run.md.tmpl"
+CHECKPOINT_TEMPLATE = TEMPLATE.with_name("checkpoint.md.tmpl")
 NONE = "_none_"
 
 
@@ -119,4 +122,61 @@ def run_report(summary: RunSummary, outcomes: dict[str, str] | None = None) -> s
         decisions_table=decisions,
         death_section=_death_section(s),
         challenges_section=_challenges_section(s),
+    )
+
+
+def _list(values: list) -> str:
+    return ", ".join(str(v) for v in values) or "none"
+
+
+def checkpoint_report(
+    run_id: str, state: dict, plan: dict, decision: dict | None, source: str
+) -> str:
+    """``runs/<run_id>-checkpoint.md`` for a checkpoint request: the state at the
+    checkpoint, and the sidecar's ``decision`` (None on ``fallback``) as a proposal."""
+    target = state.get("target_challenge") or plan.get("target_challenge") or "none"
+    hp = f", HP {state['hp']}/{state.get('max_hp')}" if state.get("hp") is not None else ""
+    achieved = "\n".join(
+        [
+            f"- Target challenge: {target}",
+            f"- Challenges completed this run: {_list(state.get('unlocks_this_run') or [])}",
+            f"- Wave {state.get('wave')}{hp}, gold {state.get('gold')}",
+        ]
+    )
+    weapons = [w.get("id") for w in state.get("weapons") or [] if isinstance(w, dict)]
+    items = [
+        f"{i.get('id')} x{i.get('count', 1)}"
+        for i in state.get("items") or []
+        if isinstance(i, dict)
+    ]
+    stats = [f"{k} {v}" for k, v in sorted((state.get("stats") or {}).items()) if v]
+    remaining = "\n".join(
+        [
+            f"- Weapons: {_list(weapons)}",
+            f"- Items: {_list(items)}",
+            f"- Stats: {_list(stats)}",
+            f"- Plan in effect: {state.get('plan_id') or plan.get('plan_id') or '?'}",
+        ]
+    )
+    if decision is None:
+        revision = f"None: no decision ({source}); the mod times out and keeps the plan."
+    elif decision.get("action") == "revise_plan":
+        patch = json.dumps(decision.get("plan_patch"), indent=2, ensure_ascii=False)
+        revision = (
+            f"`revise_plan` (confidence {decision.get('confidence')}) with this proposed "
+            f"plan patch; the run's checkpoint event records whether the mod applied it:"
+            f"\n\n```json\n{patch}\n```"
+        )
+    else:
+        revision = (
+            f"None: `{decision.get('action')}` (confidence {decision.get('confidence')}); "
+            "no plan change proposed."
+        )
+    return CHECKPOINT_TEMPLATE.read_text(encoding="utf-8").format(
+        run_id=run_id,
+        wave=state.get("wave") if state.get("wave") is not None else "?",
+        achieved=achieved,
+        remaining=remaining,
+        plan_revision=revision,
+        rationale=(decision or {}).get("rationale") or NONE,
     )

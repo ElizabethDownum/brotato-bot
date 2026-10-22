@@ -19,7 +19,7 @@ Inputs as the mod and the harness write them:
   (``weapon_smg`` tier 1 is the game's ``weapon_smg_1``); items, characters and sets are
   keyed by the game's ``my_id``.
 - ``unlock_state``: ``unlocks.unlock_state(...)`` (``data/unlock_state.json``), optionally
-  with a ``challenges`` key holding ``challenge_texts(graph, dataset)`` for English
+  with a ``challenges`` key holding ``unlocks.challenge_texts(graph, dataset)`` for English
   challenge text; without it the objective falls back to the id and its progress entry.
 - ``knowledge``: ``knowledge.cache.load_all`` (``{slug: text with front matter}``).
 - ``experience``: ``experience.query`` rows.
@@ -29,10 +29,10 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from brotato_bot.dataset.unlocks import challenge_texts
 from brotato_bot.knowledge.cache import excerpt
 from brotato_bot.sidecar.schema import SCHEMA_PATH
 
@@ -44,7 +44,6 @@ PLAN_MAX_CHARS = 4000
 PLAN_TRUNCATED = "... [plan truncated: {n} more chars]"
 RECENT_SHOWN = 3
 _WEAPON_TIER_ID = re.compile(r"^(weapon_.+)_(\d+)$")
-_FORMAT_ARG = re.compile(r"\{(\d+)\}")
 _SLUG_JUNK = re.compile(r"[^a-z0-9]+")
 # Record keys left out of the Options section: provenance, and text the dataset leaves empty.
 _DROP_KEYS = frozenset({"source", "name"})
@@ -58,39 +57,6 @@ def system_prompt(kind: str) -> str:
     text = (PROMPTS_DIR / name).read_text(encoding="utf-8")
     schema_text = SCHEMA_PATH.read_text(encoding="utf-8").strip()
     return text.replace(SCHEMA_PLACEHOLDER, schema_text)
-
-
-# --- Challenge text -------------------------------------------------------------
-
-
-def _fmt(template: str, args: list[str]) -> str:
-    return _FORMAT_ARG.sub(
-        lambda m: args[int(m.group(1))] if int(m.group(1)) < len(args) else m.group(0), template
-    )
-
-
-def challenge_texts(graph: Iterable[Any], dataset: dict | None = None) -> dict[str, dict]:
-    """``{challenge_id: {"name", "description"}}`` in English, formatted as the game does
-    (``ChallengeData.get_name_text`` / ``get_description_text``): the name takes the
-    challenge's ``number``; a "win a run with" description takes the character's name,
-    any other the completion ``value`` and the stat. ``graph`` is ``unlocks.build_graph``.
-    """
-    chars = {c.get("id"): c for c in (dataset or {}).get("characters") or []}
-    out: dict[str, dict] = {}
-    for c in graph:
-        if c.requires_character:
-            who = c.name_en
-            if not who or who == c.name_key:
-                rec = chars.get(c.requires_character) or {}
-                who = rec.get("display_name") or rec.get("name") or c.requires_character
-            args = [who]
-        else:
-            args = [str(c.value), c.stat.removeprefix("stat_").replace("_", " ")]
-        out[c.id] = {
-            "name": _fmt(c.name_en, [str(c.number)]),
-            "description": _fmt(c.desc_en, args),
-        }
-    return out
 
 
 # --- Dataset lookup -------------------------------------------------------------

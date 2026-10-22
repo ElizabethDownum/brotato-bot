@@ -37,7 +37,7 @@ def _write(path: Path, obj) -> None:
     path.write_text(json.dumps(obj), encoding="utf-8")
 
 
-def _request(p, seq, kind="shop", options=OPTIONS, deadline_ms=None, wave=3):
+def _request(p, seq, kind="shop", options=OPTIONS, deadline_ms=None, wave=3, screen=None):
     rid = f"{RUN_ID}-{seq:03}"
     state = {
         "schema_version": 1,
@@ -61,7 +61,7 @@ def _request(p, seq, kind="shop", options=OPTIONS, deadline_ms=None, wave=3):
     req = {
         "id": rid,
         "kind": kind,
-        "screen": kind,
+        "screen": screen or kind,
         "run_id": RUN_ID,
         "seq": seq,
         "state_path": f"user://brotato-bot/state/{rid}.json",
@@ -178,6 +178,8 @@ def test_checkpoint_uses_checkpoint_model_and_writes_note(p):
     assert heads == ["## Achieved", "## Remaining potential", "## Plan revision", "## Rationale"]
     assert "chal_gatherer_1" in note.split("## Remaining potential")[0]
     assert '```json\n{\n  "max_rerolls": 5\n}\n```' in note
+    revision = note.split("## Plan revision")[1].split("## Rationale")[0]
+    assert "proposed plan patch" in revision and "merged into" not in revision
     assert note.split("## Rationale")[1].strip() == "target done; survive"
 
 
@@ -211,10 +213,122 @@ def test_auto_next_triggers_on_end_event(p, monkeypatch):
     assert calls == [
         (
             ["claude", "-p", "--model", "claude-sonnet-5-5", "/brotato-next"],
-            {"check": False, "cwd": p.project_root},
+            {"check": False, "cwd": p.project_root, "timeout": loop.NEXT_TIMEOUT_S},
         )
     ]
+    assert loop.NEXT_TIMEOUT_S == 600
     assert (p.runs_out / "20261022-201500-well_rounded-d0.md").is_file()
+
+
+def test_auto_next_timeout_keeps_polling(p, monkeypatch, capsys):
+    p.runs_in.mkdir(parents=True)
+
+    def timing_out(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd, kwargs["timeout"])
+
+    monkeypatch.setattr(loop.subprocess, "run", timing_out)
+    fake = FakeDecide(decide.Outcome(BUY, "haiku", []))
+    sidecar = loop.Sidecar(p, {}, decide_fn=fake, auto_next=True)
+    shutil.copy(RUN_FIXTURE, p.runs_in / "20261022-201500-well_rounded-d0.jsonl")
+    sidecar.poll_once()
+    out = capsys.readouterr().out
+    assert "running /brotato-next" in out
+    assert "WARNING: auto-next: /brotato-next timed out after 600 s" in out
+
+    rid = _request(p, 1)
+    assert sidecar.poll_once() == 1
+    assert (p.responses_dir / f"{rid}.json").is_file()
+
+
+def test_failing_request_does_not_stop_the_loop(p, capsys):
+    first, second = _request(p, 1), _request(p, 2)
+
+    def decide_fn(request, context, cfg, *, deadline_ms=None):
+        if request["id"] == first:
+            raise RuntimeError("boom")
+        return decide.Outcome(BUY, "haiku", [])
+
+    assert loop.Sidecar(p, {}, decide_fn=decide_fn).poll_once() == 2
+    assert list(p.requests_dir.iterdir()) == []
+    assert not (p.responses_dir / f"{first}.json").exists()
+    assert (p.responses_dir / f"{second}.json").is_file()
+    assert f"WARNING: [{first}] request failed: RuntimeError: boom" in capsys.readouterr().out
+    assert [r["id"] for r in _records(p)] == [second]
+
+
+def test_non_finite_deadline_is_rejected(p, capsys):
+    rid = _request(p, 1)
+    req_file = p.requests_dir / f"{rid}.json"
+    text = req_file.read_text(encoding="utf-8")
+    req_file.write_text(text.replace('"deadline_ms": ', '"deadline_ms": 1e309, "x": '), "utf-8")
+    fake = FakeDecide(decide.Outcome(BUY, "haiku", []))
+    assert loop.Sidecar(p, {}, decide_fn=fake).poll_once() == 1
+    assert fake.calls == [] and not req_file.exists()
+    assert f"WARNING: [{rid}] unreadable request deleted" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("bad_state", [None, "{not json", "[1, 2]"])
+def test_unusable_state_drops_the_request(p, capsys, bad_state):
+    bad, good = _request(p, 1), _request(p, 2)
+    state_file = p.state_dir / f"{bad}.json"
+    if bad_state is None:
+        state_file.unlink()
+    else:
+        state_file.write_text(bad_state, encoding="utf-8")
+    fake = FakeDecide(decide.Outcome(BUY, "haiku", []))
+
+    assert loop.Sidecar(p, {}, decide_fn=fake).poll_once() == 2
+
+    assert [c["request"]["id"] for c in fake.calls] == [good]
+    assert list(p.requests_dir.iterdir()) == []
+    assert not (p.responses_dir / f"{bad}.json").exists()
+    assert [r["id"] for r in _records(p)] == [good]
+    assert f"WARNING: [{bad}] no usable state file" in capsys.readouterr().out
+
+
+def test_past_decisions_come_from_experience_log(p):
+    row = {
+        "run_id": "earlier-run",
+        "kind": "shop",
+        "character_id": "character_well_rounded",
+        "wave": 2,
+        "action": "buy",
+        "chosen": "item_bag",
+        "source": "haiku",
+        "confidence": 0.6,
+        "outcome": "death",
+        "death_wave": 9,
+        "hp_next_wave": 4,
+        "kept_to_end": True,
+    }
+    _write(p.decisions_dir / "experience.jsonl", row)
+    _request(p, 1)
+    fake = FakeDecide(decide.Outcome(BUY, "haiku", []))
+
+    assert loop.Sidecar(p, {}, decide_fn=fake).poll_once() == 1
+
+    user = fake.calls[0]["user"]
+    past = user.split("## Past decisions")[1].split("## Answer format")[0]
+    assert "run earlier-run wave 2 shop: chose item_bag via haiku" in past
+    assert "-> death, death_wave 9" in past
+    assert [r["id"] for r in _records(p)] == ["run1-001"]
+    assert (p.decisions_dir / "experience.jsonl").read_text(encoding="utf-8") == json.dumps(row)
+
+
+def test_screen_routes_the_ladder(p):
+    rid = _request(p, 1, kind="pivot", screen="checkpoint")
+    fake = FakeDecide(decide.Outcome(None, "fallback", []))
+    cfg = {"checkpoint_model": "claude-checkpoint-x"}
+
+    assert loop.Sidecar(p, cfg, decide_fn=fake).poll_once() == 1
+
+    (call,) = fake.calls
+    assert call["request"]["kind"] == "checkpoint" and call["request"]["id"] == rid
+    assert "Decision: pivot (screen checkpoint)." in call["user"]
+    (rec,) = _records(p)
+    assert rec["kind"] == "pivot" and rec["screen"] == "checkpoint"
+    assert rec["model"] == "claude-checkpoint-x"
+    assert (p.runs_out / f"{RUN_ID}-checkpoint.md").is_file()
 
 
 def test_auto_next_is_off_by_default(p, monkeypatch):

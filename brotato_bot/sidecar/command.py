@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 
 from brotato_bot import cli, paths
-from brotato_bot.fsutil import read_json
+from brotato_bot.fsutil import read_json, read_json_or_empty
 from brotato_bot.knowledge import cache
 from brotato_bot.sidecar import decide, prompt
 
@@ -54,20 +54,12 @@ def request_from_state(state: dict, state_path: Path, kind: str, cfg: dict) -> d
     }
 
 
-def _read_optional(path: Path) -> dict:
-    try:
-        data = read_json(path)
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
 def prompt_inputs(p: paths.Paths) -> dict:
     """The ``prompt.build`` inputs every request shares, read from disk now:
     ``dataset``, ``unlock_state`` and ``knowledge`` (each empty when missing)."""
     return {
-        "dataset": _read_optional(p.data_dir / "brotato.json"),
-        "unlock_state": _read_optional(p.data_dir / "unlock_state.json"),
+        "dataset": read_json_or_empty(p.data_dir / "brotato.json"),
+        "unlock_state": read_json_or_empty(p.data_dir / "unlock_state.json"),
         "knowledge": cache.load_all(p.knowledge_cache),
     }
 
@@ -82,11 +74,11 @@ def _decide_once(args: argparse.Namespace) -> int:
         print(f"decide-once: cannot read {args.state}: {exc}")
         return 1
     plan_path = Path(args.plan) if args.plan else p.plan_json
-    plan = _read_optional(plan_path)
+    plan = read_json_or_empty(plan_path)
     if args.plan and not plan:
         print(f"decide-once: cannot read plan {args.plan}")
         return 1
-    cfg = decide.settings(_read_optional(p.config_json))
+    cfg = decide.settings(read_json_or_empty(p.config_json))
     request = request_from_state(state, Path(args.state), args.kind, cfg)
     inputs = prompt_inputs(p)
     if not inputs["dataset"]:

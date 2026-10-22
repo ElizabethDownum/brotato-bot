@@ -13,7 +13,6 @@ from pathlib import Path
 
 from brotato_bot import cli, fsutil, paths
 from brotato_bot.dataset import unlocks
-from brotato_bot.sidecar import prompt
 
 # The plan's bot profile; the game numbers profiles from 0.
 DEFAULT_PROFILE = 1
@@ -52,7 +51,7 @@ def _run(args: argparse.Namespace) -> int:
     # names the characters in "win a run with" challenges.
     dataset_file = p.data_dir / "brotato.json"
     dataset = fsutil.read_json(dataset_file) if dataset_file.is_file() else None
-    state["challenges"] = prompt.challenge_texts(graph, dataset)
+    state["challenges"] = unlocks.challenge_texts(graph, dataset)
     fsutil.atomic_write_json(out, state)
     chars = state["characters"]
     n_unlocked = sum(1 for c in chars.values() if c["unlocked"])

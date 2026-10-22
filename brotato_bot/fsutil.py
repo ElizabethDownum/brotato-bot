@@ -50,3 +50,12 @@ def atomic_write_json(path: Path, obj: Any) -> None:
 
 def read_json(path: Path) -> Any:
     return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def read_json_or_empty(path: Path) -> dict:
+    """The JSON object in ``path``; ``{}`` when it is missing, unreadable or not an object."""
+    try:
+        data = read_json(path)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
