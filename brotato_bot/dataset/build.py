@@ -16,13 +16,17 @@ DLC name). An id that appears twice (within or across sources) fails the build.
 
 from __future__ import annotations
 
+import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
 from brotato_bot.dataset.spud import dataset
 from brotato_bot.dataset.spud.builders import discover
-from brotato_bot.dataset.spud.builders.characters import build_character_record
+from brotato_bot.dataset.spud.builders.characters import (
+    _weapon_id_from_res_path,
+    build_character_record,
+)
 from brotato_bot.dataset.spud.builders.enemies import build_enemy_record
 from brotato_bot.dataset.spud.builders.items import build_item_record
 from brotato_bot.dataset.spud.builders.localization import parse_translations_csv
@@ -152,7 +156,8 @@ def build_dataset(
             tr=tr,
         )
 
-    weapons = _build_tagged(discover.find_weapon_dirs(root), weapon)
+    weapon_entries = discover.find_weapon_dirs(root)
+    weapons = _build_tagged(weapon_entries, weapon)
 
     items = _build_tagged(
         discover.find_item_dirs(root),
@@ -176,8 +181,12 @@ def build_dataset(
         ),
     )
     set_names = {s["id"]: s["display_name"] for s in sets}
-    # Keyed by tier-agnostic weapon id (a starting-weapon pool is always tier 1).
-    weapons_by_id = {w["id"]: w for w in weapons}
+    # Keyed by the folder-derived id a character's starting-weapon path yields (tier-agnostic:
+    # a pool is always tier 1); the record id is the game's my_id, which may differ.
+    weapons_by_id = {
+        _weapon_id_from_res_path(e["data_path"].replace(os.sep, "/")): w
+        for e, w in zip(weapon_entries, weapons, strict=True)
+    }
 
     def character(e: dict) -> dict:
         data_text = _read(e["data_path"])

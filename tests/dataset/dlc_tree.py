@@ -167,3 +167,54 @@ def add_tiered_dlc_item(root: Path) -> Path:
             ),
         )
     return root
+
+
+RENAMED = {
+    "weapon": "test_mace",
+    "item": "test_glass",
+    "pair": "test_hourglass",
+    "character": "test_brute",
+}
+_CHAR_WITH_POOL = """[gd_resource type="Resource" load_steps=2 format=2]
+
+[ext_resource path="res://weapons/melee/{wpn}/1/{wpn}_data.tres" type="Resource" id=1]
+
+[resource]
+my_id = "character_{char}"
+name = "CHARACTER_{key}"
+wanted_tags = [  ]
+banned_item_groups = [  ]
+starting_weapons = [ ExtResource( 1 ) ]
+"""
+
+
+def add_renamed_content(root: Path) -> Path:
+    """Base content whose folder name differs from the ``my_id`` the game offers.
+
+    Measured shapes: ``weapons/melee/cactus_mace/<tier>/`` carries
+    ``my_id = "weapon_cacti_club_<tier>"``, and ``items/all/hourglass/`` holds two
+    ItemData files (``item_hourglass`` and ``item_broken_hourglass``). The character
+    offers the renamed weapon in its starting pool, referenced by folder path.
+    """
+    wpn, item, pair, char = (RENAMED[k] for k in ("weapon", "item", "pair", "character"))
+    d = root / "weapons" / "melee" / wpn / "1"
+    _w(d / f"{wpn}_stats.tres", _WEAPON_STATS)
+    _w(
+        d / f"{wpn}_data.tres",
+        _WEAPON_DATA.format(
+            my_id="weapon_test_club_1", weapon_id="weapon_test_club", name_key="WEAPON_TEST_CLUB"
+        ),
+    )
+    d = root / "items" / "all" / item
+    _w(d / f"{item}_data.tres", _ITEM_DATA.format(my_id="item_test_lens", name_key="ITEM_LENS"))
+    d = root / "items" / "all" / pair
+    for stem, my_id in (
+        (pair, "item_test_hourglass"),
+        (f"broken_{pair}", "item_test_broken_hourglass"),
+    ):
+        _w(d / f"{stem}_data.tres", _ITEM_DATA.format(my_id=my_id, name_key=my_id.upper()))
+    _w(
+        root / "items" / "characters" / char / f"{char}_data.tres",
+        _CHAR_WITH_POOL.format(wpn=wpn, char=char, key=char.upper()),
+    )
+    return root

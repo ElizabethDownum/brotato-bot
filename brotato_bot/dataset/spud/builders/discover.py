@@ -220,6 +220,19 @@ def find_weapon_dirs(extracted_root: str,
     return results
 
 
+_MY_ID = re.compile(r'my_id = "([^"]+)"')
+
+
+def _my_id(path: str) -> str | None:
+    """The ``my_id`` the game offers for a data ``.tres``, or None when it has none.
+
+    Folder names are not ids: ``cactus_mace/`` holds ``weapon_cacti_club_<tier>``.
+    """
+    with open(path, encoding="utf-8") as fh:
+        m = _MY_ID.search(fh.read())
+    return m.group(1) if m else None
+
+
 def _find_weapon_tiers(extracted_root: str, weapons_dir: str) -> list[dict]:
     results = []
     for kind in ("ranged", "melee"):
@@ -256,8 +269,11 @@ def _find_weapon_tiers(extracted_root: str, weapons_dir: str) -> list[dict]:
                 continue
             effect_paths, classes = _resolve_weapon_refs(extracted_root, data[0])
             companion_paths = _resolve_effect_companions(extracted_root, effect_paths)
+            # my_id is tiered ("weapon_cacti_club_2"); the family id drops "_<tier>".
+            my_id = _my_id(data[0])
+            family = re.sub(r"_\d+$", "", my_id) if my_id else f"{WEAPON_ID_PREFIX}{weapon_folder}"
             results.append({
-                "weapon_id": f"{WEAPON_ID_PREFIX}{weapon_folder}",
+                "weapon_id": family,
                 "name": weapon_folder.replace("_", " ").title(),
                 "tier": int(tier_name),
                 "stats_path": stats[0],
@@ -304,9 +320,10 @@ def _is_item_data(doc) -> bool:
 
 
 def _tiered_item_entries(extracted_root: str, dir_path: str, folder: str) -> list[dict]:
-    """One entry per ItemData file when a folder holds several (DLC tiered items).
+    """One entry per ItemData file when a folder holds several.
 
-    Abyssal Terrors ships ``items/builder_turret/`` with ``builder_turret_0_data.tres``
+    The base game's ``items/all/hourglass/`` holds ``item_hourglass`` and
+    ``item_broken_hourglass``; Abyssal Terrors ships ``items/builder_turret/`` with ``builder_turret_0_data.tres``
     .. ``builder_turret_3_data.tres``, each its own ItemData with its own ``my_id``
     (``item_builder_turret_0`` ..). Their effects do not share one filename prefix
     (``builder_turret_1_data`` uses ``builder_turret_1_effect_0``,
@@ -351,11 +368,10 @@ def find_item_dirs(extracted_root: str,
         if not os.path.isdir(d):
             continue
         folder = os.path.basename(d)
-        if not os.path.isfile(os.path.join(d, f"{folder}_data.tres")):
-            tiered = _tiered_item_entries(extracted_root, d, folder)
-            if tiered:
-                results.extend(dict(e, dlc=source.dlc) for e in tiered)
-                continue
+        tiered = _tiered_item_entries(extracted_root, d, folder)
+        if tiered:
+            results.extend(dict(e, dlc=source.dlc) for e in tiered)
+            continue
         data = _find_item_data_path(d, folder)
         if not data:
             continue
@@ -366,7 +382,7 @@ def find_item_dirs(extracted_root: str,
         prefix = data_name[: -len("_data.tres")] if data_name.endswith("_data.tres") else data_name[: -len(".tres")]
         effects = _effect_files(d, prefix)
         results.append({
-            "item_id": f"{ITEM_ID_PREFIX}{folder}", "name": _title(folder),
+            "item_id": _my_id(data) or f"{ITEM_ID_PREFIX}{folder}", "name": _title(folder),
             "data_path": data, "effect_paths": effects, "dlc": source.dlc,
         })
     return results
