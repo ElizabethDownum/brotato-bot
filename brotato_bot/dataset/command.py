@@ -1,7 +1,10 @@
-"""CLI: ``dataset build [--pck PATH] [--dlc-pck PATH|none] [--out PATH]``.
+"""CLI: ``dataset build [--pck PATH] [--dlc-pck PATH|none] [--translations PATH]... [--out]``.
 
-Unpacks the base pck, then the Abyssal Terrors DLC pck over it (a missing DLC pck is
-skipped with a message), and builds the dataset from the merged tree.
+Unpacks the base pck, then the Abyssal Terrors DLC pck into the same ``extracted/``
+(the DLC lands in its own ``dlcs/dlc_1/`` tree; a missing DLC pck is skipped with a
+message), and builds the dataset from both. Translations: every ``--translations``
+CSV in order, else every ``<data_dir>/translations*.csv`` sorted by name; later files
+win for a shared key.
 """
 
 from __future__ import annotations
@@ -22,12 +25,20 @@ def _dlc_pck(arg: str | None, default: Path) -> Path | None:
     return Path(arg)
 
 
+def _translations(args_list: list[str] | None, data_dir: Path) -> list[Path]:
+    if args_list:
+        return [Path(a) for a in args_list]
+    # Sorted by name: translations.csv (base) precedes translations.<dlc>.csv.
+    return sorted(Path(data_dir).glob("translations*.csv"))
+
+
 def _build(args: argparse.Namespace) -> int:
     p = paths.load()
     pck = Path(args.pck) if args.pck else p.pck
     dlc_pck = _dlc_pck(args.dlc_pck, p.dlc_pck)
     out = Path(args.out) if args.out else p.data_dir / "brotato.json"
     extracted = p.data_dir / "extracted"
+    translations = _translations(args.translations, p.data_dir)
     # Detect the version first: it is a cheap scan, and a pck without one should
     # fail before the full unpack. The version always comes from the base pck.
     try:
@@ -35,15 +46,16 @@ def _build(args: argparse.Namespace) -> int:
         print(f"Game version: {game_version}")
         unpack.unpack(pck, extracted)
         print(f"Unpacked base pck: {pck}")
-        # The DLC goes on top of the base, as the game mounts it: same-named files
-        # are replaced, everything else is kept.
+        # The DLC pck is unpacked second, into the same root; its content sits in its
+        # own dlcs/dlc_1/ tree. The tests pin only this order (base, then DLC).
         if dlc_pck is not None:
             if dlc_pck.is_file():
                 unpack.unpack(dlc_pck, extracted)
                 print(f"Unpacked DLC pck: {dlc_pck}")
             else:
                 print(f"DLC pck not found: {dlc_pck} (skipping)")
-        build.build_dataset(extracted, out, game_version)
+        print("Translations: " + (", ".join(str(t) for t in translations) or "none"))
+        build.build_dataset(extracted, out, game_version, translations=translations)
     except ValueError as exc:
         print(f"dataset build failed: {exc}", file=sys.stderr)
         return 1
@@ -58,7 +70,14 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     b.add_argument(
         "--dlc-pck",
         default=None,
-        help="DLC pck unpacked over the base (default: paths.dlc_pck; 'none' skips it)",
+        help="DLC pck, unpacked after the base (default: paths.dlc_pck; 'none' skips it)",
+    )
+    b.add_argument(
+        "--translations",
+        action="append",
+        default=None,
+        help="key,en translations CSV; repeatable, later files win "
+        "(default: every <data_dir>/translations*.csv, sorted)",
     )
     b.add_argument("--out", default=None, help="output JSON (default: <data_dir>/brotato.json)")
     b.set_defaults(func=_build)

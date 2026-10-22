@@ -4,9 +4,14 @@ Reproduces Spud Coach's ``build_dataset.py`` main flow (upstream commit 9e02315,
 learnings/upstream.md) with two differences: ``game_version`` is passed in (detected
 from the pck by ``version.detect_game_version``) instead of read from a decompiled
 ``recovered/`` tree, and the output is written atomically. Translations come from a
-Godot translations CSV when one is supplied or present under ``extracted``; the pck
-itself ships only binary ``.translation`` resources, so builds straight from the pck
-fall back to slug-derived names.
+Godot translations CSV (or several, merged in order with later files winning) when
+supplied or present under ``extracted``; the pcks ship only binary ``.translation``
+resources, so builds straight from the pck fall back to slug-derived names.
+
+Content comes from the base layout and every ``dlcs/<name>/`` tree (see
+``discover.ContentSource``). Every record carries ``dlc``: the DLC directory name
+(e.g. ``"dlc_1"``) or None for base content, and ``source`` echoes it ("base" or the
+DLC name). An id that appears twice (within or across sources) fails the build.
 """
 
 from __future__ import annotations
@@ -60,20 +65,66 @@ def _stamp_sources(*record_lists: list[dict]) -> None:
             rec["source"] = detect_source(record=rec)
 
 
+def _load_translations(translations: Path | list[Path] | None, extracted: Path) -> dict[str, str]:
+    if translations is None:
+        paths = [Path(extracted) / TRANSLATIONS_CSV]
+    elif isinstance(translations, (str, Path)):
+        paths = [Path(translations)]
+    else:
+        paths = [Path(t) for t in translations]
+    tr: dict[str, str] = {}
+    for path in paths:
+        if path.is_file():
+            # utf-8-sig: GDRE-exported CSVs start with a BOM.
+            with open(path, encoding="utf-8-sig") as fh:
+                tr.update(parse_translations_csv(fh.read()))
+    return tr
+
+
+def _tag(record: dict, entry: dict) -> dict:
+    record["dlc"] = entry.get("dlc")
+    return record
+
+
+def _duplicate_ids(coll: str, records: list[dict], key=lambda r: r["id"]) -> list[str]:
+    seen: dict = {}
+    problems = []
+    for rec in records:
+        k = key(rec)
+        if k in seen:
+            label = k if isinstance(k, str) else k[0]
+            problems.append(
+                f"duplicate {coll} id {label!r} (sources {seen[k]!r} and {rec.get('dlc')!r})"
+            )
+        else:
+            seen[k] = rec.get("dlc")
+    return problems
+
+
+def _per_source_counts(colls: dict[str, list[dict]]) -> str:
+    parts = []
+    for name, recs in colls.items():
+        counts: dict[str, int] = {}
+        for r in recs:
+            src = r.get("dlc") or "base"
+            counts[src] = counts.get(src, 0) + 1
+        parts.append(f"{name} " + "/".join(f"{k} {v}" for k, v in sorted(counts.items())))
+    return "; ".join(parts)
+
+
 def build_dataset(
     extracted: Path,
     out: Path,
     game_version: str,
     *,
-    translations: Path | None = None,
+    translations: Path | list[Path] | None = None,
     generated_at: str | None = None,
 ) -> dict:
     """Build, validate and write the dataset; return it. Raises ValueError on invalid data."""
     root = str(extracted)
     if generated_at is None:
         generated_at = format_generated_at(datetime.now(UTC))
-    tr_path = translations if translations is not None else Path(extracted) / TRANSLATIONS_CSV
-    tr: dict[str, str] = parse_translations_csv(_read(tr_path)) if tr_path.is_file() else {}
+    tr = _load_translations(translations, Path(extracted))
 
     weapons = []
     for entry in discover.find_weapon_dirs(root):
@@ -86,37 +137,46 @@ def build_dataset(
             for p in effect_paths
         ]
         weapons.append(
-            build_weapon_record(
-                _read(entry["stats_path"]),
-                _read(entry["data_path"]),
-                [_read(p) for p in effect_paths],
-                effect_companion_texts,
-                weapon_id=entry["weapon_id"],
-                name=entry["name"],
-                tier=entry["tier"],
-                classes=entry.get("classes", []),
-                tr=tr,
+            _tag(
+                build_weapon_record(
+                    _read(entry["stats_path"]),
+                    _read(entry["data_path"]),
+                    [_read(p) for p in effect_paths],
+                    effect_companion_texts,
+                    weapon_id=entry["weapon_id"],
+                    name=entry["name"],
+                    tier=entry["tier"],
+                    classes=entry.get("classes", []),
+                    tr=tr,
+                ),
+                entry,
             )
         )
 
     items = [
-        build_item_record(
-            _read(e["data_path"]),
-            [_read(p) for p in e["effect_paths"]],
-            item_id=e["item_id"],
-            name=e["name"],
-            tr=tr,
+        _tag(
+            build_item_record(
+                _read(e["data_path"]),
+                [_read(p) for p in e["effect_paths"]],
+                item_id=e["item_id"],
+                name=e["name"],
+                tr=tr,
+            ),
+            e,
         )
         for e in discover.find_item_dirs(root)
     ]
 
     sets = [
-        build_set_record(
-            _read(e["set_data_path"]),
-            {c: _read(p) for c, p in e["count_effect_paths"].items()},
-            set_id=e["set_id"],
-            name=e["name"],
-            tr=tr,
+        _tag(
+            build_set_record(
+                _read(e["set_data_path"]),
+                {c: _read(p) for c, p in e["count_effect_paths"].items()},
+                set_id=e["set_id"],
+                name=e["name"],
+                tr=tr,
+            ),
+            e,
         )
         for e in discover.find_set_dirs(root)
     ]
@@ -129,16 +189,19 @@ def build_dataset(
         data_text = _read(e["data_path"])
         res = parse_tres(data_text).resource
         characters.append(
-            build_character_record(
-                data_text,
-                [_read(p) for p in e["effect_paths"]],
-                char_id=e["char_id"],
-                name=e["name"],
-                wanted_tags=res.get("wanted_tags", []) or [],
-                banned_item_groups=res.get("banned_item_groups", []) or [],
-                tr=tr,
-                set_names=set_names,
-                weapons_by_id=weapons_by_id,
+            _tag(
+                build_character_record(
+                    data_text,
+                    [_read(p) for p in e["effect_paths"]],
+                    char_id=e["char_id"],
+                    name=e["name"],
+                    wanted_tags=res.get("wanted_tags", []) or [],
+                    banned_item_groups=res.get("banned_item_groups", []) or [],
+                    tr=tr,
+                    set_names=set_names,
+                    weapons_by_id=weapons_by_id,
+                ),
+                e,
             )
         )
 
@@ -146,8 +209,15 @@ def build_dataset(
     for e in discover.find_enemy_dirs(root):
         scene_text = _read(e["scene_path"]) if e.get("scene_path") else None
         enemies.append(
-            build_enemy_record(
-                _read(e["stats_path"]), scene_text, enemy_id=e["enemy_id"], name=e["name"], tr=tr
+            _tag(
+                build_enemy_record(
+                    _read(e["stats_path"]),
+                    scene_text,
+                    enemy_id=e["enemy_id"],
+                    name=e["name"],
+                    tr=tr,
+                ),
+                e,
             )
         )
 
@@ -184,6 +254,15 @@ def build_dataset(
     )
 
     problems = dataset.validate_dataset(ds)
+    # Weapons repeat their id once per tier; every other collection is one record per id.
+    problems += _duplicate_ids("weapon", weapons, key=lambda r: (r["id"], r["tier"]))
+    for coll, recs in (
+        ("item", items),
+        ("character", characters),
+        ("set", sets),
+        ("enemy", enemies),
+    ):
+        problems += _duplicate_ids(coll, recs)
     if problems:
         raise ValueError("Dataset validation failed:\n" + "\n".join(f"  - {p}" for p in problems))
 
@@ -201,5 +280,17 @@ def build_dataset(
         f"{len(characters)} character records, {len(sets)} set records, "
         f"{len(enemies)} enemy records, {len(zone_1_waves)} zone_1 wave records "
         f"({'localized' if tr else 'NO translations found - slug names only'})"
+    )
+    print(
+        "Per source: "
+        + _per_source_counts(
+            {
+                "weapons": weapons,
+                "items": items,
+                "characters": characters,
+                "sets": sets,
+                "enemies": enemies,
+            }
+        )
     )
     return ds

@@ -96,3 +96,31 @@ def test_build_uses_default_dlc_pck(tmp_path, monkeypatch):
 
     assert cli.main(["dataset", "build", "--pck", str(base)]) == 0
     assert calls == ["base.pck", "AT.pck"]
+
+
+def test_dataset_build_cli_passes_translations(tmp_path, monkeypatch):
+    from brotato_bot.dataset import build
+
+    base = _write_pck(tmp_path / "base.pck", {"res://a.txt": b"base"})
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    for name in ("translations.dlc_1.csv", "translations.csv", "other.csv"):
+        (data_dir / name).write_text("key,en\n", encoding="utf-8")
+    monkeypatch.setenv("BROTATO_BOT_DATA_DIR", str(data_dir))
+    calls: list[str] = []
+    _patch_build(monkeypatch, calls)
+    seen = {}
+    monkeypatch.setattr(build, "build_dataset", lambda *a, **k: seen.update(k))
+
+    assert cli.main(["dataset", "build", "--pck", str(base), "--dlc-pck", "none"]) == 0
+    assert [p.name for p in seen["translations"]] == [
+        "translations.csv",
+        "translations.dlc_1.csv",
+    ]
+
+    explicit = [tmp_path / "x.csv", tmp_path / "y.csv"]
+    args = ["dataset", "build", "--pck", str(base), "--dlc-pck", "none"]
+    for p in explicit:
+        args += ["--translations", str(p)]
+    assert cli.main(args) == 0
+    assert seen["translations"] == explicit

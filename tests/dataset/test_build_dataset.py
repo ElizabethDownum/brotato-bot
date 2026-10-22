@@ -98,3 +98,72 @@ def test_build_dataset_validation_failure_raises_and_writes_nothing(tmp_path):
     with pytest.raises(ValueError, match="unknown enemy 'baby_alien'"):
         build_dataset(extracted, out, "1.1.15.4", generated_at="2026-10-22T00:00:00Z")
     assert not out_dir.exists()
+
+
+def test_build_dataset_merges_dlc(tmp_path):
+    from dlc_tree import BASE_NAMES, DLC_NAMES, make_tree
+
+    extracted = make_tree(tmp_path / "extracted")
+    out = tmp_path / "brotato.json"
+    ds = build_dataset(extracted, out, "1.1.15.4", generated_at="2026-10-22T00:00:00Z")
+
+    for coll, prefix, key in (
+        ("items", "item_", "item"),
+        ("characters", "character_", "character"),
+        ("weapons", "weapon_", "weapon"),
+        ("sets", "set_", "set"),
+        ("enemies", "", "enemy"),
+    ):
+        recs = ds[coll]
+        assert len(recs) == 2, coll  # base + dlc
+        ids = [r["id"] for r in recs]
+        assert len(set(ids)) == len(ids), coll
+        by_id = {r["id"]: r for r in recs}
+        assert by_id[prefix + BASE_NAMES[key]]["dlc"] is None
+        assert by_id[prefix + DLC_NAMES[key]]["dlc"] == "dlc_1"
+        assert by_id[prefix + DLC_NAMES[key]]["source"] == "dlc_1"
+        assert by_id[prefix + BASE_NAMES[key]]["source"] == "base"
+    assert ds["content_sources"] == ["base", "dlc_1"]
+
+
+def test_build_dataset_rejects_duplicate_ids_across_sources(tmp_path):
+    from dlc_tree import make_tree
+
+    extracted = make_tree(tmp_path / "extracted")
+    # A DLC item whose folder repeats a base item id must fail, not shadow it.
+    dup = extracted / "dlcs" / "dlc_1" / "items" / "test_anvil"
+    src = extracted / "items" / "all" / "test_anvil" / "test_anvil_data.tres"
+    dup.mkdir(parents=True)
+    (dup / "test_anvil_data.tres").write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+    with pytest.raises(ValueError, match="duplicate item id 'item_test_anvil'"):
+        build_dataset(extracted, tmp_path / "o.json", "1.1.15.4", generated_at="x")
+
+
+def test_build_merges_multiple_translation_csvs(tmp_path):
+    from dlc_tree import make_tree
+
+    extracted = make_tree(tmp_path / "extracted")
+    base_csv = tmp_path / "translations.csv"
+    base_csv.write_text(
+        "﻿key,en\nTEST_ANVIL,Anvil (base)\nTEST_SHELL,Shell (base)\n", encoding="utf-8"
+    )
+    dlc_csv = tmp_path / "translations.dlc_1.csv"
+    dlc_csv.write_text("key,en\nTEST_SHELL,Shell (dlc)\n", encoding="utf-8")
+
+    ds = build_dataset(
+        extracted,
+        tmp_path / "o.json",
+        "1.1.15.4",
+        translations=[base_csv, dlc_csv],
+        generated_at="x",
+    )
+    names = {i["id"]: i["display_name"] for i in ds["items"]}
+    assert names["item_test_anvil"] == "Anvil (base)"
+    assert names["item_test_shell"] == "Shell (dlc)"  # the later file wins
+
+    single = build_dataset(
+        extracted, tmp_path / "o2.json", "1.1.15.4", translations=base_csv, generated_at="x"
+    )
+    assert {i["id"]: i["display_name"] for i in single["items"]}["item_test_shell"] == (
+        "Shell (base)"
+    )

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 
-def detect_source(*, record: dict | None = None, entry: dict | None = None) -> str:  # noqa: ARG001 - unused today; this is the seam DLC detection will read from
-    """Return a record's content origin: "base" or a DLC id (e.g. "abyssal_terrors").
+def detect_source(*, record: dict | None = None, entry: dict | None = None) -> str:
+    """Return a record's content origin: "base" or a DLC tree name (e.g. "dlc_1").
 
     Ships defaulting to "base" for everything. On DLC day, teach THIS ONE
     function the real signal, in priority order (see
@@ -18,6 +18,9 @@ def detect_source(*, record: dict | None = None, entry: dict | None = None) -> s
       3. Directory prefix: a DLC-specific path segment (e.g. "abyssal/") on the
          record's source paths.
 
-    Until taught, every record is base-game content.
+    Taught (brotato-bot Task 2c) with signal 1: the build unpacks each DLC pck
+    into its own ``dlcs/<name>/`` tree and tags every record with ``dlc`` (the
+    tree name, None for base); that tag is echoed here.
     """
-    return "base"
+    dlc = (record or {}).get("dlc") or (entry or {}).get("dlc")
+    return str(dlc) if dlc else "base"

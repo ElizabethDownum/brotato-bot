@@ -10,7 +10,7 @@ from pathlib import Path
 ENV_PREFIX = "BROTATO_BOT_"
 DEFAULT_GAME_DIR = r"D:\SteamLibrary\steamapps\common\Brotato"
 DLC_PCK_NAME = "BrotatoAbyssalTerrors.pck"
-STEAM_ID ="<steam64 id>"
+STEAM_ID = "<steam64 id>"
 
 
 @dataclass(frozen=True)

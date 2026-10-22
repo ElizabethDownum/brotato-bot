@@ -4,6 +4,7 @@ from __future__ import annotations
 import glob
 import os
 import re
+from dataclasses import dataclass
 
 from brotato_bot.dataset.spud.tres import parse_tres
 
@@ -20,7 +21,7 @@ ITEM_ID_PREFIX = "item_"
 # tree, weapon kind, or zone. Extend a set only when its new content has been
 # triaged into the build.
 _ACCOUNTED_TOP_LEVEL = frozenset({
-    "addons", "challenges", "effect_behaviors", "effects", "entities", "global",
+    "addons", "challenges", "dlcs", "effect_behaviors", "effects", "entities", "global",
     "items", "overlap", "particles", "projectiles", "resources", "singletons",
     "tools", "ui", "visual_effects", "weapons", "zones",
 })
@@ -36,6 +37,69 @@ _ACCOUNTED_WEAPON_SUBDIRS = frozenset({
 # assets. Only a genuinely NEW zone dir surfaces here.
 _ACCOUNTED_ZONE_SUBDIRS = frozenset({
     "zone_1", "zone_2", "zone_3", "backgrounds", "common",
+})
+
+
+@dataclass(frozen=True)
+class ContentSource:
+    """Where one content origin keeps each kind, relative to the extracted root.
+
+    The base game and a DLC pck use different layouts: the Abyssal Terrors pck
+    ships everything under ``dlcs/<dlc>/`` with ``characters/``, ``items/`` and
+    ``sets/`` directly below (base: under ``items/``), enemies in ``enemies/``
+    (base: ``entities/units/enemies/``), and item/character effect files in an
+    ``effects/`` subfolder (base: beside the data file).
+    """
+
+    dlc: str | None
+    items: str
+    characters: str
+    sets: str
+    weapons: str
+    enemies: str
+
+
+BASE_SOURCE = ContentSource(
+    dlc=None, items="items/all", characters="items/characters", sets="items/sets",
+    weapons="weapons", enemies="entities/units/enemies",
+)
+
+
+def dlc_source(name: str) -> ContentSource:
+    base = f"dlcs/{name}"
+    return ContentSource(
+        dlc=name, items=f"{base}/items", characters=f"{base}/characters",
+        sets=f"{base}/sets", weapons=f"{base}/weapons", enemies=f"{base}/enemies",
+    )
+
+
+def content_sources(extracted_root: str) -> list[ContentSource]:
+    """The base layout, then one per ``dlcs/<name>/`` directory present (sorted)."""
+    dlcs = sorted(_immediate_subdirs(os.path.join(extracted_root, "dlcs")))
+    return [BASE_SOURCE, *(dlc_source(n) for n in dlcs)]
+
+
+def _sources(extracted_root: str, sources: list[ContentSource] | None) -> list[ContentSource]:
+    return content_sources(extracted_root) if sources is None else sources
+
+
+def _kind_dir(extracted_root: str, rel: str) -> str:
+    return os.path.join(extracted_root, *rel.split("/"))
+
+
+def _effect_files(dir_path: str, prefix: str) -> list[str]:
+    """``{prefix}_effect_*.tres`` beside the data file (base) or in ``effects/`` (DLC)."""
+    return sorted(glob.glob(os.path.join(dir_path, f"{prefix}_effect_*.tres"))) + sorted(
+        glob.glob(os.path.join(dir_path, "effects", f"{prefix}_effect_*.tres")))
+
+
+# DLC subtrees that are either modeled (the kinds in ContentSource, plus the
+# challenges the unlock graph reads) or non-gameplay assets. Anything else under
+# dlcs/<name>/ is reported as an unclaimed tree.
+_ACCOUNTED_DLC_TREES = frozenset({
+    "challenges", "characters", "items", "sets", "weapons", "enemies",
+    "translations", "icons", "title_screen_background", "resources",
+    "effect_behaviors", "projectiles",
 })
 
 
@@ -56,9 +120,15 @@ def coverage_report(extracted_root: str) -> dict[str, list[str]]:
     the build can report — and, under --strict, refuse to ship — un-triaged
     content instead of silently dropping it.
     """
+    dlc_root = os.path.join(extracted_root, "dlcs")
+    unclaimed_dlc = [
+        f"dlcs/{name}/{sub}"
+        for name in sorted(_immediate_subdirs(dlc_root))
+        for sub in sorted(_immediate_subdirs(os.path.join(dlc_root, name)) - _ACCOUNTED_DLC_TREES)
+    ]
     return {
         "unclaimed_trees": sorted(
-            _immediate_subdirs(extracted_root) - _ACCOUNTED_TOP_LEVEL),
+            _immediate_subdirs(extracted_root) - _ACCOUNTED_TOP_LEVEL) + unclaimed_dlc,
         "unknown_weapon_kinds": sorted(
             _immediate_subdirs(os.path.join(extracted_root, "weapons"))
             - _ACCOUNTED_WEAPON_SUBDIRS),
@@ -139,10 +209,20 @@ def _resolve_effect_companions(extracted_root: str, effect_paths: list[str]) -> 
     return result
 
 
-def find_weapon_dirs(extracted_root: str) -> list[dict]:
+def find_weapon_dirs(extracted_root: str,
+                     sources: list[ContentSource] | None = None) -> list[dict]:
+    results = []
+    for source in _sources(extracted_root, sources):
+        results.extend(
+            dict(e, dlc=source.dlc)
+            for e in _find_weapon_tiers(extracted_root, _kind_dir(extracted_root, source.weapons)))
+    return results
+
+
+def _find_weapon_tiers(extracted_root: str, weapons_dir: str) -> list[dict]:
     results = []
     for kind in ("ranged", "melee"):
-        pattern = os.path.join(extracted_root, "weapons", kind, "*", "*")
+        pattern = os.path.join(weapons_dir, kind, "*", "*")
         for tier_dir in sorted(glob.glob(pattern)):
             if not os.path.isdir(tier_dir):
                 continue
@@ -214,9 +294,20 @@ def _find_item_data_path(dir_path: str, folder: str) -> str | None:
     return None
 
 
-def find_item_dirs(extracted_root: str) -> list[dict]:
+def _source_dirs(extracted_root: str, sources: list[ContentSource] | None,
+                 kind: str) -> list[tuple[ContentSource, str]]:
+    """(source, entity dir) for every directory under each source's ``kind`` dir."""
+    return [
+        (source, d)
+        for source in _sources(extracted_root, sources)
+        for d in sorted(glob.glob(os.path.join(_kind_dir(extracted_root, getattr(source, kind)), "*")))
+    ]
+
+
+def find_item_dirs(extracted_root: str,
+                   sources: list[ContentSource] | None = None) -> list[dict]:
     results = []
-    for d in sorted(glob.glob(os.path.join(extracted_root, "items", "all", "*"))):
+    for source, d in _source_dirs(extracted_root, sources, "items"):
         if not os.path.isdir(d):
             continue
         folder = os.path.basename(d)
@@ -228,34 +319,36 @@ def find_item_dirs(extracted_root: str) -> list[dict]:
         # "eye_surgery").
         data_name = os.path.basename(data)
         prefix = data_name[: -len("_data.tres")] if data_name.endswith("_data.tres") else data_name[: -len(".tres")]
-        effects = sorted(glob.glob(os.path.join(d, f"{prefix}_effect_*.tres")))
+        effects = _effect_files(d, prefix)
         results.append({
             "item_id": f"{ITEM_ID_PREFIX}{folder}", "name": _title(folder),
-            "data_path": data, "effect_paths": effects,
+            "data_path": data, "effect_paths": effects, "dlc": source.dlc,
         })
     return results
 
 
-def find_character_dirs(extracted_root: str) -> list[dict]:
+def find_character_dirs(extracted_root: str,
+                        sources: list[ContentSource] | None = None) -> list[dict]:
     results = []
-    for d in sorted(glob.glob(os.path.join(extracted_root, "items", "characters", "*"))):
+    for source, d in _source_dirs(extracted_root, sources, "characters"):
         if not os.path.isdir(d):
             continue
         folder = os.path.basename(d)
         data = os.path.join(d, f"{folder}_data.tres")
         if not os.path.isfile(data):
             continue
-        effects = sorted(glob.glob(os.path.join(d, f"{folder}_effect_*.tres")))
+        effects = _effect_files(d, folder)
         results.append({
             "char_id": f"{CHARACTER_ID_PREFIX}{folder}", "name": _title(folder),
-            "data_path": data, "effect_paths": effects,
+            "data_path": data, "effect_paths": effects, "dlc": source.dlc,
         })
     return results
 
 
-def find_set_dirs(extracted_root: str) -> list[dict]:
+def find_set_dirs(extracted_root: str,
+                  sources: list[ContentSource] | None = None) -> list[dict]:
     results = []
-    for d in sorted(glob.glob(os.path.join(extracted_root, "items", "sets", "*"))):
+    for source, d in _source_dirs(extracted_root, sources, "sets"):
         if not os.path.isdir(d):
             continue
         folder = os.path.basename(d)
@@ -272,6 +365,7 @@ def find_set_dirs(extracted_root: str) -> list[dict]:
         results.append({
             "set_id": f"set_{folder}", "name": _title(folder),
             "set_data_path": set_data, "count_effect_paths": count_effects,
+            "dlc": source.dlc,
         })
     return results
 
@@ -306,10 +400,10 @@ def _enemy_stats_path(dir_path: str, folder: str) -> str | None:
     return None
 
 
-def find_enemy_dirs(extracted_root: str) -> list[dict]:
+def find_enemy_dirs(extracted_root: str,
+                    sources: list[ContentSource] | None = None) -> list[dict]:
     results = []
-    base = os.path.join(extracted_root, "entities", "units", "enemies")
-    for d in sorted(glob.glob(os.path.join(base, "*"))):
+    for source, d in _source_dirs(extracted_root, sources, "enemies"):
         if not os.path.isdir(d):
             continue
         folder = os.path.basename(d)
@@ -323,6 +417,7 @@ def find_enemy_dirs(extracted_root: str) -> list[dict]:
             "folder": folder,
             "stats_path": stats_path,
             "scene_path": scene if os.path.isfile(scene) else None,
+            "dlc": source.dlc,
         })
     return results
 
