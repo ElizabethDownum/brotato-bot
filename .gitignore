@@ -3,3 +3,5 @@ data/
 .decompiled/
 __pycache__/
 .venv/
+.superpowers/
+tools/
