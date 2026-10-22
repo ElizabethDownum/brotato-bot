@@ -227,7 +227,7 @@ Copy-pasteable, all defaults:
 
 Common `plan` keys. This table is the full set. The header comment in
 `shopping/build_plans.gd` is partial: it does not list `ask_on`, `gold_floor`,
-`prefer_weapons`, `ban_items` or `phase_boost`.
+`prefer_weapons` or `ban_items`.
 
 | Key | Meaning |
 |---|---|
@@ -239,6 +239,7 @@ Common `plan` keys. This table is the full set. The header comment in
 | `gold_floor` | gold held back from wave 5 on (int) |
 | `prefer_weapons`, `ban_items` | lists of weapon / item ids |
 | `ask_on` | ids that always trigger a `pivot` decision when offered |
+| `phase_boost` | `{"until_wave": N, "stats": {stat key → multiplier}}`; before wave N the named stats' weights are multiplied (`build_plans.gd:40-42`); `{}` disables |
 
 `ask_on` is matched against shop offers (item and weapon ids, e.g.
 `item_bag`, `item_scar`, `weapon_smg_1`) and level-up options (upgrade ids,
