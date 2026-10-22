@@ -15,7 +15,6 @@ var _auto_busy = false
 var _auto_heartbeat = 0        # bumped each pick; the _process watchdog watches it for stalls
 var _auto_seen_heartbeat = 0
 var _auto_stall_frames = 0
-var _plan_cache = {}   # player_index -> plan (co-op players can be different characters)
 var _focus_outline = null
 
 
@@ -195,11 +194,13 @@ func _any_autopick() -> bool:
 			return true
 	return false
 
+# Not cached here: UpgradesUI lives for the whole run, and get_plan is cheap
+# (PlanFile.load_cached re-reads plan.json only when its mtime changes), so
+# every level-up sees the current plan file. Per player: co-op players can be
+# different characters.
 func _plan_for(player_index):
-	if not _plan_cache.has(player_index):
-		var c = RunData.get_player_character(player_index)
-		_plan_cache[player_index] = ShopAdvisor.get_plan(c.my_id if c != null else "")
-	return _plan_cache[player_index]
+	var c = RunData.get_player_character(player_index)
+	return ShopAdvisor.get_plan(c.my_id if c != null else "")
 
 func _show_next_player_options() -> bool:
 	var r = ._show_next_player_options()

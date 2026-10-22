@@ -80,6 +80,41 @@ func test_load_cached_reads_file_and_handles_missing():
 	assert_eq(PlanFile.mtime("res://mod/tests/fixtures/does_not_exist.json"), 0, "mtime of missing file")
 
 
+const TMP_PLAN = "user://test_plan_file_reload.json"
+
+
+func _write(path, text):
+	var f = File.new()
+	f.open(path, File.WRITE)
+	f.store_string(text)
+	f.close()
+
+
+func _plan_json(rerolls):
+	return '{"plan_id": "r", "character_id": "character_well_rounded", "plan": {"max_rerolls": %d}}' % rerolls
+
+
+# The level-up and shop callers call get_plan every time (no caller-side cache),
+# so a rewritten plan file must be seen on the next plan_for call. Godot 3 cannot
+# set an mtime and get_modified_time has 1 s resolution, so wait past it.
+func test_plan_for_sees_rewritten_file():
+	var built_in = {"weapon_type": "any", "max_rerolls": 15}
+	_write(TMP_PLAN, _plan_json(4))
+	var first = PlanFile.plan_for(built_in, "character_well_rounded", TMP_PLAN)
+	assert_eq(first.max_rerolls, 4, "first call reads the file")
+	var m1 = PlanFile.mtime(TMP_PLAN)
+	OS.delay_msec(1100)
+	_write(TMP_PLAN, _plan_json(7))
+	assert_true(PlanFile.mtime(TMP_PLAN) > m1, "rewrite advanced the mtime")
+	var second = PlanFile.plan_for(built_in, "character_well_rounded", TMP_PLAN)
+	assert_eq(second.max_rerolls, 7, "second call sees the rewritten file")
+	var other = PlanFile.plan_for(built_in, "character_brawler", TMP_PLAN)
+	assert_eq(other.max_rerolls, 15, "other character keeps built-in plan")
+	Directory.new().remove(TMP_PLAN)
+	var gone = PlanFile.plan_for(built_in, "character_well_rounded", TMP_PLAN)
+	assert_eq(gone.max_rerolls, 15, "deleted file falls back to built-in plan")
+
+
 # Godot 3 compares Dictionaries by identity, so == fails for equal contents.
 # Compare key sets and each value with the type-strict assert_eq.
 func _assert_dict_eq(a, b, msg):

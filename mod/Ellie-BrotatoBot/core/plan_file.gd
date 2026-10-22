@@ -106,6 +106,13 @@ static func apply(built_in, loaded, character_id):
 	return built_in
 
 
+# The plan for character_id given the plan file at path: apply() over the
+# mtime-cached load. BuildPlans.get_plan calls this with DEFAULT_PATH on every
+# call, so a rewritten file is seen at the next shop or level-up decision.
+static func plan_for(built_in, character_id, path):
+	return apply(built_in, load_cached(path), character_id)
+
+
 # The challenge id the mod targets: the plan file's target_challenge when
 # non-empty, else the config's.
 static func target_id(loaded, config):
