@@ -912,6 +912,10 @@ Discovery waits until a command needs the save; path loading requires `APPDATA`.
    `--only SLUG` to refresh one source. Results land in `knowledge/cache/`.
    Failed fetches keep the previous cached text. Bundled guide files there
    are also loaded into prompts; fetch refreshes only listed sources.
+3. The wiki pages (`wiki-*.md`, `character-*.md`) are fetched, not shipped:
+   the wiki's licence is undeclared, so they are gitignored and a clean
+   checkout has only `knowledge/sources.json` and the MIT `botato-*.md`
+   guides until the first fetch. Prompts work without them.
 
 This is the only wiki/guide network operation; dataset, saves, prepare and
 collect are local. Decisions also need the authenticated `claude` CLI's model service.
