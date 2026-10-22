@@ -385,11 +385,42 @@ func _any_autoshop() -> bool:
 # bot-controlled slot's shop in turn, then leave human slots to shop manually --
 # the wave only starts once every player (bots via _on_GoButton_pressed below,
 # humans by hand) has pressed GO.
+# Every bot wait is pause-aware (create_timer(t, false): it does not tick while
+# the tree is paused, and the shop root processes while paused, decompiled
+# shop.tscn:50), and every yield is followed by _bot_continue: a halt, a pause
+# by anyone but decide(), or Ellie's pause menu ends this visit with no further
+# action and no GO; she finishes the shop by hand.
 func _auto_shop() -> void:
-	yield(get_tree().create_timer(SETUP_WAIT), "timeout")
+	var rt = BotRuntime.instance()
+	if rt != null:
+		rt.begin_bot_screen()
+	yield(get_tree().create_timer(SETUP_WAIT, false), "timeout")
 	for pi in range(RunData.get_player_count()):
+		if not _bot_continue(-1):
+			return
 		if _should_autoshop(pi):
-			yield(_auto_shop_player(pi), "completed")
+			var st = _auto_shop_player(pi)
+			if st is GDScriptFunctionState:
+				yield(st, "completed")
+
+# May the bot act for slot pi after a yield? BotRuntime.bot_may_continue (bot
+# acting on the bot profile, tree not paused by anyone but decide(), no human
+# pause) and, for pi >= 0, this slot is still bot-shopped.
+func _bot_continue(pi) -> bool:
+	var rt = BotRuntime.instance()
+	if rt == null or not rt.bot_may_continue():
+		return false
+	return pi < 0 or _should_autoshop(pi)
+
+# The pause menu opened (connected to PauseMenu "paused", decompiled
+# base_shop.gd:134; the base saves the run state and hides Content,
+# decompiled base_shop.gd:264-266). Tells BotRuntime that Ellie paused: the
+# bot shops no further this visit, and decide() does not unpause under her menu.
+func on_paused() -> void:
+	.on_paused()
+	var rt = BotRuntime.instance()
+	if rt != null:
+		rt.on_human_pause(_pause_menu)
 
 # Auto-shop a single player: score the offering, buy / reroll / lock-and-save, GO.
 func _auto_shop_player(pi) -> void:
@@ -418,7 +449,13 @@ func _auto_shop_player(pi) -> void:
 	_apply_bans(pi, plan)
 	var asked = false   # the sidecar is consulted at most once per shop visit
 	var actions = 0
+	var abandoned = false
 	while actions < MAX_ACTIONS:
+		# Re-checked after every yield (each one ends in `continue`): a halt or a
+		# pause ends the visit here, before any further action.
+		if not _bot_continue(pi):
+			abandoned = true
+			break
 		actions += 1
 		var gold = RunData.get_player_gold(pi)
 		var container = _get_shop_items_container(pi)
@@ -441,8 +478,9 @@ func _auto_shop_player(pi) -> void:
 					ask.ids, plan.get("ask_on", []))
 			if why != "":
 				var r = yield(rt.decide("pivot" if why == "pivot" else "shop", ask.options), "completed")
-				if not _should_autoshop(pi):
-					break   # halted while deciding: act no further (no GO either)
+				if not _bot_continue(pi):
+					abandoned = true
+					break   # halted or Ellie paused while deciding: act no further, no GO
 				gold = RunData.get_player_gold(pi)
 				var act = str(r.action) if r != null else ""
 				var oi = int(r.get("option_index", -1)) if r != null else -1
@@ -484,10 +522,10 @@ func _auto_shop_player(pi) -> void:
 				if applied == "skip":
 					break
 				if applied == "buy":
-					yield(get_tree().create_timer(BUY_WAIT), "timeout")
+					yield(get_tree().create_timer(BUY_WAIT, false), "timeout")
 					continue
 				if applied == "reroll":
-					yield(get_tree().create_timer(REROLL_WAIT), "timeout")
+					yield(get_tree().create_timer(REROLL_WAIT, false), "timeout")
 					continue
 				if applied != "rule":
 					continue   # lock / revise_plan: re-loop with the new state
@@ -521,7 +559,7 @@ func _auto_shop_player(pi) -> void:
 			bought.push_back("%s@%d(%.0f)" % [best_node.item_data.my_id, int(best_node.value), best_score])
 			buys += 1
 			container.on_shop_item_buy_button_pressed(best_node)
-			yield(get_tree().create_timer(BUY_WAIT), "timeout")
+			yield(get_tree().create_timer(BUY_WAIT, false), "timeout")
 			continue
 		# Nothing affordable to buy. If a strong weapon is on offer that we cannot
 		# afford yet, LOCK it and save for it (locked items survive rerolls and
@@ -563,13 +601,18 @@ func _auto_shop_player(pi) -> void:
 			rerolls += 1
 			tried.clear()   # a reroll replaces the offering
 			_on_RerollButton_pressed(pi)
-			yield(get_tree().create_timer(REROLL_WAIT), "timeout")
+			yield(get_tree().create_timer(REROLL_WAIT, false), "timeout")
 			continue
 		break
-	print("BOTLOG SHOP player=%d wave=%d gold_in=%d gold_out=%d buys=%d rerolls=%d bought=%s%s" % [
-		pi, RunData.current_wave, gold_in, RunData.get_player_gold(pi), buys, rerolls, str(bought), saved_note])
-	yield(get_tree().create_timer(GO_WAIT), "timeout")
-	if _should_autoshop(pi):
+	print("BOTLOG SHOP player=%d wave=%d gold_in=%d gold_out=%d buys=%d rerolls=%d bought=%s%s%s" % [
+		pi, RunData.current_wave, gold_in, RunData.get_player_gold(pi), buys, rerolls, str(bought), saved_note,
+		" abandoned" if abandoned else ""])
+	if abandoned:
+		return
+	yield(get_tree().create_timer(GO_WAIT, false), "timeout")
+	# _on_GoButton_pressed returns at once while the tree is paused (decompiled
+	# base_shop.gd:301), so a pause here would drop GO silently: check first.
+	if _bot_continue(pi):
 		_on_GoButton_pressed(pi)
 
 # The scored offering for a sidecar decision. Only active nodes are options;

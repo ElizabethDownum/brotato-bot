@@ -200,6 +200,10 @@ func _should_autopick(pi) -> bool:
 		return opts.enable_autoshop
 	return false
 
+func _bot_may_continue() -> bool:
+	var rt = BotRuntime.instance()
+	return rt != null and rt.bot_may_continue()
+
 func _any_autopick() -> bool:
 	for pi in range(RunData.get_player_count()):
 		if _should_autopick(pi):
@@ -223,6 +227,11 @@ func _show_next_player_options() -> bool:
 # Drains the whole level-up queue: pick for every player currently choosing,
 # then let each choice surface the next option (which re-enters here, guarded by
 # _auto_busy) until nobody is choosing.
+# The pacing wait is pause-aware (create_timer(t, false)), and every yield is
+# followed by BotRuntime.bot_may_continue: a halt or a pause by anyone but
+# decide() ends this drain at once (no pick, no take/discard). The first pick
+# resumes main._on_EndWaveTimer_timeout's scene change (decompiled
+# main.gd:1162-1177), so it must never happen behind a pause menu.
 func _auto_pick_loop() -> void:
 	_auto_busy = true
 	_auto_stall_frames = 0
@@ -236,9 +245,12 @@ func _auto_pick_loop() -> void:
 			if not _should_autopick(pi):
 				continue   # human slot in a mixed run: let the player choose
 			var container = _get_player_container(pi)
-			yield(get_tree().create_timer(PICK_WAIT), "timeout")
-			if not _player_is_choosing[pi]:
-				continue   # resolved while we waited
+			yield(get_tree().create_timer(PICK_WAIT, false), "timeout")
+			if not _bot_may_continue():
+				_auto_busy = false
+				return   # halted or paused meanwhile: act no further
+			if not _should_autopick(pi) or not _player_is_choosing[pi]:
+				continue   # resolved (or no longer a bot slot) while we waited
 			# A bot IS still waiting on this slot, so mark progress up front: never
 			# break out of the drain while any bot has an option, even if a pick is
 			# momentarily blocked by the button-delay or the option list is empty.
@@ -262,6 +274,9 @@ func _auto_pick_loop() -> void:
 						var r = yield(rt.decide("pivot" if why == "pivot" else "levelup", ask.options), "completed")
 						_auto_deciding = false
 						_auto_heartbeat += 1
+						if not _bot_may_continue():
+							_auto_busy = false
+							return   # halted, or a pause menu is open: no pick
 						# The game was paused; re-check that this exact choice is still up.
 						var still_up = _should_autopick(pi) and _player_is_choosing[pi] \
 								and container._upgrades_container.visible and container._old_upgrades == ups

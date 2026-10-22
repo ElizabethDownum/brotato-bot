@@ -23,6 +23,10 @@ extends Node
 #   target_fired   the target challenge completed during this run (reset at
 #                  run start); main.gd checkpoints at the next wave end
 #   checkpoint_done  that checkpoint has been handled this run (reset at run start)
+#   human_paused   Ellie paused (shop pause menu, or ESC / a move key during a
+#                  decision) and no decide() consumed it; bot coroutines stop
+#                  (bot_may_continue). Cleared by begin_bot_screen() at a shop
+#                  visit's start and when a decision starts
 
 const BotConfig = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_config.gd")
 const Guards = preload("res://mods-unpacked/Ellie-BrotatoBot/core/guards.gd")
@@ -32,6 +36,7 @@ const BotPaths = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_paths.gd
 const PlanFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/plan_file.gd")
 const Checkpoint = preload("res://mods-unpacked/Ellie-BrotatoBot/core/checkpoint.gd")
 const Overlay = preload("res://mods-unpacked/Ellie-BrotatoBot/core/overlay.gd")
+const HumanPause = preload("res://mods-unpacked/Ellie-BrotatoBot/core/human_pause.gd")
 
 const NODE_NAME = "BotRuntime"
 const RECENT_MAX = 10
@@ -49,6 +54,9 @@ var target_fired = false
 var checkpoint_done = false
 var run_outcome = ""
 var deciding_deadline_ms = 0
+var human_paused = false
+var _halt_after_decide = false   # a move key during a decision: halt once it ends
+var _pause_menu_ref = null       # weakref to the shop's PauseMenu (on_human_pause)
 
 # Export hotkey (config.export_hotkey, default "F9"): handled here because this
 # node keeps processing while the tree is paused, so the advisor export works
@@ -169,12 +177,52 @@ func apply_plan_patch(character_id, patch) -> bool:
 	return ok
 
 
-# Read-only: never shops, steers or changes bot_state. Any profile, bot on or off.
+# F9: read-only, never shops, steers or changes bot_state; any profile, bot on
+# or off. While a decision is pending (the tree is paused, so neither Main's
+# pause check, decompiled main.gd:365-376, nor AutobattlerOptions sees input;
+# this node is PAUSE_MODE_PROCESS) ESC / a move key interrupt it (decide()).
+# The event is left unhandled, so the shop still opens its pause menu.
 func _input(event):
 	if event is InputEventKey and event.pressed and not event.echo \
 			and event.scancode == _export_hotkey_scancode():
 		_export_advise()
 		get_tree().set_input_as_handled()
+		return
+	if bot_state == "deciding":
+		var what = HumanPause.deciding_input(event, move_scancodes())
+		if what != "":
+			human_paused = true
+			if what == "move":
+				_halt_after_decide = true
+
+
+# The shop's pause menu opened (base_shop extension on_paused, connected to
+# PauseMenu "paused": decompiled base_shop.gd:134). menu is that PauseMenu;
+# decide() leaves the tree paused while it is visible.
+func on_human_pause(menu):
+	human_paused = true
+	_pause_menu_ref = weakref(menu) if menu != null else null
+
+
+# A bot screen (a shop visit) starts: a pause from an earlier screen no longer counts.
+func begin_bot_screen():
+	human_paused = false
+
+
+# The shop's PauseMenu is in the tree and shown (PauseMenu.pause() show()s it,
+# unpause() hides it: decompiled pause_menu.gd:59-88).
+func _pause_menu_open() -> bool:
+	if _pause_menu_ref == null:
+		return false
+	var menu = _pause_menu_ref.get_ref()
+	return menu != null and menu.is_inside_tree() and menu.visible
+
+
+# Re-checked by the shop and level-up coroutines after every yield
+# (HumanPause.may_continue): the bot may act, the tree is not paused by anyone
+# but decide(), and Ellie has not paused.
+func bot_may_continue() -> bool:
+	return HumanPause.may_continue(may_act(), get_tree().paused, bot_state, human_paused)
 
 
 func _process(_delta):
@@ -410,12 +458,17 @@ func export_state(kind: String) -> String:
 #      responses/ every POLL_S (timers process while paused) until a response
 #      or the timeout (config checkpoint_timeout_ms for "checkpoint", else
 #      request_timeout_ms), or until bot_state leaves "deciding" (a halt),
-#      or until something else unpaused the tree that decide() paused (the
-#      pause menu's ESC: a human intervened, and the human wins -- no
-#      re-pause, source "interrupted", the rules decide).
-#   5. Unpauses only if the tree was not already paused; unless bot_state
-#      became halted/complete meanwhile, returns it to "acting" and restores
-#      the status shown before decide() (an F9 export meanwhile included).
+#      or until a human intervened (source "interrupted", the rules decide):
+#      something else unpaused the tree that decide() paused, or
+#      human_paused was set (the shop's pause menu opened, or ESC / a move
+#      key reached _input).
+#   5. Unpauses only if the tree was not already paused and no pause menu is
+#      open (HumanPause.unpause_after_decide). With a pause menu open,
+#      human_paused stays set, so the shop abandons its visit and Ellie's menu
+#      stays hers; otherwise the interruption is consumed (human_paused
+#      cleared, the rules decide). Unless bot_state became halted/complete meanwhile, returns it
+#      to "acting" and restores the status shown before decide() (an F9
+#      export meanwhile included). A move key then halts ("human input").
 #   Callers ask only while DecisionClient.sidecar_alive(...) is true.
 #   6. Records a decision event {request_kind, id, source, response} with source
 #      "haiku" (valid response), "invalid" (a response that failed
@@ -465,6 +518,8 @@ func decide(kind: String, options: Array):
 		_export_status_until_ms = 0
 	var status = "DECIDING: " + kind
 	var was_paused = get_tree().paused
+	human_paused = false
+	_halt_after_decide = false
 	bot_state = "deciding"
 	set_status(status)
 	get_tree().paused = true
@@ -474,8 +529,8 @@ func decide(kind: String, options: Array):
 	var interrupted = false
 	while true:
 		yield(get_tree().create_timer(POLL_S, true), "timeout")
-		if not was_paused and not get_tree().paused:
-			interrupted = true   # a human unpaused (pause menu): stop asking
+		if human_paused or (not was_paused and not get_tree().paused):
+			interrupted = true   # a human paused, pressed a key or unpaused: stop asking
 			break
 		response = client.poll_response(id)
 		if response != null or OS.get_ticks_msec() >= deadline:
@@ -483,8 +538,11 @@ func decide(kind: String, options: Array):
 		if bot_state != "deciding":
 			break   # halted (e.g. wrong profile) or completed meanwhile: stop waiting
 	deciding_deadline_ms = 0
-	if not was_paused:
+	var menu_open = _pause_menu_open()
+	if HumanPause.unpause_after_decide(was_paused, menu_open):
 		get_tree().paused = false
+	if not menu_open:
+		human_paused = false   # interruption consumed: the rules decide now
 	# Status invariant: unless the bot was halted or completed meanwhile (their
 	# status stays), the status is again what it was before decide() started.
 	if bot_state == "deciding":
@@ -497,6 +555,10 @@ func decide(kind: String, options: Array):
 		else:
 			source = "invalid"
 	_record_decision(kind, id, source, response)
+	if _halt_after_decide:
+		_halt_after_decide = false
+		if bot_state == "acting":
+			halt("human input")
 	return response if source == "haiku" else null
 
 

@@ -81,10 +81,12 @@ func _bot_start_recording():
 # Every wave start: warn once per run if the game would pause when the window
 # loses focus, then halt a bot that is on while the profile is not the bot
 # profile (e.g. the profile changed after enabling). Halt last so its status wins.
+# A pause Ellie made in the last shop ended that visit only: the wave starts clean.
 func _bot_run_guards():
 	var rt = get_node_or_null("/root/BotRuntime")
 	if rt == null:
 		return
+	rt.begin_bot_screen()
 	if not Guards.focus_setting_ok(ProgressData.settings) and rt.focus_warned_run_id != rt.run_id:
 		rt.focus_warned_run_id = rt.run_id
 		var rec = _bot_recorder()
