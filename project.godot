@@ -1,0 +1,9 @@
+; Test-only Godot project for headless unit tests of the mod's core scripts.
+; Not part of the shipped mod. Run via scripts/test_mod.ps1.
+
+config_version=4
+
+[application]
+
+config/name="brotato-bot-tests"
+run/main_scene=""
