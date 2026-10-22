@@ -58,8 +58,7 @@ def test_cadence_profile_shredder_bursty_and_invariant():
     assert p["cadence"] == "bursty"  # ~0.952 atk/s < 1
     assert math.isclose(p["damage_per_attack"], 25.0, rel_tol=1e-4)  # base_damage 25
     # Invariant: damage_per_attack * attacks_per_second == total_dps
-    assert math.isclose(
-        p["damage_per_attack"] * p["attacks_per_second"], 23.8095, rel_tol=1e-9)
+    assert math.isclose(p["damage_per_attack"] * p["attacks_per_second"], 23.8095, rel_tol=1e-9)
 
 
 def test_cadence_profile_moderate_label_boundary():
@@ -114,23 +113,27 @@ def test_effective_cooldown_zero_as_passthrough():
 def test_ranged_cycle_pistol_t1_as0():
     # Pistol T1: recoil 0.1, cooldown 60 -> 2*0.1 + 60/60 = 1.2 (matches v5 dataset)
     assert calc.stat_aware_cycle_time(
-        weapon_type="ranged", recoil_duration=0.1, cooldown=60,
-        attack_speed_frac=0.0) == pytest.approx(1.2)
+        weapon_type="ranged", recoil_duration=0.1, cooldown=60, attack_speed_frac=0.0
+    ) == pytest.approx(1.2)
 
 
 def test_ranged_cycle_as_shrinks_recoil_and_cooldown():
     # AS +50%: recoil 0.1/1.5, cooldown max(2, 60/1.5)=40 -> 0.1333.. + 0.6667.. = 0.8
     assert calc.stat_aware_cycle_time(
-        weapon_type="ranged", recoil_duration=0.1, cooldown=60,
-        attack_speed_frac=0.5) == pytest.approx(0.8)
+        weapon_type="ranged", recoil_duration=0.1, cooldown=60, attack_speed_frac=0.5
+    ) == pytest.approx(0.8)
 
 
 def test_ranged_cycle_burst_reload_replaces_draw():
     # weapon.gd:337-339: every 6th draw is cd*mult INSTEAD of cd.
     # recoil 0.1, cd 12, every 6, mult 5: 0.2 + 12*((6-1)+5)/6/60 = 0.2 + 20/60
     assert calc.stat_aware_cycle_time(
-        weapon_type="ranged", recoil_duration=0.1, cooldown=12,
-        attack_speed_frac=0.0, burst=(6, 5.0)) == pytest.approx(0.5333333333)
+        weapon_type="ranged",
+        recoil_duration=0.1,
+        cooldown=12,
+        attack_speed_frac=0.0,
+        burst=(6, 5.0),
+    ) == pytest.approx(0.5333333333)
 
 
 def test_melee_cycle_knife_t1_as0():
@@ -138,8 +141,8 @@ def test_melee_cycle_knife_t1_as0():
     # rf=70/70=1 -> atk=0.2+0.15=0.35; back=0.2; shooting=0.175+0.2+0.1=0.475
     # cycle = 0.475 + 25/60 = 0.891666..
     assert calc.stat_aware_cycle_time(
-        weapon_type="melee", recoil_duration=0.1, cooldown=25,
-        attack_speed_frac=0.0, max_range=150) == pytest.approx(0.8916666667)
+        weapon_type="melee", recoil_duration=0.1, cooldown=25, attack_speed_frac=0.0, max_range=150
+    ) == pytest.approx(0.8916666667)
 
 
 def test_melee_cycle_as100_triple_effect():
@@ -147,16 +150,20 @@ def test_melee_cycle_as100_triple_effect():
     # back=0.2/4=0.05; recoil'=0.05; shooting=0.10625+0.05+0.05=0.20625
     # eff_cd=int(25/2)=12 -> cycle=0.20625+0.2=0.40625
     assert calc.stat_aware_cycle_time(
-        weapon_type="melee", recoil_duration=0.1, cooldown=25,
-        attack_speed_frac=1.0, max_range=150) == pytest.approx(0.40625)
+        weapon_type="melee", recoil_duration=0.1, cooldown=25, attack_speed_frac=1.0, max_range=150
+    ) == pytest.approx(0.40625)
 
 
 def test_melee_cycle_point_blank_override():
     # engagement_distance=0 -> rf=0 -> atk=0.2; shooting=0.1+0.2+0.1=0.4
     assert calc.stat_aware_cycle_time(
-        weapon_type="melee", recoil_duration=0.1, cooldown=25,
-        attack_speed_frac=0.0, max_range=150,
-        engagement_distance=0.0) == pytest.approx(0.8166666667)
+        weapon_type="melee",
+        recoil_duration=0.1,
+        cooldown=25,
+        attack_speed_frac=0.0,
+        max_range=150,
+        engagement_distance=0.0,
+    ) == pytest.approx(0.8166666667)
 
 
 def test_stat_value_mapping():
@@ -169,20 +176,20 @@ def test_stat_value_mapping():
 
 def test_per_hit_damage_knife_t1_flat_scaling():
     # weapon_service.gd:489: max(1, 9 + 20*0.8) as int = 25
-    assert calc.per_hit_damage(9, [["stat_melee_damage", 0.8]],
-                               {"melee_damage": 20}) == 25
+    assert calc.per_hit_damage(9, [["stat_melee_damage", 0.8]], {"melee_damage": 20}) == 25
 
 
 def test_per_hit_damage_truncates_scaling_sum():
     # 9 + 21*0.8 = 25.8 -> truncates to 25 (same as md=20 — real steppiness)
-    assert calc.per_hit_damage(9, [["stat_melee_damage", 0.8]],
-                               {"melee_damage": 21}) == 25
+    assert calc.per_hit_damage(9, [["stat_melee_damage", 0.8]], {"melee_damage": 21}) == 25
 
 
 def test_per_hit_damage_percent_bracket_rounds_half_up():
     # d1=25; 25 * 1.30 = 32.5 -> GDScript round -> 33 (weapon_service.gd:249)
-    assert calc.per_hit_damage(9, [["stat_melee_damage", 0.8]],
-                               {"melee_damage": 20, "damage": 30}) == 33
+    assert (
+        calc.per_hit_damage(9, [["stat_melee_damage", 0.8]], {"melee_damage": 20, "damage": 30})
+        == 33
+    )
 
 
 def test_per_hit_damage_floors_at_one():
@@ -203,20 +210,34 @@ def test_expected_hit_damage_crit_clamped_to_certainty():
 
 
 KNIFE_T1 = {
-    "weapon_type": "melee", "base_damage": 9.0, "cooldown": 25.0,
-    "recoil_duration": 0.1, "attack_speed_mod": 0.0, "accuracy": 1.0,
-    "crit_chance": 0.2, "crit_damage": 2.5, "max_range": 150.0,
+    "weapon_type": "melee",
+    "base_damage": 9.0,
+    "cooldown": 25.0,
+    "recoil_duration": 0.1,
+    "attack_speed_mod": 0.0,
+    "accuracy": 1.0,
+    "crit_chance": 0.2,
+    "crit_damage": 2.5,
+    "max_range": 150.0,
     "scaling_stats": [["stat_melee_damage", 0.8]],
-    "additional_cooldown_every_x_shots": -1, "additional_cooldown_multiplier": -1.0,
+    "additional_cooldown_every_x_shots": -1,
+    "additional_cooldown_multiplier": -1.0,
     "proc_effects": [],
 }
 
 PISTOL_T1 = {
-    "weapon_type": "ranged", "base_damage": 12.0, "cooldown": 60.0,
-    "recoil_duration": 0.1, "attack_speed_mod": 0.0, "accuracy": 0.9,
-    "crit_chance": 0.1, "crit_damage": 2.0, "max_range": 400.0,
+    "weapon_type": "ranged",
+    "base_damage": 12.0,
+    "cooldown": 60.0,
+    "recoil_duration": 0.1,
+    "attack_speed_mod": 0.0,
+    "accuracy": 0.9,
+    "crit_chance": 0.1,
+    "crit_damage": 2.0,
+    "max_range": 400.0,
     "scaling_stats": [["stat_ranged_damage", 1.0]],
-    "additional_cooldown_every_x_shots": -1, "additional_cooldown_multiplier": -1.0,
+    "additional_cooldown_every_x_shots": -1,
+    "additional_cooldown_multiplier": -1.0,
     "proc_effects": [],
 }
 
@@ -245,8 +266,12 @@ def test_profile_melee_dps_responds_to_melee_damage():
 
 
 def test_profile_weapon_damage_proc():
-    rec = dict(PISTOL_T1, proc_effects=[
-        {"kind": "weapon_damage", "chance": 0.5, "enemies_hit": 1.0, "multiplier": 1.0}])
+    rec = dict(
+        PISTOL_T1,
+        proc_effects=[
+            {"kind": "weapon_damage", "chance": 0.5, "enemies_hit": 1.0, "multiplier": 1.0}
+        ],
+    )
     p = calc.weapon_dps_profile(rec, {"ranged_damage": 10}, aoe_enemies_hit=2.0)
     assert p["base_dps"] == pytest.approx(18.15)
     # proc = base_dps * chance * (enemies_hit * aoe factor): 18.15 * 0.5 * 2.0
@@ -255,9 +280,17 @@ def test_profile_weapon_damage_proc():
 
 
 def test_profile_burn_scales_with_elemental():
-    rec = dict(PISTOL_T1, proc_effects=[
-        {"kind": "burn_dot", "damage": 3.0,
-         "scaling_stats": [["stat_elemental_damage", 1.0]], "tick_interval": 0.5}])
+    rec = dict(
+        PISTOL_T1,
+        proc_effects=[
+            {
+                "kind": "burn_dot",
+                "damage": 3.0,
+                "scaling_stats": [["stat_elemental_damage", 1.0]],
+                "tick_interval": 0.5,
+            }
+        ],
+    )
     zero = calc.weapon_dps_profile(rec, {})
     ele = calc.weapon_dps_profile(rec, {"elemental_damage": 10})
     # tick dmg: max(1, 3+10)=13; %damage none -> 13/0.5 = 26 burn dps
@@ -265,10 +298,20 @@ def test_profile_burn_scales_with_elemental():
 
 
 def test_profile_companion_proc():
-    rec = dict(PISTOL_T1, proc_effects=[
-        {"kind": "companion", "damage": 5.0,
-         "scaling_stats": [["stat_elemental_damage", 1.0]],
-         "crit_chance": 0.0, "crit_damage": 0.0, "count": 1.0, "enemies_hit": 2.0}])
+    rec = dict(
+        PISTOL_T1,
+        proc_effects=[
+            {
+                "kind": "companion",
+                "damage": 5.0,
+                "scaling_stats": [["stat_elemental_damage", 1.0]],
+                "crit_chance": 0.0,
+                "crit_damage": 0.0,
+                "count": 1.0,
+                "enemies_hit": 2.0,
+            }
+        ],
+    )
     p = calc.weapon_dps_profile(rec, {"elemental_damage": 5})
     # companion hit: max(1, 5+5)=10 -> expected 10 (no crit);
     # per host cycle (1.2s), accuracy 0.9 host hit-rate: 10*1*2/1.2*0.9 = 15

@@ -41,10 +41,7 @@ def _fetch(args: argparse.Namespace) -> int:
     if args.characters:
         dataset_path = p.data_dir / "brotato.json"
         if not dataset_path.is_file():
-            print(
-                f"{dataset_path} not found; run `dataset build` first. "
-                "Skipping character pages."
-            )
+            print(f"{dataset_path} not found; run `dataset build` first. Skipping character pages.")
         else:
             try:
                 dataset = read_json(dataset_path)

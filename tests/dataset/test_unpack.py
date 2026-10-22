@@ -41,9 +41,9 @@ def test_unpack_round_trip(tmp_path):
     out = tmp_path / "out"
 
     assert unpack.unpack(pck, out) == 3
-    assert _all_files(out) == sorted(k[len("res://"):] for k in files)
+    assert _all_files(out) == sorted(k[len("res://") :] for k in files)
     for res_path, data in files.items():
-        assert (out / res_path[len("res://"):]).read_bytes() == data
+        assert (out / res_path[len("res://") :]).read_bytes() == data
 
 
 def test_unpack_rejects_bad_magic(tmp_path):

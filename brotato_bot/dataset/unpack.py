@@ -7,6 +7,7 @@ layout under an output directory. Stdlib only; no dependencies.
 Raises ValueError on a bad magic, an unsupported pack format, or an entry whose
 destination would fall outside the output directory.
 """
+
 import os
 import struct
 from collections import Counter
@@ -66,7 +67,7 @@ def unpack(pck_path, out_dir):
         root = os.path.realpath(out_dir)
         planned = []
         for path, offset, size in entries:
-            rel = path[len("res://"):] if path.startswith("res://") else path.lstrip("/")
+            rel = path[len("res://") :] if path.startswith("res://") else path.lstrip("/")
             dest = os.path.realpath(os.path.join(root, *rel.split("/")))
             if not _is_inside(root, dest):
                 raise ValueError(f"pck entry {path!r} resolves outside {out_dir}")
@@ -83,9 +84,8 @@ def unpack(pck_path, out_dir):
             ext_counter[os.path.splitext(rel)[1].lower()] += 1
             total_bytes += size
 
-    print(f"\nExtracted {len(entries)} files, {total_bytes/1_048_576:.1f} MiB")
+    print(f"\nExtracted {len(entries)} files, {total_bytes / 1_048_576:.1f} MiB")
     print("Top extensions:")
     for ext, n in ext_counter.most_common(15):
         print(f"  {ext or '(none)':10} {n}")
     return len(entries)
-

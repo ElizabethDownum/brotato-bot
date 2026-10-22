@@ -136,7 +136,10 @@ def test_character_sources_from_dataset():
 
 def test_merge_sources_dedupes_by_slug():
     base = [{"slug": "a", "kind": "wiki", "ref": "A"}]
-    extra = [{"slug": "a", "kind": "wiki", "ref": "Other"}, {"slug": "b", "kind": "wiki", "ref": "B"}]
+    extra = [
+        {"slug": "a", "kind": "wiki", "ref": "Other"},
+        {"slug": "b", "kind": "wiki", "ref": "B"},
+    ]
     assert cache.merge_sources(base, extra) == [base[0], extra[1]]
 
 

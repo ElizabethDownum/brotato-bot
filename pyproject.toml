@@ -22,6 +22,10 @@ line-length = 100
 target-version = "py312"
 extend-exclude = ["mod", "tools", "data"]
 
+[tool.ruff.format]
+# Folded upstream code and its tests keep their original layout.
+exclude = ["brotato_bot/dataset/spud/**", "tests/dataset/test_build_*.py"]
+
 [tool.ruff.lint.per-file-ignores]
 # Folded upstream Spud Coach code is kept verbatim (see learnings/upstream.md).
 "brotato_bot/dataset/spud/**" = ["I001", "FURB188", "RUF100"]

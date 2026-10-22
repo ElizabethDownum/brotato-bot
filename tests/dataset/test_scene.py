@@ -1,7 +1,7 @@
 # Folded from Spud Coach (MIT) commit 9e02315, see learnings/upstream.md
 from brotato_bot.dataset.spud.scene import parse_scene_node
 
-_SCENE = '''[gd_scene load_steps=2 format=2]
+_SCENE = """[gd_scene load_steps=2 format=2]
 
 [ext_resource path="res://projectiles/bullet_enemy/enemy_projectile.tscn" type="PackedScene" id=4]
 
@@ -14,7 +14,7 @@ damage = 1
 damage_increase_each_wave = 0.75
 number_projectiles = 1
 spawn_projectiles_on_target = false
-'''
+"""
 
 
 def test_reads_named_node_kvs():
