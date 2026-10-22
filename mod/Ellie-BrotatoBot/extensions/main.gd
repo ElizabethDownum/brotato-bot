@@ -151,20 +151,22 @@ func _set_run_states() -> void:
 
 
 func _bot_end_run(outcome):
-	var rec = _bot_recorder()
-	if rec == null:
-		return
 	var rt = get_node_or_null("/root/BotRuntime")
 	# Completion gate: the single place a bot run is marked complete (player 0's
-	# death and the final wave both arrive here via _set_run_states). complete()
-	# runs first because the recorder drops events once end_run has closed the
-	# file, so the JSONL ends ...complete, end. The end line keeps its won/death
-	# words; complete() takes win/death.
+	# death and the final wave both arrive here via _set_run_states). It runs
+	# whether or not the run file is open (complete() tolerates no recorder),
+	# and before end_run because the recorder drops events once end_run has
+	# closed the file, so the JSONL ends ...complete, end. The end line keeps
+	# its won/death words; complete() takes win/death. Once complete, bot_state
+	# is no longer acting, so a repeated call does not complete again.
 	if rt != null and (rt.bot_state == "acting" or rt.bot_state == "deciding"):
 		var extra = {}
 		if outcome != "won":
 			extra["killer"] = _bot_killer
 		rt.complete(Guards.normalize_outcome(outcome), extra)
+	var rec = _bot_recorder()
+	if rec == null:
+		return
 	var p = _bot_player0()
 	rec.end_run({
 		"outcome": outcome,
