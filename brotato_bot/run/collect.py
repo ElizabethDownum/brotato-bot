@@ -19,7 +19,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from brotato_bot.fsutil import atomic_write_json, atomic_write_text, read_json
+from brotato_bot.fsutil import atomic_write_json, atomic_write_text, plain_name, read_json
 from brotato_bot.paths import Paths
 from brotato_bot.report import render
 from brotato_bot.run.models import (
@@ -270,7 +270,10 @@ def _load_requests(events: list[dict], requests_dir: Path) -> dict[str, dict]:
         did = e.get("id") if e.get("kind") == "decision" else None
         if not isinstance(did, str) or not did or did in out:
             continue
-        f = requests_dir / f"{did}.json"
+        try:
+            f = requests_dir / f"{plain_name(did)}.json"
+        except ValueError:
+            continue  # an id that is not a plain name never leaves requests_dir
         try:
             req = read_json(f)
         except (OSError, json.JSONDecodeError):
@@ -303,7 +306,7 @@ def resolve_target(summary: RunSummary, paths: Paths) -> str | None:
 
 
 def latest_run_id(paths: Paths) -> str | None:
-    runs = sorted(paths.runs_in.glob("*.jsonl"), key=lambda f: f.stat().st_mtime)
+    runs = sorted(paths.runs_in.glob("*.jsonl"), key=lambda f: (f.stat().st_mtime, f.name))
     return runs[-1].stem if runs else None
 
 
@@ -354,14 +357,21 @@ def append_index(index_path: Path, row: dict) -> None:
 
 def collect(run_id: str, paths: Paths) -> Path:
     """Summarize ``<runs_in>/<run_id>.jsonl``; write ``<runs_out>/<run_id>.md``, copy the
-    JSONL beside it and update ``<runs_out>/index.json``. Returns the report path."""
+    JSONL beside it and update ``<runs_out>/index.json``. Returns the report path.
+
+    ``run_id`` must be a plain file name (ValueError otherwise). It names every file and
+    the index row; a header run_id that disagrees is reported as a note."""
+    plain_name(run_id)
     src = paths.runs_in / f"{run_id}.jsonl"
     if not src.is_file():
         raise FileNotFoundError(f"no run recording at {src}")
     events = parse_jsonl(src)
     summary = summarize(events, _load_requests(events, paths.requests_dir))
-    if not summary.run_id:
-        summary.run_id = run_id
+    if summary.run_id and summary.run_id != run_id:
+        summary.notes.append(
+            f"warning: header run_id {summary.run_id!r} differs from the file name {run_id!r}"
+        )
+    summary.run_id = run_id
     summary.target_challenge = resolve_target(summary, paths)
 
     out_dir = paths.runs_out

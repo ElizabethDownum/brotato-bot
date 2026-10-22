@@ -6,7 +6,7 @@ import argparse
 import json
 
 from brotato_bot import cli, paths
-from brotato_bot.fsutil import read_json
+from brotato_bot.fsutil import plain_name, read_json
 from brotato_bot.run import collect, prepare
 
 
@@ -31,9 +31,14 @@ def _prepare(args: argparse.Namespace) -> int:
 
 def _collect(args: argparse.Namespace) -> int:
     p = paths.load()
-    run_id = args.run_id or collect.latest_run_id(p)
+    run_id = args.run_id if args.run_id is not None else collect.latest_run_id(p)
     if not run_id:
         print(f"collect: no run recordings in {p.runs_in}")
+        return 1
+    try:
+        plain_name(run_id)
+    except ValueError as exc:
+        print(f"collect: bad RUN_ID: {exc}")
         return 1
     try:
         report = collect.collect(run_id, p)

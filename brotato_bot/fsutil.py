@@ -4,9 +4,26 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Any
+
+_PLAIN_NAME = re.compile(r"[\w.-]+")
+
+
+def plain_name(value: str) -> str:
+    """Return ``value`` if it is a single plain file-name component (letters, digits,
+    ``_``, ``.``, ``-``; not ``.`` or ``..``), else raise ValueError. Use it before
+    joining an externally supplied name onto a directory."""
+    if (
+        not isinstance(value, str)
+        or value in ("", ".", "..")
+        or Path(value).name != value
+        or not _PLAIN_NAME.fullmatch(value)
+    ):
+        raise ValueError(f"not a plain file name: {value!r}")
+    return value
 
 
 def atomic_write_text(path: Path, text: str) -> None:

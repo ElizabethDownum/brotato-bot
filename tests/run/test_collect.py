@@ -240,3 +240,71 @@ def test_collect_cli_latest(tmp_paths, capsys):
 
 def test_collect_cli_missing_run(tmp_paths, capsys):
     assert cli.main(["collect", "nope"]) == 1
+
+
+def test_collect_rejects_traversal_run_id(tmp_paths, tmp_path):
+    import pytest
+
+    _install(tmp_paths, "run_small.jsonl")
+    outside = tmp_path / "outside.jsonl"
+    shutil.copyfile(FIXTURES / "run_small.jsonl", outside)
+    before = sorted(tmp_path.rglob("*"))
+    for bad in (r"..\..\outside", "../../outside", str(tmp_path / "outside"), "..", ""):
+        with pytest.raises(ValueError):
+            collect.collect(bad, tmp_paths)
+        assert cli.main(["collect", bad]) == 1
+    assert sorted(tmp_path.rglob("*")) == before
+
+
+def test_request_lookup_skips_non_plain_decision_id(tmp_paths):
+    p = tmp_paths
+    secret = p.requests_dir.parent.parent / "settings.json"
+    secret.parent.mkdir(parents=True, exist_ok=True)
+    secret.write_text(
+        json.dumps({"options": [{"index": 0, "id": "LEAKED", "price": 1}]}), encoding="utf-8"
+    )
+    bad_id = r"..\..\settings"
+    lines = [
+        {"kind": "header", "run_id": "r1", "character_id": "c", "danger": 0, "plan_id": "p"},
+        {"kind": "wave_end", "wave": 1, "hp": 5, "gold": 9, "damage_taken": 0, "kills": 3},
+        {
+            "kind": "decision",
+            "request_kind": "shop",
+            "id": bad_id,
+            "source": "haiku",
+            "response": {"action": "buy", "option_index": 0, "confidence": 0.5},
+        },
+        {
+            "kind": "decision_applied",
+            "id": bad_id,
+            "action": "buy",
+            "option_index": 0,
+            "applied": "buy",
+        },
+        {"kind": "end", "outcome": "quit"},
+    ]
+    p.runs_in.mkdir(parents=True, exist_ok=True)
+    (p.runs_in / "r1.jsonl").write_text(
+        "\n".join(json.dumps(x) for x in lines) + "\n", encoding="utf-8"
+    )
+    p.requests_dir.mkdir(parents=True, exist_ok=True)
+    md = collect.collect("r1", p).read_text(encoding="utf-8")
+    assert "LEAKED" not in md
+    assert "| 1 | buy | - | - | - | haiku |" in md
+
+
+def test_index_run_id_is_the_file_name_and_mismatch_is_noted(tmp_paths):
+    _install(tmp_paths, "run_small.jsonl", run_id="renamed-run")
+    md = collect.collect("renamed-run", tmp_paths).read_text(encoding="utf-8")
+    assert md.startswith("# Run renamed-run")
+    assert "differs from the file name" in md
+    index = json.loads((tmp_paths.runs_out / "index.json").read_text(encoding="utf-8"))
+    assert index[0]["run_id"] == "renamed-run"
+
+
+def test_latest_breaks_mtime_ties_by_name(tmp_paths):
+    a = _install(tmp_paths, "run_small.jsonl", run_id="20261022-000000-a-d0")
+    b = _install(tmp_paths, "run_small.jsonl", run_id="20261022-000001-a-d0")
+    for f in (b, a):
+        os.utime(f, (2_000_000, 2_000_000))
+    assert collect.latest_run_id(tmp_paths) == "20261022-000001-a-d0"
