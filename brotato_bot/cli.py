@@ -38,5 +38,6 @@ def _register_builtin_commands() -> None:
     from brotato_bot.dataset import command, unlock_command  # noqa: F401
     from brotato_bot.knowledge import command as knowledge_command  # noqa: F401
     from brotato_bot.run import command as run_command  # noqa: F401
+    from brotato_bot.run import stagnation as stagnation_command  # noqa: F401
     from brotato_bot.sidecar import command as sidecar_command  # noqa: F401
     from brotato_bot.sidecar import loop as sidecar_loop  # noqa: F401
