@@ -21,8 +21,17 @@ def tmp_paths(tmp_path, monkeypatch):
 def proposal_md():
     """A valid proposal as text; keyword overrides build the failing variants."""
 
-    def make(character="character_well_rounded", target="chal_gatherer_1", plan_character=None):
+    def make(
+        character="character_well_rounded",
+        target="chal_gatherer_1",
+        plan_character=None,
+        plan_id="well-rounded-v1",
+        plan_target=None,
+    ):
         plan_character = plan_character or character
+        plan_target_line = (
+            "" if plan_target is None else f'\n  "target_challenge": "{plan_target}",'
+        )
         return f"""# Proposal 1
 
 ## Target
@@ -36,8 +45,8 @@ Work toward {target}, the next unlock on the bot profile.
 ## Plan
 ```json
 {{
-  "plan_id": "well-rounded-v1",
-  "character_id": "{plan_character}",
+  "plan_id": "{plan_id}",
+  "character_id": "{plan_character}",{plan_target_line}
   "plan": {{"weapon_type": "ranged"}}
 }}
 ```

@@ -27,17 +27,21 @@ def _install(plan: dict, target: str | None, p: paths.Paths) -> int:
 
 def _from_proposal(path: str, p: paths.Paths) -> int:
     try:
-        markdown = Path(path).read_text(encoding="utf-8")
+        markdown = Path(path).read_text(encoding="utf-8-sig")
         unlock_state = proposal.load_unlock_state(p.data_dir / "unlock_state.json")
+        rows = proposal.load_rows(p.runs_out / "index.json")
     except (OSError, ValueError) as exc:
         print(f"prepare: {exc}")
         return 1
-    errors = proposal.validate(markdown, unlock_state, Path(path).name)
+    errors = proposal.validate(markdown, unlock_state, Path(path).name, rows)
     if errors:
         for e in errors:
             print(f"prepare: {e}")
         return 1
-    return _install(proposal.extract_plan(markdown), proposal.next_run(markdown)["target"], p)
+    plan = proposal.extract_plan(markdown)
+    target = proposal.next_run(markdown)["target"]
+    plan["target_challenge"] = target or ""  # the mod prefers the plan's target; pin it
+    return _install(plan, target, p)
 
 
 def _prepare(args: argparse.Namespace) -> int:

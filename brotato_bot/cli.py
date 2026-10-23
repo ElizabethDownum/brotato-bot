@@ -7,6 +7,7 @@ A command is a callable ``register(subparsers) -> None`` that adds a subparser a
 from __future__ import annotations
 
 import argparse
+import sys
 from collections.abc import Callable
 
 COMMANDS: dict[str, Callable] = {}
@@ -22,6 +23,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):  # a piped Windows stream is cp1252
+            stream.reconfigure(encoding="utf-8", errors="replace")
     parser = build_parser()
     args = parser.parse_args(argv)
     func = getattr(args, "func", None)

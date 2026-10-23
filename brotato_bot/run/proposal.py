@@ -4,6 +4,10 @@ A proposal has these headings in this order: ``# Proposal N``, ``## Target``,
 ``## Next run``, ``## Plan``, ``## Why``, ``## Risk``, ``## Stagnation check``. ``## Plan`` holds
 exactly one fenced JSON plan file. ``## Next run`` holds exactly three bullets, in the order
 character, danger, target.
+
+Given the ``runs/index.json`` rows, ``validate`` also enforces the stagnation rule: after a
+``stagnant`` or ``escalate`` verdict on the proposal's target, the plan family or the
+character must differ from the newest finished bot-profile run on that target.
 """
 
 from __future__ import annotations
@@ -17,7 +21,7 @@ from typing import Any
 
 from brotato_bot import cli, paths
 from brotato_bot.fsutil import read_json
-from brotato_bot.run import prepare
+from brotato_bot.run import prepare, stagnation
 
 SECTIONS = ("## Target", "## Next run", "## Plan", "## Why", "## Risk", "## Stagnation check")
 _NAME = re.compile(r"\d{4}-\d{2}-\d{2}-(\d+)\.md")
@@ -26,6 +30,7 @@ _FENCED_JSON = re.compile(r"```json[ \t]*\n(.*?)```", re.DOTALL)
 _RUN_BULLET = re.compile(r"- (character|danger|target): (.+)")
 _RUN_KEYS = ["character", "danger", "target"]
 _PLACEHOLDER = re.compile(r"<[A-Za-z][^<>\n]*>")
+MAX_DANGER = 5
 
 
 def next_path(proposals_dir: Path, today: date) -> Path:
@@ -36,14 +41,29 @@ def next_path(proposals_dir: Path, today: date) -> Path:
     return Path(proposals_dir) / f"{today.isoformat()}-{max(numbers, default=0) + 1:03d}.md"
 
 
-def load_unlock_state(path: Path) -> dict:
-    """The profile's unlock state; ValueError (naming the fix) when it is not built yet."""
+def load_unlock_state(path: Path, profile: int = 1) -> dict:
+    """The bot profile's unlock state; ValueError (naming the fix) when it is not built yet
+    or was built for another profile."""
     if not Path(path).is_file():
         raise ValueError(f"{path} is missing; run unlock-state --profile 1 first")
     data = read_json(path)
     if not isinstance(data, dict):
         raise ValueError(f"{path} is not a JSON object")  # noqa: TRY004
+    if data.get("profile") != profile:
+        raise ValueError(
+            f"{path} was built for profile {data.get('profile')}; run unlock-state --profile 1"
+        )
     return data
+
+
+def load_rows(index: Path) -> list | None:
+    """The ``runs/index.json`` rows, None when the file is absent; ValueError when unusable."""
+    if not Path(index).is_file():
+        return None
+    rows = read_json(index)
+    if not isinstance(rows, list):
+        raise ValueError(f"{index} is not a JSON list")  # noqa: TRY004
+    return rows
 
 
 def _section(markdown: str, heading: str) -> str | None:
@@ -132,12 +152,36 @@ def _target_errors(target: str, character: str, unlock_state: dict) -> list[str]
     return errors
 
 
+def _change_errors(plan: dict, character: str, target: str | None, rows: list) -> list[str]:
+    """The stagnation rule: after ``stagnant`` or ``escalate`` the plan family or the
+    character must differ from the newest finished bot-profile run on the target."""
+    target = stagnation.resolve_target(rows, target)
+    if target is None:
+        return []
+    state = stagnation.verdict(rows, target).state
+    if state not in ("stagnant", "escalate"):
+        return []
+    newest = stagnation.finished_runs(rows, target)[-1]
+    same_family = stagnation._family(plan["plan_id"]) == stagnation._family(newest.get("plan_id"))
+    if same_family and character == newest.get("character_id"):
+        message = (
+            f"stagnation is {state} on {target}: the plan family or the character must change "
+            "(a new -vN alone is not a change)"
+        )
+        return [message]
+    return []
+
+
 def validate(
-    markdown: str, unlock_state: dict[str, Any], file_name: str | None = None
+    markdown: str,
+    unlock_state: dict[str, Any],
+    file_name: str | None = None,
+    rows: list | None = None,
 ) -> list[str]:
     """Problems with a proposal; an empty list means it is valid.
 
     ``file_name`` (the proposal's file name) enables the check that the title number matches it.
+    ``rows`` (the ``runs/index.json`` list) enables the stagnation material-change check.
     """
     markdown = markdown.replace("\r\n", "\n")
     errors = _check_sections(markdown)
@@ -163,9 +207,17 @@ def validate(
         errors.append(f"## Next run: {exc}")
         return errors
     character = run["character_id"]
+    if not 0 <= run["danger"] <= MAX_DANGER:
+        errors.append(f"## Next run: danger must be 0 to {MAX_DANGER}, not {run['danger']}")
     if plan is not None and plan["character_id"] != character:
         errors.append(
             f"## Next run: character {character} is not the plan's character {plan['character_id']}"
+        )
+    plan_target = plan.get("target_challenge", "") if plan is not None else ""
+    if plan_target and plan_target != run["target"]:
+        errors.append(
+            f"## Plan: target_challenge {plan_target} is not the ## Next run target "
+            f"{run['target'] or 'none'}"
         )
     characters = unlock_state.get("characters")
     entry = characters.get(character) if isinstance(characters, dict) else None
@@ -173,6 +225,8 @@ def validate(
         errors.append(f"character {character} is locked on the bot profile")
     if run["target"] is not None:
         errors.extend(_target_errors(run["target"], character, unlock_state))
+    if rows is not None and plan is not None:
+        errors.extend(_change_errors(plan, character, run["target"], rows))
     return errors
 
 
@@ -184,12 +238,13 @@ def _next_path(args: argparse.Namespace) -> int:
 def _validate(args: argparse.Namespace) -> int:
     p = paths.load()
     try:
-        markdown = Path(args.file).read_text(encoding="utf-8")
+        markdown = Path(args.file).read_text(encoding="utf-8-sig")
         unlock_state = load_unlock_state(p.data_dir / "unlock_state.json")
+        rows = load_rows(p.runs_out / "index.json")
     except (OSError, ValueError) as exc:
         print(f"proposal: {exc}")
         return 1
-    errors = validate(markdown, unlock_state, Path(args.file).name)
+    errors = validate(markdown, unlock_state, Path(args.file).name, rows)
     if errors:
         for e in errors:
             print(e)

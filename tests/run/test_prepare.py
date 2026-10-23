@@ -137,6 +137,7 @@ def _unlock_state(p, unlocked):
         "open": ["chal_gatherer_1"],
         "blocked": [],
         "progress": {"chal_gatherer_1": {"requires_character": None, "value": 5}},
+        "profile": 1,
     }
     p.data_dir.joinpath("unlock_state.json").write_text(json.dumps(state), encoding="utf-8")
 
@@ -151,6 +152,44 @@ def test_prepare_from_proposal_installs_plan_and_target(tmp_paths, tmp_path, pro
     )
     config = json.loads(tmp_paths.config_json.read_text(encoding="utf-8"))
     assert config["target_challenge"] == "chal_gatherer_1"
+
+
+def test_prepare_from_proposal_writes_the_target_into_the_plan(tmp_paths, tmp_path, proposal_md):
+    # O8/S2: the installed plan.json carries the validated target ("" for none).
+    _settings(tmp_paths, 1, False)
+    _unlock_state(tmp_paths, True)
+    assert cli.main(["prepare", "--from-proposal", _proposal_file(tmp_path, proposal_md())]) == 0
+    plan = json.loads(tmp_paths.plan_json.read_text(encoding="utf-8"))
+    assert plan["target_challenge"] == "chal_gatherer_1"
+    none = proposal_md().replace("- target: chal_gatherer_1", "- target: none")
+    assert cli.main(["prepare", "--from-proposal", _proposal_file(tmp_path, none)]) == 0
+    assert json.loads(tmp_paths.plan_json.read_text(encoding="utf-8"))["target_challenge"] == ""
+
+
+def test_prepare_from_proposal_refuses_an_unchanged_plan_after_stagnation(
+    tmp_paths, tmp_path, proposal_md, capsys
+):
+    # O1: prepare loads runs/index.json and applies the material-change check.
+    _unlock_state(tmp_paths, True)
+    rows = [
+        {
+            "run_id": f"r{i}",
+            "character_id": "character_well_rounded",
+            "plan_id": f"a-v{i}",
+            "target_challenge": "chal_gatherer_1",
+            "outcome": "death",
+            "death_wave": 10,
+            "hp_end_last_wave": 5,
+            "profile_id": 1,
+        }
+        for i in (1, 2, 3)
+    ]
+    tmp_paths.runs_out.mkdir(parents=True, exist_ok=True)
+    (tmp_paths.runs_out / "index.json").write_text(json.dumps(rows), encoding="utf-8")
+    path = _proposal_file(tmp_path, proposal_md(plan_id="a-v4"))
+    assert cli.main(["prepare", "--from-proposal", path]) == 1
+    assert "prepare: stagnation is stagnant on chal_gatherer_1" in capsys.readouterr().out
+    assert not tmp_paths.plan_json.exists()
 
 
 def test_prepare_rejects_locked_character(tmp_paths, tmp_path, proposal_md, capsys):

@@ -1,5 +1,7 @@
+import io
 import json
 import re
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -180,9 +182,143 @@ def test_skill_skeleton_lists_every_plan_key_the_mod_reads():
     assert set(skeleton["plan"]) == set(re.findall(r'"(\w+)":', table))
 
 
+def flat_rows(plans, character=CHARACTER, target=TARGET, profile=1):
+    """``runs/index.json`` rows: one flat death at wave 10 per plan id."""
+    return [
+        {
+            "run_id": f"r{i + 1}",
+            "character_id": character,
+            "plan_id": plan,
+            "target_challenge": target,
+            "outcome": "death",
+            "death_wave": 10,
+            "hp_end_last_wave": 5,
+            "profile_id": profile,
+            "target_fired": False,
+        }
+        for i, plan in enumerate(plans)
+    ]
+
+
+STAGNANT_ROWS = flat_rows(["a-v1", "a-v2", "a-v3"])
+MUST_CHANGE = (
+    f"stagnation is stagnant on {TARGET}: the plan family or the character must change "
+    "(a new -vN alone is not a change)"
+)
+
+
+def test_validate_rejects_a_version_bump_after_stagnation(proposal_md):
+    # O1: three flat deaths on a-v1..a-v3; a-v4 on the same character is not a change.
+    errors = proposal.validate(proposal_md(plan_id="a-v4"), UNLOCKED, rows=STAGNANT_ROWS)
+    assert errors == [MUST_CHANGE]
+
+
+def test_validate_accepts_a_new_family_or_character_after_stagnation(proposal_md):
+    assert proposal.validate(proposal_md(plan_id="b-v1"), UNLOCKED, rows=STAGNANT_ROWS) == []
+    text = proposal_md(plan_id="a-v4", character="character_brawler")
+    assert proposal.validate(text, UNLOCKED, rows=STAGNANT_ROWS) == []
+
+
+def test_validate_change_check_skips_progress_and_missing_rows(proposal_md):
+    text = proposal_md(plan_id="a-v4")
+    assert proposal.validate(text, UNLOCKED) == []
+    assert proposal.validate(text, UNLOCKED, rows=STAGNANT_ROWS[:2]) == []
+    owner = flat_rows(["a-v1", "a-v2", "a-v3"], profile=0)
+    assert proposal.validate(text, UNLOCKED, rows=owner) == []
+
+
+def test_validate_change_check_on_escalate(proposal_md):
+    rows = flat_rows(["x-v1", "x-v2", "x-v3", "a-v1", "a-v2", "a-v3"])
+    errors = proposal.validate(proposal_md(plan_id="a-v4"), UNLOCKED, rows=rows)
+    assert errors == [MUST_CHANGE.replace("is stagnant", "is escalate")]
+
+
+def test_validate_change_check_uses_the_default_target_for_none(proposal_md):
+    text = proposal_md(plan_id="a-v4").replace(f"- target: {TARGET}", "- target: none")
+    errors = proposal.validate(text, _state(open=[], progress={}), rows=STAGNANT_ROWS)
+    assert errors == [MUST_CHANGE]
+
+
+def test_validate_rejects_plan_target_that_differs_from_next_run(proposal_md):
+    # O8: the mod plays the plan's target, so it must be the validated one.
+    errors = proposal.validate(proposal_md(plan_target="chal_other"), UNLOCKED)
+    assert errors == [
+        f"## Plan: target_challenge chal_other is not the ## Next run target {TARGET}"
+    ]
+    assert proposal.validate(proposal_md(plan_target=TARGET), UNLOCKED) == []
+    assert proposal.validate(proposal_md(plan_target=""), UNLOCKED) == []
+    none = proposal_md(plan_target="chal_other").replace(f"- target: {TARGET}", "- target: none")
+    assert proposal.validate(none, UNLOCKED) == [
+        "## Plan: target_challenge chal_other is not the ## Next run target none"
+    ]
+
+
+def test_validate_range_checks_danger(proposal_md):
+    # O14: danger is 0..5.
+    errors = proposal.validate(proposal_md().replace("- danger: 0", "- danger: 99"), UNLOCKED)
+    assert errors == ["## Next run: danger must be 0 to 5, not 99"]
+    assert proposal.validate(proposal_md().replace("- danger: 0", "- danger: 5"), UNLOCKED) == []
+    errors = proposal.validate(proposal_md().replace("- danger: 0", "- danger: -1"), UNLOCKED)
+    assert errors == ["## Next run: danger must be 0 to 5, not -1"]
+
+
+def test_load_unlock_state_requires_the_bot_profile(tmp_path):
+    path = tmp_path / "unlock_state.json"
+    path.write_text(json.dumps({**UNLOCKED, "profile": 0}), encoding="utf-8")
+    try:
+        proposal.load_unlock_state(path)
+    except ValueError as exc:
+        assert str(exc) == f"{path} was built for profile 0; run unlock-state --profile 1"
+    else:
+        raise AssertionError("profile 0 state was accepted")
+    path.write_text(json.dumps({**UNLOCKED, "profile": 1}), encoding="utf-8")
+    assert proposal.load_unlock_state(path)["profile"] == 1
+
+
+def _write_unlock_state(p, state=UNLOCKED):
+    p.data_dir.mkdir(parents=True, exist_ok=True)
+    p.data_dir.joinpath("unlock_state.json").write_text(json.dumps({**state, "profile": 1}))
+
+
+def test_cli_validate_reads_the_run_index(tmp_paths, proposal_md, capsys):
+    _write_unlock_state(tmp_paths)
+    path = tmp_paths.project_root / "2026-10-22-001.md"
+    path.write_text(proposal_md(plan_id="a-v4"), encoding="utf-8")
+    assert cli.main(["proposal", "validate", str(path)]) == 0  # no index file
+    assert capsys.readouterr().out.strip() == "ok"
+    tmp_paths.runs_out.mkdir(parents=True, exist_ok=True)
+    (tmp_paths.runs_out / "index.json").write_text(json.dumps(STAGNANT_ROWS), encoding="utf-8")
+    assert cli.main(["proposal", "validate", str(path)]) == 1
+    assert capsys.readouterr().out.strip() == MUST_CHANGE
+
+
+def test_cli_validate_reads_a_bom_file(tmp_paths, proposal_md, capsys):
+    # O13: a UTF-8 BOM is not part of the first heading.
+    _write_unlock_state(tmp_paths)
+    path = tmp_paths.project_root / "2026-10-22-001.md"
+    path.write_bytes(b"\xef\xbb\xbf" + proposal_md().encode("utf-8"))
+    assert cli.main(["proposal", "validate", str(path)]) == 0
+    assert capsys.readouterr().out.strip() == "ok"
+
+
+def test_cli_validate_prints_non_ascii_errors_on_a_cp1252_stdout(
+    tmp_paths, proposal_md, monkeypatch
+):
+    # O9: a piped Windows stdout is cp1252; the error list must print, not a traceback.
+    _write_unlock_state(tmp_paths)
+    path = tmp_paths.project_root / "2026-10-22-001.md"
+    path.write_text(proposal_md().replace("## Target", "## Target → next"), encoding="utf-8")
+    out = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+    monkeypatch.setattr(sys, "stdout", out)
+    assert cli.main(["proposal", "validate", str(path)]) == 1
+    out.flush()
+    text = out.buffer.getvalue().decode("utf-8")
+    assert "sections must be" in text
+    assert "## Target → next" in text
+
+
 def test_cli_validate_prints_ok_and_errors(tmp_paths, proposal_md, capsys):
-    tmp_paths.data_dir.mkdir(parents=True, exist_ok=True)
-    tmp_paths.data_dir.joinpath("unlock_state.json").write_text(json.dumps(UNLOCKED))
+    _write_unlock_state(tmp_paths)
     good = tmp_paths.project_root / "2026-10-22-001.md"
     good.write_text(proposal_md(), encoding="utf-8")
     assert cli.main(["proposal", "validate", str(good)]) == 0

@@ -153,8 +153,6 @@ def _newest_advise_state(state_dir: Path) -> Path | None:
 
 
 def _decide_once(args: argparse.Namespace) -> int:
-    if hasattr(sys.stdout, "reconfigure"):  # a piped Windows stdout is cp1252
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     p = paths.load()
     try:
         state = read_json(args.state)
@@ -279,9 +277,6 @@ def _advise_text(state_arg: str | None) -> str:
 
 
 def _advise_context(args: argparse.Namespace) -> int:
-    for stream in (sys.stdout, sys.stderr):
-        if hasattr(stream, "reconfigure"):  # a piped Windows stream is cp1252
-            stream.reconfigure(encoding="utf-8", errors="replace")
     try:
         text = _advise_text(args.state)
     except _CommandError as exc:
