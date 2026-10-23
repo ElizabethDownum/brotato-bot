@@ -54,16 +54,23 @@ change only when a later run or a code read confirms it.
   for the baseline profile, testable with the existing `--arb-sweep` knob; (2) pay the
   still-after-still bonus only to characters that gain from standing.
 
-## 2026-10-22 run 1: damage telemetry recorded nothing (bug, to fix before damage is a metric)
+## 2026-10-22 run 1: damage telemetry recorded nothing (resolved 2026-10-23: no hits were taken)
 
 - Measured: zero `damage` events, `dmg_w` 0 in all 982 snapshots, every `wave_end`
   `damage_taken` 0. Yet HP fell from 88 to 60 during wave 20 and from 25 to 18 across
   wave 7, and wave 7 began at 1/28 HP (unexplained; the wave-6 shop bought
   `item_alien_magic`).
-- Where to look: `extensions/ai_telemetry.gd` connects `took_damage` on the player and
-  discards the connect's error code; the handler takes ten arguments, and the game's own
-  signal signature cannot be read from the extracted `.gd` files (the unit script is
-  compiled). First step: log the connect result and the signal's argument count.
+- Resolution (2026-10-23, measured): in run 1 HP never fell between any two consecutive
+  1 Hz snapshots. Waves 7 and 20 *began* at 1 HP (1/28 and 1/96) and regenerated; the
+  "88 to 60" reading compared wave 19's end with wave 20's partial regen. Run 2 recorded
+  damage events and per-wave damage normally with the same mod build. So the hook works
+  and run 1 simply took no unblocked hits at danger 0. Not a telemetry bug.
+- Still open, a game-mechanic question rather than telemetry: why waves 7 and 20 of run 1
+  started at 1 HP. The wave-6 shop bought Alien Magic (+8 max HP, +3 regen, -8 luck),
+  which does not explain it. Low priority.
+- Cheap hardening, optional: log the `took_damage` connect result and emit a `warning`
+  event when it fails; have `collect` flag a run whose HP fell between snapshots with
+  no damage event in between.
 
 ## 2026-10-22 idea: ask the sidecar after rerolls too, under a per-visit budget
 
@@ -120,6 +127,5 @@ change only when a later run or a code read confirms it.
   stat goal, goal-aware saving (lock a visible goal item and hold gold for it, the way
   the shop already locks weapons), and a magnitude-aware bonus for goal items.
 - Damage telemetry recorded non-zero `damage_taken` this run (1, 5, 8, 6, 39 across
-  waves), unlike run 1, so the hook does attach at least sometimes; the run-1 zeros
-  remain unexplained.
+  waves); see the run-1 entry above, now resolved as "no hits taken".
 - Bag of uncollected materials observed again by the owner. Same open item as run 1.
