@@ -13,7 +13,7 @@ Paths used throughout:
 |---|---|
 | Repository (`<repo>` below) | `<workspace>\brotato-bot` |
 | Game folder | `D:\SteamLibrary\steamapps\common\Brotato` |
-| Installed mod | `D:\SteamLibrary\steamapps\workshop\content\1942280\9999999999\Ellie-BrotatoBot.zip` |
+| Installed mod | `D:\SteamLibrary\steamapps\workshop\content\1942280\2965027290\Ellie-BrotatoBot.zip` (Botato's Workshop item folder) |
 | Bot root (`user://brotato-bot`) | `%APPDATA%\Brotato\brotato-bot` |
 | Save folder | `%APPDATA%\Brotato\<steam64 id>` (the one 17-digit folder there) |
 | Game logs | `%APPDATA%\Brotato\logs` (`godot.log`, `modloader.log`) |
@@ -60,38 +60,54 @@ The three rules:
    - If it says `Godot not found`, run
      `<repo>\scripts\get_godot.ps1`
      once, then run the tests again.
-3. Pack the mod into the game:
+3. Once only: subscribe to Botato on the Steam Workshop
+   (https://steamcommunity.com/sharedfiles/filedetails/?id=2965027290,
+   item id `2965027290`) and wait for Steam to download it. Steam then
+   creates `D:\SteamLibrary\steamapps\workshop\content\1942280\2965027290`.
+   The game loads zips only from Workshop item folders whose id is in the
+   account's subscription list, so this folder is where the bot has to live.
+4. Pack the mod into the game:
 
    ```powershell
    pwsh -File <repo>\scripts\sync_mod.ps1
    ```
 
    - The Steam build runs from `Brotato.pck` with the loader's `steam`
-     options profile (`steam_workshop_enabled = true`). In that mode the
-     loader scans only Steam's workshop content folder for zips,
-     `<library>\steamapps\workshop\content\1942280\<item id>\*.zip`. It
-     never reads `<game>\mods` (its log says `No zipped mods found` with a
-     zip there, seen 2026-10-22 21:44) and it cannot open an unpacked
-     folder (`Can't open unpacked mods folder res://mods-unpacked/`, seen
-     2026-10-22 20:30). An unpacked folder loads only when the extracted
-     project runs under a Godot editor binary, which is how the 2026-10-21
-     probe was written. The release build has no CLI switch for this.
-   - So the script writes the zip into a local, fake workshop item folder,
-     id `9999999999`, which Steam ignores because it is not a subscribed
-     item. Use `-WorkshopDir` or `-ItemId` only if that changes.
-   - The script first removes stale installs from the earlier methods:
-     `Pasha-AutoBattler` and `Ellie-BrotatoBot` under `mods-unpacked`, and
-     `<game>\mods\Ellie-BrotatoBot.zip`, printing `Removed <path>` for each.
+     options profile (`steam_workshop_enabled = true`). Brotato's fork of
+     the loader (`addons/mod_loader/internal/third_party/steam.gd`) scans
+     `<library>\steamapps\workshop\content\1942280\<item id>\*.zip` and
+     skips every item folder that is not in `Platform.get_subscribed_mods()`
+     (`Steam.getSubscribedItems()`). It never reads `<game>\mods` (its log
+     says `No zipped mods found` with a zip there, seen 2026-10-22 21:44),
+     it cannot open an unpacked folder (`Can't open unpacked mods folder
+     res://mods-unpacked/`, seen 2026-10-22 20:30), and a fake item folder
+     `9999999999` was listed but not read (`Checking workshop item path`
+     then `No zipped mods found`, seen 2026-10-22 21:47). An unpacked
+     folder loads only when the extracted project runs under a Godot editor
+     binary, which is how the 2026-10-21 probe was written. The release
+     build has no CLI switch for any of this.
+   - So the script writes the zip into Botato's item folder (step 3) and
+     renames any other zip there, Botato's own, to `*.zip.disabled` so the
+     loader sees only this mod. Steam rewrites that folder only when the
+     Workshop item itself updates; run the script again afterwards. Use
+     `-WorkshopDir` or `-ItemId` only if the subscribed item changes.
+   - The script refuses to run while Brotato is open and first removes
+     stale installs from the earlier methods: `Pasha-AutoBattler` and
+     `Ellie-BrotatoBot` under `<game>\mods-unpacked`,
+     `<game>\mods\Ellie-BrotatoBot.zip` and the fake item folder
+     `9999999999`, printing `Removed <path>` for each. If the item folder
+     is missing it stops with `Workshop item folder not found` and the
+     subscribe link.
    - It then prints
-     `Packed 49 files into D:\SteamLibrary\steamapps\workshop\content\1942280\9999999999\Ellie-BrotatoBot.zip`.
+     `Packed 49 files into D:\SteamLibrary\steamapps\workshop\content\1942280\2965027290\Ellie-BrotatoBot.zip`.
      The zip holds `mods-unpacked/Ellie-BrotatoBot/<files>`, the layout the
      loader expects. The count is the number of files in
      `mod\Ellie-BrotatoBot` at `568aaee`, including the `.import` files.
    - Use `-GameDir <path>` only if the game moves.
-4. Launch Brotato through Steam. The title screen shows the Mod Loader's
+5. Launch Brotato through Steam. The title screen shows the Mod Loader's
    one-time "mods are loaded" warning (unverified; it may not appear).
    Dismiss it if it does.
-5. Check that the mod loaded:
+6. Check that the mod loaded:
    - Open `%APPDATA%\Brotato\brotato-bot\probe.txt`. The mod writes the
      launch time there (local ISO time) every time it loads. A fresh
      timestamp means the mod ran.
@@ -486,7 +502,7 @@ function Show-BotRun([string[]]$Kind) {
 
 #### 6.1 Load and Steam Cloud (Task 1 Step 5, Task 4 Step 0)
 
-1. Do section 2 steps 3-5. Expect: a fresh `probe.txt`, no `ERROR` line in
+1. Do section 2 steps 4-6. Expect: a fresh `probe.txt`, no `ERROR` line in
    `modloader.log` that names the mod, and no `SCRIPT ERROR` in `godot.log`.
    - In `modloader.log`, also look for the positive signals: `Ellie-BrotatoBot`
      is listed among the loaded mods, and the line
@@ -783,7 +799,7 @@ Stop the keep-alive loop and remove `ask_on` entries when done.
   cover the pure `core/` scripts. `bot_runtime.gd`, `autobattler_options.gd`,
   `extensions/main.gd`, `base_shop.gd` and `upgrades_ui.gd` reference game
   globals, so their first real compile is a game launch. Check `godot.log`
-  after every sync (section 2, step 5).
+  after every sync (section 2, step 6).
 - **The bot profile is a guess until confirmed.** Profile ids are 0-based and
   the menu labels are 1-based. Do 3.1 step 4 once.
 - **Runs are recorded on every profile.** Any run started with the mod loaded

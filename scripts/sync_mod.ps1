@@ -3,25 +3,32 @@
 Packs mod\Ellie-BrotatoBot into a zip the Steam build of Brotato will load.
 
 .DESCRIPTION
-The Steam build runs from Brotato.pck with the mod loader's "steam" profile,
-which has steam_workshop_enabled = true. In that mode the loader scans only
-the Steam Workshop content folder for zips (<library>\steamapps\workshop\
-content\1942280\<item id>\*.zip); it never reads <GameDir>\mods and cannot
-open an unpacked res://mods-unpacked folder. So this script writes the zip
-into a local, fake workshop item folder (default id 9999999999) that Steam
-leaves alone because it is not a subscribed item.
+The Steam build runs from Brotato.pck with the mod loader's "steam" profile
+(steam_workshop_enabled = true). Brotato's fork of the loader then loads
+zips only from Steam Workshop item folders whose id is in the player's
+subscription list (Platform.get_subscribed_mods, i.e.
+Steam.getSubscribedItems). It never reads <GameDir>\mods, cannot open an
+unpacked res://mods-unpacked folder, and skips workshop folders that are
+not subscribed. There is no CLI switch for any of this.
+
+So this script writes the zip into the folder of a Workshop item the owner
+is subscribed to. The default is Botato (item 2965027290), the mod this one
+derives from. Steam fills that folder on subscription; the script renames
+any other zip in it to *.zip.disabled so only this mod loads from it. Steam
+only rewrites the folder when the item itself updates, after which the
+script simply has to run again.
 
 The zip holds the loader's expected layout, mods-unpacked/Ellie-BrotatoBot/
 <mod files>, with forward-slash entry names. Stale installs from earlier
-methods (<GameDir>\mods\Ellie-BrotatoBot.zip and <GameDir>\mods-unpacked\
-{Pasha-AutoBattler,Ellie-BrotatoBot}) are removed. Refuses to run while
-Brotato.exe is running.
+methods (<GameDir>\mods\Ellie-BrotatoBot.zip, <GameDir>\mods-unpacked\
+{Pasha-AutoBattler,Ellie-BrotatoBot} and the fake item folder 9999999999)
+are removed. Refuses to run while Brotato.exe is running.
 #>
 [CmdletBinding()]
 param(
     [string]$GameDir = 'D:\SteamLibrary\steamapps\common\Brotato',
     [string]$WorkshopDir = 'D:\SteamLibrary\steamapps\workshop\content\1942280',
-    [string]$ItemId = '9999999999'
+    [string]$ItemId = '2965027290'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,7 +46,7 @@ if (-not (Test-Path -LiteralPath $GameDir -PathType Container)) {
     exit 1
 }
 
-# Stale installs from the folder and <GameDir>\mods methods.
+# Stale installs from the folder, <GameDir>\mods and fake-item methods.
 foreach ($name in 'Pasha-AutoBattler', 'Ellie-BrotatoBot') {
     $old = Join-Path (Join-Path $GameDir 'mods-unpacked') $name
     if (Test-Path -LiteralPath $old) {
@@ -47,17 +54,31 @@ foreach ($name in 'Pasha-AutoBattler', 'Ellie-BrotatoBot') {
         Write-Host "Removed $old"
     }
 }
-$oldZip = Join-Path (Join-Path $GameDir 'mods') 'Ellie-BrotatoBot.zip'
-if (Test-Path -LiteralPath $oldZip) {
-    Remove-Item -LiteralPath $oldZip -Force
-    Write-Host "Removed $oldZip"
+foreach ($old in @((Join-Path (Join-Path $GameDir 'mods') 'Ellie-BrotatoBot.zip'),
+                   (Join-Path $WorkshopDir '9999999999'))) {
+    if (Test-Path -LiteralPath $old) {
+        Remove-Item -LiteralPath $old -Recurse -Force
+        Write-Host "Removed $old"
+    }
 }
 
 $itemDir = Join-Path $WorkshopDir $ItemId
-if (-not (Test-Path -LiteralPath $itemDir)) {
-    New-Item -ItemType Directory -Path $itemDir -Force | Out-Null
+if (-not (Test-Path -LiteralPath $itemDir -PathType Container)) {
+    Write-Error ("Workshop item folder not found: $itemDir. Subscribe to item $ItemId " +
+        "in Steam (https://steamcommunity.com/sharedfiles/filedetails/?id=$ItemId) and " +
+        "let Steam download it first; the game loads zips only from subscribed item folders.")
+    exit 1
 }
+
 $zipPath = Join-Path $itemDir 'Ellie-BrotatoBot.zip'
+foreach ($other in Get-ChildItem -LiteralPath $itemDir -File -Filter '*.zip') {
+    if ($other.FullName -ne $zipPath) {
+        $disabled = "$($other.FullName).disabled"
+        if (Test-Path -LiteralPath $disabled) { Remove-Item -LiteralPath $disabled -Force }
+        Rename-Item -LiteralPath $other.FullName -NewName "$($other.Name).disabled"
+        Write-Host "Disabled $($other.FullName) -> $disabled"
+    }
+}
 if (Test-Path -LiteralPath $zipPath) {
     Remove-Item -LiteralPath $zipPath -Force
     Write-Host "Removed $zipPath"
