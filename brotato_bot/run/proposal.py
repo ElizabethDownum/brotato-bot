@@ -2,7 +2,8 @@
 
 A proposal has these headings in this order: ``# Proposal N``, ``## Target``,
 ``## Next run``, ``## Plan``, ``## Why``, ``## Risk``, ``## Stagnation check``. ``## Plan`` holds
-a fenced JSON plan file. ``## Next run`` holds exactly three bullets: character, danger, target.
+exactly one fenced JSON plan file. ``## Next run`` holds exactly three bullets, in the order
+character, danger, target.
 """
 
 from __future__ import annotations
@@ -20,9 +21,10 @@ from brotato_bot.run import prepare
 
 SECTIONS = ("## Target", "## Next run", "## Plan", "## Why", "## Risk", "## Stagnation check")
 _NAME = re.compile(r"\d{4}-\d{2}-\d{2}-(\d+)\.md")
-_TITLE = re.compile(r"# Proposal \d+")
+_TITLE = re.compile(r"# Proposal (\d+)")
 _FENCED_JSON = re.compile(r"```json[ \t]*\n(.*?)```", re.DOTALL)
-_NEXT_RUN = re.compile(r"^- (character|danger|target): (.+?)\s*$", re.MULTILINE)
+_RUN_BULLET = re.compile(r"- (character|danger|target): (.+)")
+_RUN_KEYS = ["character", "danger", "target"]
 _PLACEHOLDER = re.compile(r"<[A-Za-z][^<>\n]*>")
 
 
@@ -47,7 +49,9 @@ def load_unlock_state(path: Path) -> dict:
 def _section(markdown: str, heading: str) -> str | None:
     """The text under ``heading`` up to the next ``## `` heading, or None when absent."""
     m = re.search(
-        rf"^{re.escape(heading)}[ \t]*\n(.*?)(?=^## |\Z)", markdown, re.MULTILINE | re.DOTALL
+        rf"^{re.escape(heading)}[ \t]*\n(.*?)(?=^## |\Z)",
+        markdown.replace("\r\n", "\n"),
+        re.MULTILINE | re.DOTALL,
     )
     return m.group(1) if m else None
 
@@ -74,29 +78,36 @@ def _check_sections(markdown: str) -> list[str]:
 
 
 def extract_plan(markdown: str) -> dict:
-    """The JSON object in the fenced block under ``## Plan``; ValueError when absent or bad."""
+    """The JSON object in the one fenced block under ``## Plan``; ValueError otherwise."""
     body = _section(markdown, "## Plan")
     if body is None:
-        raise ValueError("no ## Plan section")
-    m = _FENCED_JSON.search(body)
-    if m is None:
-        raise ValueError("## Plan has no ```json block")
-    return json.loads(m.group(1))
+        raise ValueError("section missing")
+    blocks = _FENCED_JSON.findall(body)
+    if len(blocks) != 1:
+        raise ValueError(f"needs exactly one ```json block, found {len(blocks)}")
+    return json.loads(blocks[0])
 
 
 def next_run(markdown: str) -> dict:
     """``{character_id, danger, target}`` from ``## Next run``; target is None for ``none``."""
     body = _section(markdown, "## Next run")
     if body is None:
-        raise ValueError("no ## Next run section")
-    fields = dict(_NEXT_RUN.findall(body))
-    missing = [k for k in ("character", "danger", "target") if k not in fields]
-    if missing:
-        raise ValueError(f"## Next run lacks the {', '.join(missing)} bullet")
+        raise ValueError("section missing")
+    bullets = []
+    for line in (ln.strip() for ln in body.splitlines()):
+        if not line:
+            continue
+        m = _RUN_BULLET.fullmatch(line)
+        if m is None:
+            raise ValueError(f"line is not a character, danger or target bullet: {line!r}")
+        bullets.append((m.group(1), m.group(2)))
+    if [key for key, _ in bullets] != _RUN_KEYS:
+        raise ValueError("needs exactly three bullets, character, danger and target, in that order")
+    fields = dict(bullets)
     try:
         danger = int(fields["danger"])
     except ValueError:
-        raise ValueError(f"## Next run danger must be an integer: {fields['danger']!r}") from None
+        raise ValueError(f"danger must be an integer: {fields['danger']!r}") from None
     target = fields["target"]
     return {
         "character_id": fields["character"],
@@ -105,9 +116,38 @@ def next_run(markdown: str) -> dict:
     }
 
 
-def validate(markdown: str, unlock_state: dict[str, Any]) -> list[str]:
-    """Problems with a proposal; an empty list means it is valid."""
+def _target_errors(target: str, character: str, unlock_state: dict) -> list[str]:
+    errors = []
+    if target not in unlock_state.get("open", []):
+        where = next(
+            (name for name in ("done", "blocked") if target in unlock_state.get(name, [])),
+            "unknown",
+        )
+        errors.append(f"## Next run: target {target} is not open (listed as {where})")
+    progress = unlock_state.get("progress")
+    info = progress.get(target) if isinstance(progress, dict) else None
+    need = info.get("requires_character") if isinstance(info, dict) else None
+    if need is not None and need != character:
+        errors.append(f"## Next run: target {target} needs character {need}, not {character}")
+    return errors
+
+
+def validate(
+    markdown: str, unlock_state: dict[str, Any], file_name: str | None = None
+) -> list[str]:
+    """Problems with a proposal; an empty list means it is valid.
+
+    ``file_name`` (the proposal's file name) enables the check that the title number matches it.
+    """
+    markdown = markdown.replace("\r\n", "\n")
     errors = _check_sections(markdown)
+    heads = _headings(markdown)
+    title = _TITLE.fullmatch(heads[0]) if heads else None
+    named = _NAME.fullmatch(file_name) if file_name else None
+    if title and named and int(title.group(1)) != int(named.group(1)):
+        errors.append(
+            f"title is Proposal {int(title.group(1))} but the file is number {int(named.group(1))}"
+        )
     for left in dict.fromkeys(_PLACEHOLDER.findall(markdown)):
         errors.append(f"unfilled placeholder {left}")
     plan = None
@@ -122,15 +162,17 @@ def validate(markdown: str, unlock_state: dict[str, Any]) -> list[str]:
     except ValueError as exc:
         errors.append(f"## Next run: {exc}")
         return errors
-    if plan is not None and plan["character_id"] != run["character_id"]:
+    character = run["character_id"]
+    if plan is not None and plan["character_id"] != character:
         errors.append(
-            f"## Next run character {run['character_id']} is not the plan's "
-            f"character {plan['character_id']}"
+            f"## Next run: character {character} is not the plan's character {plan['character_id']}"
         )
     characters = unlock_state.get("characters")
-    entry = characters.get(run["character_id"]) if isinstance(characters, dict) else None
+    entry = characters.get(character) if isinstance(characters, dict) else None
     if isinstance(entry, dict) and entry.get("unlocked") is False:
-        errors.append(f"character {run['character_id']} is locked on the bot profile")
+        errors.append(f"character {character} is locked on the bot profile")
+    if run["target"] is not None:
+        errors.extend(_target_errors(run["target"], character, unlock_state))
     return errors
 
 
@@ -147,7 +189,7 @@ def _validate(args: argparse.Namespace) -> int:
     except (OSError, ValueError) as exc:
         print(f"proposal: {exc}")
         return 1
-    errors = validate(markdown, unlock_state)
+    errors = validate(markdown, unlock_state, Path(args.file).name)
     if errors:
         for e in errors:
             print(e)

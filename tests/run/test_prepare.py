@@ -131,7 +131,13 @@ def _proposal_file(tmp_path, text):
 
 def _unlock_state(p, unlocked):
     p.data_dir.mkdir(parents=True, exist_ok=True)
-    state = {"characters": {"character_well_rounded": {"unlocked": unlocked, "unlocked_by": None}}}
+    state = {
+        "characters": {"character_well_rounded": {"unlocked": unlocked, "unlocked_by": None}},
+        "done": [],
+        "open": ["chal_gatherer_1"],
+        "blocked": [],
+        "progress": {"chal_gatherer_1": {"requires_character": None, "value": 5}},
+    }
     p.data_dir.joinpath("unlock_state.json").write_text(json.dumps(state), encoding="utf-8")
 
 

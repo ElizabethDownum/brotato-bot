@@ -32,7 +32,7 @@ def _from_proposal(path: str, p: paths.Paths) -> int:
     except (OSError, ValueError) as exc:
         print(f"prepare: {exc}")
         return 1
-    errors = proposal.validate(markdown, unlock_state)
+    errors = proposal.validate(markdown, unlock_state, Path(path).name)
     if errors:
         for e in errors:
             print(f"prepare: {e}")
