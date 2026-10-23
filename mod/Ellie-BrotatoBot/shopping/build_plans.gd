@@ -7,14 +7,15 @@ extends Reference
 # A plan expresses a guide as data:
 #   weapon_type  favoured damage type for weapon buys: "ranged" | "melee" | "any"
 #   stats        stat_key(String) -> desirability weight; the ORDER the guide
-#                prioritises stats becomes the relative weights here
+#                prioritises stats becomes the relative weights here. A weight is
+#                per tier-1-upgrade unit of the stat (shopping/effect_score.gd)
 #   harvest_cap  once stat_harvesting reaches this, stop over-valuing harvesting
 #   item_bonus   item my_id -> extra score, for named guide items whose value is
 #                a special effect rather than a stat (Bag, Scar, Cape, ...)
 #   max_weapons  stop buying non-combining weapons past this many held
 #   reroll_keep  never spend the last of the gold rerolling -- keep at least this
 #   max_rerolls  paid rerolls per shop visit (free rerolls are always taken)
-#   min_buy      do not buy an item scoring below this
+#   min_buy      do not buy an item scoring below this (on the same per-unit scale)
 
 const PlanFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/plan_file.gd")
 

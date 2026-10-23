@@ -310,10 +310,10 @@ Common `plan` keys. This table is the full set. The header comment in
 | Key | Meaning |
 |---|---|
 | `weapon_type` | `"ranged"`, `"melee"` or `"any"` |
-| `stats` | stat key → weight, e.g. `"stat_ranged_damage": 8.0` |
+| `stats` | stat key → weight per tier-1-upgrade unit of the stat (an effect scores weight × its size in units, capped at 4 units), e.g. `"stat_ranged_damage": 8.0` |
 | `harvest_cap` | stop favouring harvesting once it reaches this |
 | `item_bonus` | item id → extra score |
-| `max_weapons`, `reroll_keep`, `max_rerolls`, `min_buy` | shop economy (ints, except `min_buy`) |
+| `max_weapons`, `reroll_keep`, `max_rerolls`, `min_buy` | shop economy (ints, except `min_buy`, which is on the `stats` score scale; calibrate it with `python -m brotato_bot score`) |
 | `gold_floor` | gold held back from wave 5 on (int) |
 | `prefer_weapons`, `ban_items` | lists of weapon / item ids |
 | `ask_on` | ids that always trigger a `pivot` decision when offered |

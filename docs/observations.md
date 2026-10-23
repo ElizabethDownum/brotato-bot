@@ -133,3 +133,21 @@ change only when a later run or a code read confirms it.
 - Damage telemetry recorded non-zero `damage_taken` this run (1, 5, 8, 6, 39 across
   waves); see the run-1 entry above, now resolved as "no hits taken".
 - Bag of uncollected materials observed again by the owner. Same open item as run 1.
+
+## 2026-10-23 agreed design: magnitude-aware scoring
+
+- Problem (run 2): `stat_score` added a flat weight per effect, so a -1 speed Bag scored
+  the same as a -10 Statue and junk with one weighted effect cleared `min_buy` 2.0.
+- Formula: per effect on a weighted stat, `sign(v) * weight * min(|v| / unit, 4)`, with the
+  phase-boost multiplier and the harvest cap applied to the weight as before. A unit is the
+  stat's tier-1 level-up value, read from `items/upgrades/<stat>/1/*_effect.tres` (game
+  1.1.15.4); a tier-1 level-up of a stat scores exactly its weight, and no single effect
+  counts for more than 4 units. The old `min(v, 20) * 0.02` tie-breaker is dropped:
+  magnitude replaces it.
+- Code: `mod/Ellie-BrotatoBot/shopping/effect_score.gd` (pure, source of truth, tested
+  headless), `shop_advisor.gd` `stat_score` delegates to it; `brotato_bot/run/score.py`
+  mirrors it. `score_weapon` and the ask thresholds are unchanged, so an item with a
+  ~4-unit effect of a weight >= 6 stat now outranks a plain weapon (22).
+- `min_buy` is now calibrated with `python -m brotato_bot score --plan|--proposal FILE
+  [--min-buy X]`, which scores every dataset item under a plan as given. `proposal shape`
+  raises `min_buy` to a placeholder 4.0 under a stat goal (`MIN_BUY_UNDER_GOAL`).
