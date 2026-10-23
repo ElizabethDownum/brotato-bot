@@ -65,9 +65,13 @@ change only when a later run or a code read confirms it.
   "88 to 60" reading compared wave 19's end with wave 20's partial regen. Run 2 recorded
   damage events and per-wave damage normally with the same mod build. So the hook works
   and run 1 simply took no unblocked hits at danger 0. Not a telemetry bug.
-- Still open, a game-mechanic question rather than telemetry: why waves 7 and 20 of run 1
-  started at 1 HP. The wave-6 shop bought Alien Magic (+8 max HP, +3 regen, -8 luck),
-  which does not explain it. Low priority.
+- The 1-HP wave starts are explained (owner's recall, confirmed in the data 2026-10-23):
+  Weird Ghost (tier 0, 12 gold) carries `effect_hp_start_next_wave -100`, i.e. the next
+  wave starts at 1 HP, alongside its max-HP bonus. Run 1 bought it in the wave-6 shop
+  (wave 7 began at 1/28) and again in the wave-19 shop (wave 20 began at 1/96). Run 2
+  bought one too. The scorer sees only the max-HP effect; the downside is an unweighted
+  effect key, so Weird Ghost is a concrete negative intangible for step 4 of the plan,
+  the mirror of Dangerous Bunny's unscored free rerolls.
 - Cheap hardening, optional: log the `took_damage` connect result and emit a `warning`
   event when it fails; have `collect` flag a run whose HP fell between snapshots with
   no damage event in between.
