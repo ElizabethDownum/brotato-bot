@@ -12,7 +12,9 @@ no ``profile_id`` key (written before the key existed) is kept. The window is th
   the goal (run 1, 2026-10-22, won on ``chal_slow`` without lowering speed).
 - no later run beats the first run -> ``stagnant``. A run beats the first when it died at a
   later wave, or at the same wave with more end HP (a missing value reads as 0). A win
-  never beats anything: surviving to the end is not progress on the target either.
+  never beats anything and is never beaten: it ranks above every death, so a win in the
+  first slot of the window is not beaten by a later death, and surviving to the end is not
+  progress on the target either.
 - otherwise -> ``progressing``
 - ``escalate``: the window is stagnant, a material change (plan family or character) landed
   at run k with the window starting at or after k, the ``window`` runs before k were
@@ -23,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from datetime import date
@@ -55,7 +58,14 @@ def _ids(run: list[dict]) -> str:
 
 
 def _waves(run: list[dict]) -> str:
-    return ", ".join("?" if r.get("death_wave") is None else str(r["death_wave"]) for r in run)
+    return ", ".join(
+        "win"
+        if r.get("outcome") == "win"
+        else "?"
+        if r.get("death_wave") is None
+        else str(r["death_wave"])
+        for r in run
+    )
 
 
 def _bot_row(r: object) -> bool:
@@ -75,13 +85,17 @@ def _success(r: dict) -> bool:
     return r.get("target_fired") is True
 
 
+def _rank(r: dict) -> tuple[float, int]:
+    """(wave, end HP) with a win above every death."""
+    if r.get("outcome") == "win":
+        return (math.inf, 0)
+    return (_n(r.get("death_wave")), _n(r.get("hp_end_last_wave")))
+
+
 def _beats(r: dict, first: dict) -> bool:
     if r.get("outcome") == "win":
-        return False
-    wave, wave0 = _n(r.get("death_wave")), _n(first.get("death_wave"))
-    return wave > wave0 or (
-        wave == wave0 and _n(r.get("hp_end_last_wave")) > _n(first.get("hp_end_last_wave"))
-    )
+        return False  # a win never beats anything
+    return _rank(r) > _rank(first)  # and a win in the first slot is never beaten
 
 
 def _stagnant(run: list[dict]) -> bool:
@@ -115,7 +129,7 @@ def verdict(rows: list[dict], target: str, window: int = 3) -> Verdict:
         return Verdict(
             "progressing",
             "a later run beat the first run's death wave (or its end HP at the same wave): "
-            f"deaths at waves {_waves(last)}",
+            f"runs ended at waves {_waves(last)}",
             ids,
         )
 
@@ -126,15 +140,15 @@ def verdict(rows: list[dict], target: str, window: int = 3) -> Verdict:
         if change and _stagnant(before) and _stagnant(since):
             return Verdict(
                 "escalate",
-                f"{change} at run {finished[k].get('run_id')}; runs {_ids(since)} died at waves "
+                f"{change} at run {finished[k].get('run_id')}; runs {_ids(since)} ended at waves "
                 f"{_waves(since)} with none beating the first; runs {_ids(before)} before it "
-                f"died at waves {_waves(before)} with none beating the first",
+                f"ended at waves {_waves(before)} with none beating the first",
                 ids,
             )
     return Verdict(
         "stagnant",
-        f"{window} deaths at waves {_waves(last)} with none beating the first run's death wave "
-        "(or its end HP at the same wave)",
+        f"{window} runs ended at waves {_waves(last)} with none beating the first run's end "
+        "(a later death wave, or more end HP at the same wave)",
         ids,
     )
 

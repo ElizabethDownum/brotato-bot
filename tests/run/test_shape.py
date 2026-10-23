@@ -42,7 +42,14 @@ def _plan(plan_id="well-rounded-v1", **body):
     plan = {
         "weapon_type": "ranged",
         "weapon_set": "",
-        "stats": {"stat_harvesting": 10.0, "stat_ranged_damage": 8.0, "stat_speed": 2.0},
+        "stats": {
+            "stat_harvesting": 10.0,
+            "stat_ranged_damage": 8.0,
+            "stat_speed": 2.0,
+            "stat_max_hp": 5.0,
+            "stat_armor": 3.0,
+            "stat_luck": 1.0,
+        },
         "item_bonus": {"item_bag": 1.0},
         "ban_items": [],
     }
@@ -101,6 +108,53 @@ def test_shape_plan_adds_the_goal_to_the_family_and_keeps_the_version():
         shape.shape_plan(_plan("well-rounded-slow-v1"), goal, ITEMS)["plan_id"]
         == "well-rounded-slow-v1"
     )
+
+
+def test_shape_plan_does_not_create_ban_items_for_a_nonzero_goal():
+    plan = _plan()
+    del plan["plan"]["ban_items"]
+    shaped = shape.shape_plan(plan, shape.goal_for("chal_slow", SLOW), ITEMS)
+    assert "ban_items" not in shaped["plan"]
+    text, changes = shape.shape_markdown(
+        _proposal("chal_slow", plan=plan), shape.goal_for("chal_slow", SLOW), ITEMS
+    )
+    assert not any("banned" in c for c in changes)
+    assert "ban_items" not in proposal.extract_plan(text)["plan"]
+
+
+def test_shape_plan_sums_an_items_effects_on_the_goal_stat():
+    items = [
+        {
+            "id": "item_two",
+            "effects": [{"key": "stat_speed", "value": -4}, {"key": "stat_speed", "value": -6}],
+        }
+    ]
+    shaped = shape.shape_plan(_plan(), shape.goal_for("chal_slow", SLOW), items)
+    assert shaped["plan"]["item_bonus"]["item_two"] == 15.0
+
+
+def test_goal_for_keeps_a_float_value():
+    state = _state("chal_slow", stat="stat_speed", value=-20.0)
+    g = shape.goal_for("chal_slow", state)
+    assert (g.value, g.sign) == (-20.0, -1)
+    shaped = shape.shape_plan(_plan(), g, ITEMS)
+    assert shaped["plan"]["stats"]["stat_speed"] == -14.0
+    text, changes = shape.shape_markdown(_proposal("chal_slow"), g, ITEMS)
+    assert changes[0] == "stat_speed weight -14 (goal -20), 2 item bonuses"
+    assert proposal.validate(text, state, "2026-10-22-003.md") == []
+
+
+def test_validate_requires_the_full_stats_row():
+    plan = _plan()
+    plan["plan"]["stats"] = {"stat_harvesting": 10.0, "stat_speed": -14.0, "stat_luck": 1.0}
+    errors = proposal.validate(_proposal("chal_slow", plan=plan), SLOW, "2026-10-22-003.md")
+    expected = (
+        "## Plan: stats has only 2 weights besides stat_speed; "
+        "copy the character's full row before shaping"
+    )
+    assert errors == [expected]
+    plan["plan"]["stats"].update(stat_max_hp=5.0, stat_armor=3.0)
+    assert proposal.validate(_proposal("chal_slow", plan=plan), SLOW, "2026-10-22-003.md") == []
 
 
 def test_shape_plan_leaves_the_input_untouched():

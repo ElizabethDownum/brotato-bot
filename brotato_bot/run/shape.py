@@ -6,6 +6,13 @@ The curated plan rows know nothing about that, so a plan copied from a row pursu
 character's normal build and reaches the goal only by accident (run 1, 2026-10-22, won on
 ``chal_slow`` without ever lowering speed).
 
+The mod merges a plan file over the character's built-in row one level deep: ``stats`` and
+``item_bonus`` are merged key by key, every other key (``ban_items`` included) is replaced.
+So the proposal's ``stats`` must be the character's full row: dominance of the goal weight
+only means something over the full map, and ``goal_errors`` requires ``MIN_STATS`` other
+weights. ``shape`` never creates ``ban_items`` unless it bans an item, since a present list
+would replace the row's own bans.
+
 ``shape`` rewrites the proposal's ``## Plan`` block so the plan pursues the goal:
 
 - the goal stat gets the plan's dominant weight, with the goal's sign. The shop scorer
@@ -40,6 +47,7 @@ from typing import Any
 ITEM_BONUS_PER_POINT = 1.5
 ITEM_BONUS_CAP = 30.0
 DOMINANT_MARGIN = 4.0
+MIN_STATS = 4  # weights besides the goal stat a plan's ``stats`` must carry
 _DIFFICULTY = re.compile(r"chal_difficulty_(\d+)")
 _FENCED_JSON = re.compile(r"```json[ \t]*\n(.*?)```", re.DOTALL)
 _DANGER_BULLET = re.compile(r"^(- danger: )(\d+)[ \t]*$", re.MULTILINE)
@@ -49,7 +57,7 @@ _DANGER_BULLET = re.compile(r"^(- danger: )(\d+)[ \t]*$", re.MULTILINE)
 class Goal:
     target: str
     stat: str = ""  # a stat id, or "" for a non-stat challenge
-    value: int = 0  # the threshold for a stat goal
+    value: int | float = 0  # the threshold for a stat goal
     danger: int | None = None  # the danger a difficulty challenge requires
 
     @property
@@ -67,7 +75,7 @@ def goal_for(target: str | None, unlock_state: dict) -> Goal | None:
     info = info if isinstance(info, dict) else {}
     stat = str(info.get("stat") or "")
     value = info.get("value")
-    value = value if isinstance(value, int) and not isinstance(value, bool) else 0
+    value = value if isinstance(value, int | float) and not isinstance(value, bool) else 0
     m = _DIFFICULTY.fullmatch(target)
     danger = int(m.group(1)) if m else None
     if not stat and danger is None:
@@ -94,21 +102,19 @@ def shape_plan(plan: dict, goal: Goal, items: list[dict]) -> dict:
     others = [abs(float(w)) for k, w in stats.items() if k != goal.stat]
     stats[goal.stat] = goal.sign * (max(others, default=0.0) + DOMINANT_MARGIN)
     bonus = body.setdefault("item_bonus", {})
-    bans = body.setdefault("ban_items", [])
     for item in items:
         item_id = item.get("id")
         if not isinstance(item_id, str):
             continue
-        for e in item.get("effects") or []:
-            if e.get("key") != goal.stat:
-                continue
-            v = e.get("value")
-            if not isinstance(v, int | float) or isinstance(v, bool) or v == 0:
-                continue
-            if v * goal.sign > 0:
-                b = min(ITEM_BONUS_CAP, round(ITEM_BONUS_PER_POINT * abs(v), 1))
-                bonus[item_id] = max(float(bonus.get(item_id, 0.0)), b)
-            elif goal.value == 0 and item_id not in bans:
+        v = _sum_on(item.get("effects"), goal.stat)  # summed, as goal_data does
+        if v == 0:
+            continue
+        if v * goal.sign > 0:
+            b = min(ITEM_BONUS_CAP, round(ITEM_BONUS_PER_POINT * abs(v), 1))
+            bonus[item_id] = max(float(bonus.get(item_id, 0.0)), b)
+        elif goal.value == 0:
+            bans = body.setdefault("ban_items", [])
+            if item_id not in bans:
                 bans.append(item_id)
     family, version = _family(str(out["plan_id"]))
     suffix = "-" + goal_slug(goal.target)
@@ -142,9 +148,9 @@ def shape_markdown(markdown: str, goal: Goal | None, items: list[dict]) -> tuple
         n = sum(
             1 for k in shaped["plan"]["item_bonus"] if k not in plan["plan"].get("item_bonus", {})
         )
-        changes.append(f"{goal.stat} weight {w:g} (goal {goal.value:+d}), {n} item bonuses")
+        changes.append(f"{goal.stat} weight {w:g} (goal {goal.value:+g}), {n} item bonuses")
         if shaped["plan"].get("ban_items") != plan["plan"].get("ban_items"):
-            changes.append(f"{len(shaped['plan']['ban_items'])} banned items")
+            changes.append(f"{len(shaped['plan'].get('ban_items', []))} banned items")
         if shaped["plan_id"] != plan["plan_id"]:
             changes.append(f"plan_id {shaped['plan_id']}")
     if goal.danger is not None:
@@ -168,11 +174,16 @@ def goal_errors(plan: dict | None, run: dict, unlock_state: dict) -> list[str]:
     if goal.stat and plan is not None:
         stats = plan.get("plan", {}).get("stats", {})
         w = stats.get(goal.stat)
-        hint = f"run proposal shape FILE (goal {goal.stat} {goal.value:+d})"
+        hint = f"run proposal shape FILE (goal {goal.stat} {goal.value:+g})"
         if not isinstance(w, int | float) or isinstance(w, bool) or w * goal.sign <= 0:
             errors.append(f"## Plan: not shaped for {goal.target}: {hint}")
         else:
             others = [abs(float(v)) for k, v in stats.items() if k != goal.stat]
+            if len(others) < MIN_STATS:
+                errors.append(
+                    f"## Plan: stats has only {len(others)} weights besides {goal.stat}; "
+                    "copy the character's full row before shaping"
+                )
             if abs(float(w)) <= max(others, default=0.0):
                 errors.append(
                     f"## Plan: {goal.stat} weight {w:g} is not the plan's largest: {hint}"
@@ -268,7 +279,7 @@ def brief_lines(goal: Goal, data: dict) -> list[str]:
     if not goal.stat:
         return []
     verb = "raise" if goal.value > 0 else "lower"
-    lines = [f"Goal data for {goal.target}: {verb} {goal.stat} to {goal.value:+d}."]
+    lines = [f"Goal data for {goal.target}: {verb} {goal.stat} to {goal.value:+g}."]
     items = data.get("items") or []
     if items:
         lines.append(

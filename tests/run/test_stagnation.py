@@ -63,6 +63,7 @@ def test_three_flat_deaths_is_stagnant():
     v = stagnation.verdict(rows, TARGET)
     assert v.state == "stagnant"
     assert "14, 13, 14" in v.reason
+    assert "deaths" not in v.reason
     assert v.runs_considered == ["r1", "r2", "r3"]
 
 
@@ -73,6 +74,22 @@ def test_win_without_the_target_firing_is_not_progress():
     assert stagnation.verdict(rows, TARGET).state == "stagnant"
     wins = [row(f"r{i}", 20, hp=h, outcome="win") for i, h in enumerate((60, 70, 88), 1)]
     assert stagnation.verdict(wins, TARGET).state == "stagnant"
+
+
+def test_win_in_the_first_slot_is_not_beaten_by_a_later_death():
+    rows = [row("r1", None, outcome="win"), row("r2", 3), row("r3", 3)]
+    v = stagnation.verdict(rows, TARGET)
+    assert v.state == "stagnant"
+    assert "win, 3, 3" in v.reason and "deaths" not in v.reason
+
+
+def test_win_first_window_escalates_after_a_family_change():
+    rows = [row("r1", None, outcome="win"), row("r2", 3), row("r3", 3)]
+    rows += [row(f"r{i}", 3, plan="gatherer-v1") for i in (4, 5, 6)]
+    v = stagnation.verdict(rows, TARGET)
+    assert v.state == "escalate"
+    assert "plan well-rounded -> gatherer at run r4" in v.reason
+    assert "runs r1, r2, r3 before it ended at waves win, 3, 3" in v.reason
 
 
 def test_win_that_fired_the_target_is_progress():
@@ -131,8 +148,8 @@ def test_escalate_reason_names_the_compared_runs():
     v = stagnation.verdict(rows, TARGET)
     assert v.state == "escalate"
     assert "plan a -> b at run r4" in v.reason
-    assert "runs r4, r5, r6, r7 died at waves 11, 11, 11, 10" in v.reason
-    assert "runs r1, r2, r3 before it died at waves 10, 10, 10" in v.reason
+    assert "runs r4, r5, r6, r7 ended at waves 11, 11, 11, 10" in v.reason
+    assert "runs r1, r2, r3 before it ended at waves 10, 10, 10" in v.reason
     assert v.runs_considered == ["r5", "r6", "r7"]
 
 

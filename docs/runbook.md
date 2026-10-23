@@ -1090,6 +1090,13 @@ collect are local. Decisions also need the authenticated `claude` CLI's model se
    and the plan family gains the goal (`well-rounded-slow-v1`). A `chal_difficulty_<n>`
    target raises `- danger:` to `n`. It prints `shaped FILE for <target>: ...`, is
    idempotent, and leaves a file whose target has no stat or difficulty goal alone.
+   The proposal's `stats` must be the character's full row: the mod merges the plan
+   file over the built-in row (`stats` and `item_bonus` key by key, every other key,
+   `ban_items` included, replaced), so dominance only means something over the full
+   map, and `proposal validate` rejects a plan whose `stats` carries fewer than 4
+   weights besides the goal stat (`## Plan: stats has only N weights besides <stat>;
+   copy the character's full row before shaping`). Shaping adds `ban_items` only when
+   it bans an item.
    `proposal validate` rejects an unshaped plan: `## Plan: not shaped for <target>:
    run proposal shape FILE (goal <stat> <value>)`. The `brotato-next` skill runs it
    as step 5i. Shaping never selects a weapon set, and the command prints the goal
