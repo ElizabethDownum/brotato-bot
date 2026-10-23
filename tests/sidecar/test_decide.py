@@ -245,7 +245,7 @@ def test_decide_once_forwards_request_deadline(tmp_path, monkeypatch, capsys):
         ),
     )
     monkeypatch.setattr(command.cache, "load_all", lambda _: [])
-    monkeypatch.setattr(command.prompt, "build", lambda *args: "PROMPT")
+    monkeypatch.setattr(command.prompt, "build", lambda *args, **kwargs: "PROMPT")
     monkeypatch.setattr(command, "_now_ms", lambda: 1_000_000)
     real_decide = decide.decide
     runner = _scripted(VALID)

@@ -156,6 +156,8 @@ def test_checkpoint_prompt_keeps_the_brief_sentences():
         assert sentence in text, sentence
     assert "below 0.4" not in text
     assert "Options section" not in text  # there are no options at a checkpoint
+    assert text.count("There are no options") == 1  # O15: one bullet, not two
+    assert "checkpoint wave" not in text
 
 
 def test_checkpoint_objective_says_the_target_fired_and_shop_is_unchanged():
@@ -163,6 +165,7 @@ def test_checkpoint_objective_says_the_target_fired_and_shop_is_unchanged():
     checkpoint = prompt._objective(state, {}, {}, "checkpoint")
     assert checkpoint[-1].startswith("The target has already fired")
     assert "remaining waves" in checkpoint[-1]
+    assert "checkpoint wave" not in checkpoint[-1]  # O15: the mod checkpoints only on a fire
     assert SHOP_OBJECTIVE_END not in checkpoint
     for kind in ("shop", "levelup", ""):
         assert prompt._objective(state, {}, {}, kind)[-1] == SHOP_OBJECTIVE_END

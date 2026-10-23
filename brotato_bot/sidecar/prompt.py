@@ -162,8 +162,8 @@ def _objective(state: dict, plan: dict, unlock_state: dict, kind: str = "") -> l
             break
     if kind == "checkpoint":
         lines.append(
-            "The target has already fired (or the checkpoint wave was reached). The objective is "
-            "now to optimise this character's remaining waves."
+            "The target has already fired. The objective is now to optimise this character's "
+            "remaining waves."
         )
     else:
         lines.append("Play this run to complete the target; survive while doing so.")

@@ -47,7 +47,8 @@ def _shop_options(state: dict) -> list[dict]:
 
 def _levelup_options(state: dict) -> list[dict]:
     return [
-        {"index": i, "id": u.get("id"), "stat": u.get("stat"), "value": u.get("value"),
+        {"index": i, "id": u.get("id") or u.get("stat"), "stat": u.get("stat"),
+         "value": u.get("value"),
          "score": u.get("advisor_score", u.get("score"))}
         for i, u in enumerate(state.get("levelup_options") or [])
         if isinstance(u, dict)
@@ -130,7 +131,7 @@ def _assemble(
         inputs["unlock_state"],
         inputs["knowledge"],
         [],
-        **({} if answer_format else {"answer_format": False}),  # the default call is unchanged
+        answer_format=answer_format,
     )
     return _Assembled(request, cfg, user, warnings)
 
@@ -245,6 +246,16 @@ def register_validate(subparsers: argparse._SubParsersAction) -> None:
     parser.set_defaults(func=_decide_validate)
 
 
+def _advise_plan(plan: dict, state: dict) -> dict:
+    """The installed plan when it is this run's plan (same character and plan_id), without
+    its target challenge; otherwise ``{}``. plan.json is the bot profile's plan."""
+    if plan.get("character_id") != state.get("character_id"):
+        return {}
+    if plan.get("plan_id") != state.get("plan_id"):
+        return {}
+    return {k: v for k, v in plan.items() if k != "target_challenge"}
+
+
 def _advise_text(state_arg: str | None) -> str:
     """The whole advise-context output, built before anything is printed."""
     p = paths.load()
@@ -267,10 +278,12 @@ def _advise_text(state_arg: str | None) -> str:
     wave = state.get("wave")
     if not isinstance(wave, int) or isinstance(wave, bool):
         raise _CommandError(f"{state_path} needs an integer wave")
-    plan = read_json_or_empty(p.plan_json)
     try:
+        plan = _advise_plan(read_json_or_empty(p.plan_json), state)
+        # The owner's manual run: the bot's target is not hers, so the Objective has none.
+        state = {k: v for k, v in state.items() if k != "target_challenge"}
         built = _assemble(p, state, state_path, ADVISE_KIND, plan, answer_format=False)
-    except Exception as exc:
+    except Exception as exc:  # the one catch: any failure here is one error line
         raise _CommandError(f"cannot build the context from {state_path}: {exc}") from exc
     header = [f"# State file: {state_path}", f"# Advice dir: {p.advice_dir}"]
     return "\n".join([*header, *built.warnings, built.user])
@@ -281,9 +294,6 @@ def _advise_context(args: argparse.Namespace) -> int:
         text = _advise_text(args.state)
     except _CommandError as exc:
         print(f"advise-context: {exc}", file=sys.stderr)
-        return 1
-    except Exception as exc:  # noqa: BLE001 - any other failure gives one error line
-        print(f"advise-context: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
     print(text)
     return 0
