@@ -150,4 +150,9 @@ change only when a later run or a code read confirms it.
   ~4-unit effect of a weight >= 6 stat now outranks a plain weapon (22).
 - `min_buy` is now calibrated with `python -m brotato_bot score --plan|--proposal FILE
   [--min-buy X]`, which scores every dataset item under a plan as given. `proposal shape`
-  raises `min_buy` to a placeholder 4.0 under a stat goal (`MIN_BUY_UNDER_GOAL`).
+  raises `min_buy` to 6.0 under a stat goal (`MIN_BUY_UNDER_GOAL`). Calibration on the
+  shaped chal_slow plan (2026-10-23): 6 is "worth more than a tier-1 level-up of a weight-6
+  stat"; it cuts Penguin (2.0), Gummy Berserker (3.0) and Dangerous Bunny (0) and keeps every
+  speed item (Bag 6.17, Helmet 16.3, Statue 89.7, Esty's Couch 96.3); Coral (8.0, a
+  stand-still regen counted in full) and Mouse (14.0) still pass. 87 of 247 items score
+  above 6. A rule buy is gated by `min_buy`; a model (`haiku`) buy is not.

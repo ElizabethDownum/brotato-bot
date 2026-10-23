@@ -49,7 +49,7 @@ from typing import Any
 ITEM_BONUS_PER_POINT = 1.5
 ITEM_BONUS_CAP = 30.0
 DOMINANT_MARGIN = 4.0
-MIN_BUY_UNDER_GOAL = 4.0  # placeholder; recalibrate with ``python -m brotato_bot score``
+MIN_BUY_UNDER_GOAL = 6.0  # calibrated 2026-10-23 with `brotato_bot score`; see docs/observations.md
 MIN_STATS = 4  # weights besides the goal stat a plan's ``stats`` must carry
 _DIFFICULTY = re.compile(r"chal_difficulty_(\d+)")
 _FENCED_JSON = re.compile(r"```json[ \t]*\n(.*?)```", re.DOTALL)

@@ -1087,8 +1087,8 @@ collect are local. Decisions also need the authenticated `claude` CLI's model se
    `data/brotato.json` (item effects): the goal stat gets the plan's largest weight
    with the goal's sign, items that move the stat the right way get an `item_bonus`
    of 1.5 per point (capped at 30), items that break a keep-at-zero goal are banned,
-   and the plan family gains the goal (`well-rounded-slow-v1`). A `chal_difficulty_<n>`
-   target raises `- danger:` to `n`. It prints `shaped FILE for <target>: ...`, is
+   `min_buy` is raised to 6 (never lowered), and the plan family gains the goal
+   (`well-rounded-slow-v1`). A `chal_difficulty_<n>` target raises `- danger:` to `n`. It prints `shaped FILE for <target>: ...`, is
    idempotent, and leaves a file whose target has no stat or difficulty goal alone.
    The proposal's `stats` must be the character's full row: the mod merges the plan
    file over the built-in row (`stats` and `item_bonus` key by key, every other key,
