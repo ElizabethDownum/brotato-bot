@@ -120,3 +120,10 @@ def test_cli_score_proposal_block(tmp_path, monkeypatch, capsys):
     md.write_text("## Plan\n```json\n" + json.dumps(plan) + "\n```\n", encoding="utf-8")
     assert _run(tmp_path, monkeypatch, ["score", "--proposal", str(md)]) == 0
     assert capsys.readouterr().out.splitlines()[-1] == "1 of 3 items score above min_buy 0"
+
+
+def test_conditional_effect_counts_one_unit_at_most():
+    cond = {"key": "stat_attack_speed", "value": 40, "text_key": "effect_stat_while_not_moving"}
+    plain = {"key": "stat_attack_speed", "value": 40, "text_key": ""}
+    assert score.effect_score([cond], {"stat_attack_speed": 7.0}) == 7.0
+    assert score.effect_score([plain], {"stat_attack_speed": 7.0}) == 28.0

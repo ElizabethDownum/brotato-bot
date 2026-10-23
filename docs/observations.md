@@ -142,7 +142,8 @@ change only when a later run or a code read confirms it.
   phase-boost multiplier and the harvest cap applied to the weight as before. A unit is the
   stat's tier-1 level-up value, read from `items/upgrades/<stat>/1/*_effect.tres` (game
   1.1.15.4); a tier-1 level-up of a stat scores exactly its weight, and no single effect
-  counts for more than 4 units. The old `min(v, 20) * 0.02` tie-breaker is dropped:
+  counts for more than 4 units; an effect with a non-empty `text_key` (conditional or
+  temporary: Statue's attack speed, Coral's regen) counts for at most 1 unit. The old `min(v, 20) * 0.02` tie-breaker is dropped:
   magnitude replaces it.
 - Code: `mod/Ellie-BrotatoBot/shopping/effect_score.gd` (pure, source of truth, tested
   headless), `shop_advisor.gd` `stat_score` delegates to it; `brotato_bot/run/score.py`

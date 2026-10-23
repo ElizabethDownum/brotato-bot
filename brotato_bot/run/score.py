@@ -60,7 +60,8 @@ def effect_score(
             w *= float(boost_stats[key])
         if key == "stat_harvesting" and harvest_capped:
             w *= 0.15
-        units = min(abs(v) / UNITS.get(key, 1.0), MAX_UNITS)
+        cap = 1.0 if str(e.get("text_key") or "") else MAX_UNITS
+        units = min(abs(v) / UNITS.get(key, 1.0), cap)
         total += (1.0 if v > 0 else -1.0) * w * units
     return total
 

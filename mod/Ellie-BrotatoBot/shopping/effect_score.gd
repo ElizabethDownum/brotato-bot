@@ -28,7 +28,9 @@ const UNITS = {
 	"stat_damage": 1.0,
 }
 
-# No single effect counts for more than a tier-4 upgrade (4 units).
+# No single effect counts for more than a tier-4 upgrade (4 units). A conditional
+# effect (non-empty text_key: while-not-moving, temporary, consumable...) is not a
+# plain permanent stat gain and counts for at most 1 unit.
 const MAX_UNITS = 4.0
 
 
@@ -51,6 +53,8 @@ static func score(effects, weights, boost_stats, harvest_capped):
 			w *= float(boost_stats[key])
 		if key == "stat_harvesting" and harvest_capped:
 			w *= 0.15
-		var units = min(abs(v) / float(UNITS.get(key, 1.0)), MAX_UNITS)
+		var tk = str(e.text_key) if "text_key" in e else ""
+		var cap = 1.0 if tk != "" else MAX_UNITS
+		var units = min(abs(v) / UNITS.get(key, 1.0), cap)
 		s += (1.0 if v > 0.0 else -1.0) * w * units
 	return s

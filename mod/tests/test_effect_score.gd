@@ -51,3 +51,10 @@ func test_every_unit_is_positive():
 			bad += 1
 	assert_eq(bad, 0, "non-positive units")
 	assert_true(EffectScore.UNITS.size() > 0, "has units")
+
+
+func test_conditional_effect_counts_one_unit_at_most():
+	var cond = {"key": "stat_attack_speed", "value": 40, "text_key": "effect_stat_while_not_moving"}
+	var plain = {"key": "stat_attack_speed", "value": 40, "text_key": ""}
+	assert_eq(EffectScore.score([cond], {"stat_attack_speed": 7.0}, {}, false), 7.0, "conditional")
+	assert_eq(EffectScore.score([plain], {"stat_attack_speed": 7.0}, {}, false), 28.0, "plain")
