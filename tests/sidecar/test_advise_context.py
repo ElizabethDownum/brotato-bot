@@ -176,7 +176,7 @@ def test_advise_context_drops_a_plan_for_another_run(monkeypatch, capsys, tmp_pa
     assert cli.main(["advise-context", str(path)]) == 0
     out = capsys.readouterr().out
     plan = out[out.find("## Plan") : out.find("## Relevant knowledge")]
-    assert "No plan file" in plan
+    assert "the owner plays this run by hand" in plan
     assert "character_other" not in out
     assert "other-v1" not in out
     assert "chal_bot_target" not in out

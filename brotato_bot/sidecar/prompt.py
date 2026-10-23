@@ -262,8 +262,10 @@ def _option_lines(request: dict, state: dict, look: _Lookup) -> list[str]:
     return lines
 
 
-def _plan_lines(plan: dict) -> list[str]:
+def _plan_lines(plan: dict, kind: str = "") -> list[str]:
     if not plan:
+        if kind == "advise":
+            return ["No plan: the owner plays this run by hand; advise from the state alone."]
         return ["No plan file: the bot's built-in plan for this character applies."]
     text = json.dumps(plan, ensure_ascii=False, separators=(",", ":"))
     if len(text) > PLAN_MAX_CHARS:
@@ -356,7 +358,7 @@ def build(
         ),
         ("## State", _state_lines(state, look)),
         ("## Options", _option_lines(request, state, look)),
-        ("## Plan", _plan_lines(plan)),
+        ("## Plan", _plan_lines(plan, request.get("kind") or "")),
         ("## Relevant knowledge", _knowledge_lines(request, state, knowledge or {}, look)),
         ("## Past decisions", _past_lines(experience or [])),
     ]
