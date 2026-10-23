@@ -233,3 +233,21 @@ change only when a later run or a code read confirms it.
   step 5 as planned, and carry the offer log into the next mod sync; a goal-item hunt
   (reroll while gold stays above a keep and no goal item is on the board, like the
   `prefer_weapons` hunt in `base_shop.gd`) belongs with the step 7 shop changes.
+
+## 2026-10-23 owner thought: spending down to the floor every shop is not always right
+
+- Owner, after run 3: holding some gold is sometimes better than rerolls or marginal
+  items, for instance with Piggy Bank bought early (the game's effect text key marks its
+  +20% of held materials at wave start as limited).
+- What exists: the plan key `gold_floor` (`base_shop.gd`), reserved from wave 5 on, ramping
+  5% per wave of the shop's incoming gold to 35%, capped at the plan's number. Only Saver's
+  row sets it (250: hoarding is Saver's damage stat). Well Rounded runs at 0. Lock-and-save
+  reserves gold for a strong weapon on offer; nothing reserves for anything else.
+- Two gaps, both shop rules, step 7 candidates next to the goal-item hunt and goal-aware
+  saving:
+  1. Floor keyed on held items: Piggy Bank, Saver-style damage per held material, and
+     similar effects should raise the floor once held, as a function of the player's items
+     rather than the plan constant alone.
+  2. Price the reroll: run 3 paid 49 for a reroll at wave 19 with nothing above `min_buy`
+     on the board. Reroll only while the expected value of a fresh offering beats the
+     price; today the only brakes are `max_rerolls` 15 and `reroll_keep`.
