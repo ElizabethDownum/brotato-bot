@@ -201,7 +201,7 @@ change only when a later run or a code read confirms it.
      held build in `death` / `complete` lines. After step 7.
 
 
-## 2026-10-23 run 3 (20261023-085402-well_rounded-d0): won wave 20, target not fired, no speed item ever bought
+## 2026-10-23 run 3 (20261023-085402-well_rounded-d0): won wave 20, target not fired, no big speed item ever seen
 
 - Plan `well-rounded-slow-v2` (proposal 4, min_buy 6, stat_speed -14). Won at wave 20 with
   98 HP (max 119), 78 damage taken in the whole run, all in wave 20. Speed went +5 to -1
@@ -213,7 +213,9 @@ change only when a later run or a code read confirms it.
   spent 359 on buys and 175 on rerolls). 11 sidecar asks, all answered by haiku, all 11
   rationales name the speed goal.
 - The miss: none of Bag, Ugly Tooth, Reinforced Steel, Statue, Esty's Couch or Evil Hat was
-  bought in about 95 rerolls across 19 shops (roughly 380 offers). Checked and ruled out:
+  bought in 69 rerolls across 19 shops (about 88 boards, at most about 350 slot rolls;
+  the first draft of this entry said 380 offers). Helmet (wave 8) and Campfire (wave 12)
+  were the only speed buys. Checked and ruled out:
   `score_shop_entry` has no filter beyond the scorer (Helmet's 16.33 in the run log matches
   the Python mirror exactly); all of them except Evil Hat are unlocked on profile 1. So
   they were never on the board, or never affordable when they were. The run stream only
@@ -251,3 +253,37 @@ change only when a later run or a code read confirms it.
   2. Price the reroll: run 3 paid 49 for a reroll at wave 19 with nothing above `min_buy`
      on the board. Reroll only while the expected value of a fresh offering beats the
      price; today the only brakes are `max_rerolls` 15 and `reroll_keep`.
+
+## 2026-10-23 audit A (Opus 5.5, read-only): the big speed items are rare by design
+
+Report: `.superpowers/sdd/2026-10-23-levers-audit/report-a.md` (brief beside it). Source
+claims verified by the controller at the cited lines of the restored decompiled game
+(`.decompiled/singletons/item_service.gd`).
+
+- Shop tier odds (per slot, checked from legendary down): uncommon 0.06 per wave capped
+  0.6; rare from wave 3, 0.02 per wave capped 0.25; legendary from wave 7, 0.0023 per wave
+  capped 0.08; luck scales only the wave term. Weapons take 35% of slots even with every
+  weapon slot held. Over a 20-wave run that is about 0.05-0.11 sightings of Esty's Couch,
+  0.4-0.6 of Statue and 1.7-1.8 of each tier-1 goal item. Run 3 not seeing a Statue or a
+  Couch was the expected outcome, not bad luck, and buying every goal item a run sees
+  yields about -25 to -33 speed of offers before `max_nb` caps and affordability.
+- Consequences the audit ranks highest: (1) the offer log with tier, price and gold at
+  view, to confirm the rates; (2) the Blunt weapon set (-10 speed at 6 weapons, and held
+  sets pull weapon draws toward themselves at 35% plus an early bonus), which the ranged
+  Well Rounded plan and the no-set-selection ruling currently block: an owner call;
+  (3) goal-aware saving and a goal-item hunt (step 7); (4) `ask_on` filled with the goal
+  item ids by shaping, so Haiku can lock a goal item the moment one appears (plan-only,
+  about an hour); (5) the crate rule, since crates draw from the same tier odds and are a
+  second goal-item channel; (6) deactivating the DLC for goal runs (game setting; +32%
+  legendary, +24% rare, +11% common per-item odds); (7) `wave_end` stats and the build on a
+  win; (8) dropping locked items from goal data and adding `max_nb` (about 4 of the 16
+  bonused items are locked; the field default is locked); (9) reroll pricing; (10) a
+  progress checkpoint when the goal is behind.
+- Also verified: item price = `int((base + wave + base*wave*0.1) * price_factor)`; reroll
+  price = `int(0.75*wave) + max(1, int(0.4*wave)) * (1 + paid_rerolls)`; materials left on
+  the floor at wave end become `bonus_gold` paid out double on next wave's pickups, so poor
+  collection is delayed rather than lost (lowers the economic urgency of the materials
+  work, not its goal relevance); run 2 ended near -5 speed, not -10, and four of its held
+  items came from crates.
+- Corrections to earlier entries: run 3 bought two speed items (Helmet, Campfire), and
+  its offer count was about 88 boards, not 380 offers.
