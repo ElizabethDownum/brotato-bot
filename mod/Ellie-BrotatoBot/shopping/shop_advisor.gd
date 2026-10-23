@@ -6,6 +6,7 @@ extends Reference
 # Preload this script -- no class_name (see build_plans.gd).
 
 const BuildPlans = preload("res://mods-unpacked/Ellie-BrotatoBot/shopping/build_plans.gd")
+const EffectScore = preload("res://mods-unpacked/Ellie-BrotatoBot/shopping/effect_score.gd")
 
 const COMBINE_SCORE = 100.0   # combining upgrades a weapon's tier -- almost always take it
 const NEW_WEAPON_MATCH = 22.0 # an empty slot filled with an on-type weapon
@@ -25,12 +26,13 @@ static func current_stat(stat_key, player_index):
 
 # --- Scoring -----------------------------------------------------------------
 
-# Desirability of a set of stat effects under the plan's weights. Harvesting
-# collapses to a token weight once the player is past the plan's harvest_cap so
-# the bot pivots off economy on schedule. A stat the plan does not list scores 0.
+# Desirability of a set of stat effects under the plan's weights. The plan
+# weight is the priority PER UNIT of the stat (a tier-1 level-up of the stat
+# scores exactly its weight); the effect's size scales it, capped at 4 units
+# (see effect_score.gd). Harvesting collapses to a token weight once the player
+# is past the plan's harvest_cap so the bot pivots off economy on schedule. A
+# stat the plan does not list scores 0.
 static func stat_score(effects, plan, player_index):
-	var s = 0.0
-	var weights = plan["stats"]
 	var harvest_now = current_stat("stat_harvesting", player_index)
 	# Optional early-game re-weighting: before phase_boost.until_wave, multiply
 	# the named stats' weights (e.g. a fragile melee kit front-loads dodge/HP so
@@ -39,25 +41,9 @@ static func stat_score(effects, plan, player_index):
 	var boost = plan.get("phase_boost", {})
 	var boosting = boost.has("until_wave") and RunData.current_wave < int(boost["until_wave"])
 	var boost_stats = boost.get("stats", {}) if boosting else {}
-	for e in effects:
-		if e == null:
-			continue
-		var key = e.key
-		if not weights.has(key):
-			continue
-		var w = float(weights[key])
-		if boost_stats.has(key):
-			w *= float(boost_stats[key])
-		if key == "stat_harvesting" and harvest_now >= plan["harvest_cap"]:
-			w *= 0.15
-		# The plan weight carries the priority; value only breaks ties within a
-		# stat and sets the sign (items with a downside on a wanted stat hurt).
-		var v = float(e.value)
-		if v < 0.0:
-			s -= w
-		else:
-			s += w + min(v, 20.0) * 0.02
-	return s
+	return EffectScore.score(
+		effects, plan["stats"], boost_stats, harvest_now >= plan["harvest_cap"]
+	)
 
 # Would buying this weapon trigger a 3-of-a-kind combine (tier up)? Mirrors
 # ItemService.get_icon_for_duplicate_shop_item line 959: not max tier, board
