@@ -138,7 +138,7 @@ def _target(state: dict, plan: dict) -> str:
     return ""
 
 
-def _objective(state: dict, plan: dict, unlock_state: dict) -> list[str]:
+def _objective(state: dict, plan: dict, unlock_state: dict, kind: str = "") -> list[str]:
     target = _target(state, plan)
     if not target:
         return [NO_TARGET + "."]
@@ -160,7 +160,13 @@ def _objective(state: dict, plan: dict, unlock_state: dict) -> list[str]:
         if target in (unlock_state.get(status) or []):
             lines.append(f"Profile status: {status}.")
             break
-    lines.append("Play this run to complete the target; survive while doing so.")
+    if kind == "checkpoint":
+        lines.append(
+            "The target has already fired (or the checkpoint wave was reached). The objective is "
+            "now to optimise this character's remaining waves."
+        )
+    else:
+        lines.append("Play this run to complete the target; survive while doing so.")
     return lines
 
 
@@ -342,7 +348,7 @@ def build(
             "## Objective",
             [
                 f"Decision: {kind} (screen {request.get('screen') or kind}).",
-                *_objective(state, plan, unlock_state or {}),
+                *_objective(state, plan, unlock_state or {}, request.get("kind") or ""),
             ],
         ),
         ("## State", _state_lines(state, look)),

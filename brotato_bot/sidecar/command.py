@@ -122,14 +122,15 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 def _decide_validate(args: argparse.Namespace) -> int:
     source = args.file
     try:
-        text = sys.stdin.read() if source == "-" else Path(source).read_text(encoding="utf-8")
-    except OSError as exc:
+        raw = sys.stdin.buffer.read() if source == "-" else Path(source).read_bytes()
+        text = raw.decode("utf-8-sig")  # UTF-8 whatever the locale; a BOM is dropped
+    except (OSError, UnicodeDecodeError) as exc:
         print(f"decide-validate: cannot read {source}: {exc}")
         return 1
     try:
         answer = json.loads(text)
     except json.JSONDecodeError as exc:
-        print(f"not JSON: {exc}")
+        print(f"decide-validate: not JSON: {exc}")
         return 1
     request = None
     if args.state or args.kind:
@@ -138,9 +139,13 @@ def _decide_validate(args: argparse.Namespace) -> int:
             return 1
         try:
             state = read_json(args.state)
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             print(f"decide-validate: cannot read {args.state}: {exc}")
             return 1
+        if not isinstance(state, dict):
+            print(f"decide-validate: {args.state} is not a JSON object")
+            return 1
+        # request_from_state reads the deadline from cfg, so the defaults are needed here.
         request = request_from_state(state, Path(args.state), args.kind, decide.settings({}))
     errors = schema.validate(answer, request)
     for error in errors:
