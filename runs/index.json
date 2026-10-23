@@ -1,0 +1,28 @@
+[
+  {
+    "run_id": "20261022-223221-well_rounded-d0",
+    "character_id": "character_well_rounded",
+    "danger": 0,
+    "plan_id": "well-rounded-v1",
+    "target_challenge": "chal_slow",
+    "outcome": "win",
+    "death_wave": null,
+    "hp_end_last_wave": 60,
+    "proposal_n": null,
+    "profile_id": 1,
+    "target_fired": false
+  },
+  {
+    "run_id": "20261022-235147-well_rounded-d0",
+    "character_id": "character_well_rounded",
+    "danger": 0,
+    "plan_id": "well-rounded-slow-v1",
+    "target_challenge": "chal_slow",
+    "outcome": "death",
+    "death_wave": 16,
+    "hp_end_last_wave": 44,
+    "proposal_n": null,
+    "profile_id": 1,
+    "target_fired": false
+  }
+]
