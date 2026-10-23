@@ -179,3 +179,24 @@ change only when a later run or a code read confirms it.
   plus a tree reward that reaches beyond the pickup radius. Evidence first: run 3's
   wave_end `gold` versus a human's, and the parked `floor`/`mats` snapshot field.
 
+## 2026-10-23 owner concerns: weapon merging and the crate take-or-recycle rule (all three to be scheduled)
+
+- **Combining is purchase-only.** `shop_advisor.gd` `would_combine` scores a copy of a held
+  weapon at `COMBINE_SCORE` (100) only when the board is full, so a third copy on offer is
+  bought and the game merges. The bot never presses the owned-gear popup's Combine button
+  (`base_shop.gd` `_handle_shop_popup` is mouse handling for the human), so two held copies
+  are never merged by hand to open a slot. Run 2 spread buys across four weapon families.
+- **Crate items are taken blind.** `upgrades_ui.gd` takes a crate item unless it is a weapon
+  whose `score_weapon` is below 0; a non-weapon item is never scored, the sidecar is not
+  asked, and no event is logged. Under a stat goal this takes items the shop would score
+  negative (Jetpack -58 under chal_slow raises speed).
+- Owner's ruling (2026-10-23): all three must be accounted for; fold into step 5 or step 7
+  as fits, manual merge possibly after step 7.
+  1. Crate rule: score the item as the shop does (`score_shop_entry`), recycle below 0, log a
+     `crate` event. Small mod change; step 7 candidate.
+  2. Stack toward combines: flip `stack_combine` for Well Rounded in a proposal, judge from
+     the report. Plan-only; step 5 candidate.
+  3. Manual merge of held pairs: own design note (merging a pair early loses damage; merge
+     when the board is full, or when a better affordable weapon is on offer). Evidence: the
+     held build in `death` / `complete` lines. After step 7.
+
