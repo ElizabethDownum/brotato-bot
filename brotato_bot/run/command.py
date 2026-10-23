@@ -1,32 +1,58 @@
-"""CLI: ``prepare --plan FILE [--target ID]`` and ``collect [RUN_ID | --latest]``."""
+"""CLI: ``prepare --plan FILE | --from-proposal FILE [--target ID]`` and
+``collect [RUN_ID | --latest]``."""
 
 from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 from brotato_bot import cli, paths
 from brotato_bot.fsutil import plain_name, read_json
-from brotato_bot.run import collect, prepare
+from brotato_bot.run import collect, prepare, proposal
+
+
+def _install(plan: dict, target: str | None, p: paths.Paths) -> int:
+    try:
+        warnings = prepare.prepare(plan, target, p)
+    except ValueError as exc:
+        print(f"prepare: {exc}")
+        return 1
+    print(f"Wrote {p.plan_json} (plan_id {plan['plan_id']})")
+    print(f"target_challenge {target or '(none)'} -> {p.config_json}")
+    for w in warnings:
+        print(f"WARNING: {w}")
+    return 0
+
+
+def _from_proposal(path: str, p: paths.Paths) -> int:
+    try:
+        markdown = Path(path).read_text(encoding="utf-8")
+        unlock_state = proposal.load_unlock_state(p.data_dir / "unlock_state.json")
+    except (OSError, ValueError) as exc:
+        print(f"prepare: {exc}")
+        return 1
+    errors = proposal.validate(markdown, unlock_state)
+    if errors:
+        for e in errors:
+            print(f"prepare: {e}")
+        return 1
+    return _install(proposal.extract_plan(markdown), proposal.next_run(markdown)["target"], p)
 
 
 def _prepare(args: argparse.Namespace) -> int:
     p = paths.load()
+    if args.from_proposal:
+        if args.target:
+            print("prepare: --target comes from the proposal's ## Next run")
+            return 1
+        return _from_proposal(args.from_proposal, p)
     try:
         plan = read_json(args.plan)
     except (OSError, json.JSONDecodeError) as exc:
         print(f"prepare: cannot read {args.plan}: {exc}")
         return 1
-    try:
-        warnings = prepare.prepare(plan, args.target, p)
-    except ValueError as exc:
-        print(f"prepare: {exc}")
-        return 1
-    print(f"Wrote {p.plan_json} (plan_id {plan['plan_id']})")
-    print(f"target_challenge {args.target or '(none)'} -> {p.config_json}")
-    for w in warnings:
-        print(f"WARNING: {w}")
-    return 0
+    return _install(plan, args.target, p)
 
 
 def _collect(args: argparse.Namespace) -> int:
@@ -51,7 +77,11 @@ def _collect(args: argparse.Namespace) -> int:
 
 def _register_prepare(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser("prepare", help="write plan.json and the target challenge")
-    parser.add_argument("--plan", required=True, metavar="FILE", help="plan JSON to install")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--plan", metavar="FILE", help="plan JSON to install")
+    source.add_argument(
+        "--from-proposal", metavar="FILE", help="proposal whose plan and ## Next run to install"
+    )
     parser.add_argument("--target", default=None, metavar="ID", help="target challenge id")
     parser.set_defaults(func=_prepare)
 

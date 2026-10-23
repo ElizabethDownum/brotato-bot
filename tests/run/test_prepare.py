@@ -121,3 +121,50 @@ def test_prepare_cli_bad_plan_returns_1(tmp_paths, tmp_path, capsys):
     plan_file.write_text(json.dumps({"plan_id": "x"}), encoding="utf-8")
     assert cli.main(["prepare", "--plan", str(plan_file)]) == 1
     assert not tmp_paths.plan_json.exists()
+
+
+def _proposal_file(tmp_path, text):
+    path = tmp_path / "2026-10-22-001.md"
+    path.write_text(text, encoding="utf-8")
+    return str(path)
+
+
+def _unlock_state(p, unlocked):
+    p.data_dir.mkdir(parents=True, exist_ok=True)
+    state = {"characters": {"character_well_rounded": {"unlocked": unlocked, "unlocked_by": None}}}
+    p.data_dir.joinpath("unlock_state.json").write_text(json.dumps(state), encoding="utf-8")
+
+
+def test_prepare_from_proposal_installs_plan_and_target(tmp_paths, tmp_path, proposal_md, capsys):
+    _settings(tmp_paths, 1, False)
+    _unlock_state(tmp_paths, True)
+    path = _proposal_file(tmp_path, proposal_md())
+    assert cli.main(["prepare", "--from-proposal", path]) == 0
+    assert (
+        json.loads(tmp_paths.plan_json.read_text(encoding="utf-8"))["plan_id"] == "well-rounded-v1"
+    )
+    config = json.loads(tmp_paths.config_json.read_text(encoding="utf-8"))
+    assert config["target_challenge"] == "chal_gatherer_1"
+
+
+def test_prepare_rejects_locked_character(tmp_paths, tmp_path, proposal_md, capsys):
+    _unlock_state(tmp_paths, False)
+    path = _proposal_file(tmp_path, proposal_md())
+    assert cli.main(["prepare", "--from-proposal", path]) == 1
+    assert "character_well_rounded is locked" in capsys.readouterr().out
+    assert not tmp_paths.plan_json.exists()
+
+
+def test_prepare_from_proposal_needs_unlock_state(tmp_paths, tmp_path, proposal_md, capsys):
+    path = _proposal_file(tmp_path, proposal_md())
+    assert cli.main(["prepare", "--from-proposal", path]) == 1
+    assert "unlock-state --profile 1" in capsys.readouterr().out
+    assert not tmp_paths.plan_json.exists()
+
+
+def test_prepare_plan_and_from_proposal_are_exclusive(tmp_paths, tmp_path, proposal_md):
+    path = _proposal_file(tmp_path, proposal_md())
+    with pytest.raises(SystemExit):
+        cli.main(["prepare", "--plan", path, "--from-proposal", path])
+    with pytest.raises(SystemExit):
+        cli.main(["prepare"])
