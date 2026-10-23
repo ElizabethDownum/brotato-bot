@@ -90,11 +90,22 @@ def test_mark_paused_appends_line(tmp_path):
     )
 
 
+ESCALATE_DEATHS = [14, 13, 14, 14, 13, 14]
+ESCALATE_PLANS = ["well-rounded-v1"] * 3 + ["gatherer-v1"] * 3
+
+
+def _write_index(p, rows):
+    p.runs_out.mkdir(parents=True, exist_ok=True)
+    (p.runs_out / "index.json").write_text(json.dumps(rows), encoding="utf-8")
+
+
 def test_cli_defaults_to_newest_target_and_marks_paused(tmp_paths, capsys):
     p = tmp_paths
-    p.runs_out.mkdir(parents=True, exist_ok=True)
-    rows = [row("r1", 14), row("r2", 13), row("r3", 14), row("r4", 9, target="chal_b")]
-    (p.runs_out / "index.json").write_text(json.dumps(rows), encoding="utf-8")
+    rows = [
+        row(f"r{i + 1}", d, plan=pl)
+        for i, (d, pl) in enumerate(zip(ESCALATE_DEATHS, ESCALATE_PLANS))
+    ]
+    _write_index(p, rows + [row("r7", 9, target="chal_b")])
 
     assert cli.main(["stagnation"]) == 0
     assert capsys.readouterr().out.strip() == "fresh: 1 finished run(s) on chal_b; need 3"
@@ -102,8 +113,8 @@ def test_cli_defaults_to_newest_target_and_marks_paused(tmp_paths, capsys):
     assert cli.main(["stagnation", "--target", TARGET]) == 0
     out = capsys.readouterr().out.strip().splitlines()
     assert len(out) == 1
-    assert out[0].startswith("stagnant: ")
-    assert out[0].endswith("[runs: r1, r2, r3]")
+    assert out[0].startswith("escalate: ")
+    assert out[0].endswith("[runs: r4, r5, r6]")
 
     assert cli.main(["stagnation", "--target", TARGET, "--mark-paused", "proposals/p1.md"]) == 0
     capsys.readouterr()
@@ -111,3 +122,19 @@ def test_cli_defaults_to_newest_target_and_marks_paused(tmp_paths, capsys):
     assert text.endswith(
         f"paused: {TARGET} since {date.today().isoformat()}, evidence in {Path('proposals/p1.md')}\n"
     )
+
+
+def test_cli_mark_paused_refused_unless_escalate(tmp_paths, capsys):
+    p = tmp_paths
+    _write_index(p, [row("r1", 14), row("r2", 13), row("r3", 14)])
+
+    assert cli.main(["stagnation", "--target", TARGET, "--mark-paused", "proposals/p1.md"]) == 1
+    out = capsys.readouterr().out.strip().splitlines()
+    assert out[0].startswith("stagnant: ")
+    assert out[1] == "stagnation: --mark-paused refused: verdict is stagnant, not escalate"
+    assert not (p.project_root / "targets.md").exists()
+
+
+def test_cli_empty_index_is_fresh(tmp_paths, capsys):
+    assert cli.main(["stagnation"]) == 0
+    assert capsys.readouterr().out.strip() == "fresh: no runs on any target"

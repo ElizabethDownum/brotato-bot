@@ -97,11 +97,13 @@ def verdict(rows: list[dict], target: str, window: int = 3) -> Verdict:
             run_id = finished[k].get("run_id")
             return Verdict(
                 "escalate",
-                f"{change} at run {run_id}, then {window} more deaths at waves {_waves(last)} "
-                f"with no better HP; {window} flat deaths before it",
+                f"{change} at run {run_id}, then deaths at waves {_waves(last)} from that run on "
+                f"with no better death wave or HP; {window} flat deaths before it",
                 ids,
             )
-    return Verdict("stagnant", f"{window} deaths at waves {_waves(last)} with no better HP", ids)
+    return Verdict(
+        "stagnant", f"{window} deaths at waves {_waves(last)} with no better death wave or HP", ids
+    )
 
 
 def mark_paused(targets_md: Path, target: str, proposal: Path, today: date) -> None:
@@ -145,6 +147,9 @@ def _stagnation(args: argparse.Namespace) -> int:
         line += f" [runs: {', '.join(v.runs_considered)}]"
     print(line)
     if args.mark_paused:
+        if v.state != "escalate":
+            print(f"stagnation: --mark-paused refused: verdict is {v.state}, not escalate")
+            return 1
         targets_md = p.project_root / "targets.md"
         mark_paused(targets_md, target, Path(args.mark_paused), date.today())
         print(f"paused: {target} recorded in {targets_md}")
