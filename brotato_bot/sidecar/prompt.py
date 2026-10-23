@@ -338,8 +338,11 @@ def build(
     unlock_state: dict,
     knowledge: dict[str, str],
     experience: list[dict],
+    *,
+    answer_format: bool = True,
 ) -> str:
-    """The user message for one decision request (see the module docstring)."""
+    """The user message for one decision request (see the module docstring). With
+    ``answer_format=False`` the Answer format section is left out (advise-context)."""
     request, state, plan = request or {}, state or {}, plan or {}
     look = _Lookup(dataset or {})
     kind = request.get("kind") or "?"
@@ -356,6 +359,7 @@ def build(
         ("## Plan", _plan_lines(plan)),
         ("## Relevant knowledge", _knowledge_lines(request, state, knowledge or {}, look)),
         ("## Past decisions", _past_lines(experience or [])),
-        ("## Answer format", [ANSWER_FORMAT]),
     ]
+    if answer_format:
+        sections.append(("## Answer format", [ANSWER_FORMAT]))
     return "\n\n".join(h + "\n\n" + "\n".join(body) for h, body in sections) + "\n"

@@ -18,6 +18,7 @@ import argparse
 import json
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from brotato_bot import cli, paths
@@ -90,19 +91,65 @@ def prompt_inputs(p: paths.Paths) -> dict:
     }
 
 
+class _CommandError(Exception):
+    """A failure that advise-context reports as one ``advise-context: <message>`` line."""
+
+
+@dataclass(frozen=True)
+class _Assembled:
+    request: dict
+    cfg: dict
+    user: str
+    warnings: list[str]
+
+
+def _assemble(
+    p: paths.Paths,
+    state: dict,
+    state_path: Path,
+    kind: str,
+    plan: dict,
+    *,
+    answer_format: bool = True,
+) -> _Assembled:
+    """The request, cfg and prompt for one state, shared by decide-once and advise-context.
+    The dataset WARNING is returned rather than printed, so each caller orders its output."""
+    cfg = decide.settings(read_json_or_empty(p.config_json))
+    request = request_from_state(state, state_path, kind, cfg)
+    inputs = prompt_inputs(p)
+    warnings = []
+    if not inputs["dataset"]:
+        warnings.append(
+            f"WARNING: no dataset at {p.data_dir / 'brotato.json'}; options lack records"
+        )
+    user = prompt.build(
+        request,
+        state,
+        plan,
+        inputs["dataset"],
+        inputs["unlock_state"],
+        inputs["knowledge"],
+        [],
+        **({} if answer_format else {"answer_format": False}),  # the default call is unchanged
+    )
+    return _Assembled(request, cfg, user, warnings)
+
+
 def _newest_advise_state(state_dir: Path) -> Path | None:
-    """The most recently modified ``*.json`` in ``state_dir`` whose ``kind`` is ``advise``."""
+    """The most recently modified ``*.json`` in ``state_dir`` whose ``kind`` is ``advise``.
+    A file that is unreadable, not UTF-8 or not JSON is skipped."""
     if not state_dir.is_dir():
         return None
-    found = []
+    found: list[tuple[float, Path]] = []
     for f in state_dir.glob("*.json"):
         try:
             data = read_json(f)
+            mtime = f.stat().st_mtime
         except (OSError, ValueError):  # ValueError covers bad JSON and bad UTF-8
             continue
         if isinstance(data, dict) and data.get("kind") == ADVISE_KIND:
-            found.append(f)
-    return max(found, key=lambda f: f.stat().st_mtime, default=None)
+            found.append((mtime, f))
+    return max(found, key=lambda pair: pair[0])[1] if found else None
 
 
 def _decide_once(args: argparse.Namespace) -> int:
@@ -119,22 +166,19 @@ def _decide_once(args: argparse.Namespace) -> int:
     if args.plan and not plan:
         print(f"decide-once: cannot read plan {args.plan}")
         return 1
-    cfg = decide.settings(read_json_or_empty(p.config_json))
-    request = request_from_state(state, Path(args.state), args.kind, cfg)
-    inputs = prompt_inputs(p)
-    if not inputs["dataset"]:
-        print(f"WARNING: no dataset at {p.data_dir / 'brotato.json'}; options lack records")
-    user = prompt.build(
-        request, state, plan, inputs["dataset"], inputs["unlock_state"], inputs["knowledge"], []
-    )
+    built = _assemble(p, state, Path(args.state), args.kind, plan)
+    for line in built.warnings:
+        print(line)
     if args.print_prompt:
-        print(user)
+        print(built.user)
         return 0
     start = time.monotonic()
-    outcome = decide.decide(request, user, cfg, deadline_ms=request["deadline_ms"] - _now_ms())
+    outcome = decide.decide(
+        built.request, built.user, built.cfg, deadline_ms=built.request["deadline_ms"] - _now_ms()
+    )
     elapsed_ms = int((time.monotonic() - start) * 1000)
     print(json.dumps(outcome.to_dict(), indent=2, ensure_ascii=False))
-    print(f"{request['id']} {args.kind} -> {outcome.source} in {elapsed_ms} ms")
+    print(f"{built.request['id']} {args.kind} -> {outcome.source} in {elapsed_ms} ms")
     return 0 if outcome.decision is not None else 1
 
 
@@ -203,37 +247,50 @@ def register_validate(subparsers: argparse._SubParsersAction) -> None:
     parser.set_defaults(func=_decide_validate)
 
 
-def _advise_context(args: argparse.Namespace) -> int:
-    if hasattr(sys.stdout, "reconfigure"):  # a piped Windows stdout is cp1252
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+def _advise_text(state_arg: str | None) -> str:
+    """The whole advise-context output, built before anything is printed."""
     p = paths.load()
-    if args.state:
-        state_path = Path(args.state)
+    if state_arg:
+        state_path = Path(state_arg)
     else:
         found = _newest_advise_state(p.state_dir)
         if found is None:
-            print(f"advise-context: no advise state file in {p.state_dir}")
-            return 1
+            raise _CommandError(f"no advise state file in {p.state_dir}")
         state_path = found
     try:
         state = read_json(state_path)
     except (OSError, ValueError) as exc:
-        print(f"advise-context: cannot read {state_path}: {exc}")
-        return 1
+        raise _CommandError(f"cannot read {state_path}: {exc}") from exc
     if not isinstance(state, dict):
-        print(f"advise-context: {state_path} is not a JSON object")
-        return 1
-    print(f"# State file: {state_path}")  # the first line, before any warning
+        raise _CommandError(f"{state_path} is not a JSON object")
+    character = state.get("character_id")
+    if not isinstance(character, str) or not character:
+        raise _CommandError(f"{state_path} needs a non-empty string character_id")
+    wave = state.get("wave")
+    if not isinstance(wave, int) or isinstance(wave, bool):
+        raise _CommandError(f"{state_path} needs an integer wave")
     plan = read_json_or_empty(p.plan_json)
-    cfg = decide.settings(read_json_or_empty(p.config_json))
-    request = request_from_state(state, state_path, ADVISE_KIND, cfg)
-    inputs = prompt_inputs(p)
-    if not inputs["dataset"]:
-        print(f"WARNING: no dataset at {p.data_dir / 'brotato.json'}; options lack records")
-    user = prompt.build(
-        request, state, plan, inputs["dataset"], inputs["unlock_state"], inputs["knowledge"], []
-    )
-    print(user)
+    try:
+        built = _assemble(p, state, state_path, ADVISE_KIND, plan, answer_format=False)
+    except Exception as exc:
+        raise _CommandError(f"cannot build the context from {state_path}: {exc}") from exc
+    header = [f"# State file: {state_path}", f"# Advice dir: {p.advice_dir}"]
+    return "\n".join([*header, *built.warnings, built.user])
+
+
+def _advise_context(args: argparse.Namespace) -> int:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):  # a piped Windows stream is cp1252
+            stream.reconfigure(encoding="utf-8", errors="replace")
+    try:
+        text = _advise_text(args.state)
+    except _CommandError as exc:
+        print(f"advise-context: {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:  # noqa: BLE001 - any other failure gives one error line
+        print(f"advise-context: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 1
+    print(text)
     return 0
 
 
