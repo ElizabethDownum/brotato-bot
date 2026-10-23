@@ -13,7 +13,7 @@ Paths used throughout:
 |---|---|
 | Repository (`<repo>` below) | `<workspace>\brotato-bot` |
 | Game folder | `D:\SteamLibrary\steamapps\common\Brotato` |
-| Installed mod | `D:\SteamLibrary\steamapps\workshop\content\1942280\<item id>\BrotatoBot.zip` (the owner's hidden Workshop item folder) |
+| Installed mod | `D:\SteamLibrary\steamapps\workshop\content\1942280\3825008026\BrotatoBot.zip` (the owner's hidden Workshop item, uploaded 2026-10-22) |
 | Bot root (`user://brotato-bot`) | `%APPDATA%\Brotato\brotato-bot` |
 | Save folder | `%APPDATA%\Brotato\<steam64 id>` (the one 17-digit folder there) |
 | Game logs | `%APPDATA%\Brotato\logs` (`godot.log`, `modloader.log`) |
@@ -77,9 +77,15 @@ The three rules:
       `Packed 49 files into <repo>\build\BrotatoBot.zip`. The basename
       `BrotatoBot` becomes the item title; the uploader sets the title from
       the zip name on every upload.
-   2. In Steam, click Play on Brotato and choose the Workshop uploader
-      launch option (it runs `GodotWorkshopUtility.exe` from the game
-      folder; the utility needs Steam to launch it so it gets the app id).
+   2. Start the uploader by hand (Brotato has no Steam launch option for
+      it) with Steam running, from PowerShell:
+
+      ```powershell
+      $env:SteamAppId = '1942280'; $env:SteamGameId = '1942280'
+      Start-Process 'D:\SteamLibrary\steamapps\common\Brotato\GodotWorkshopUtility.exe' -WorkingDirectory 'D:\SteamLibrary\steamapps\common\Brotato'
+      ```
+
+      Its console starts with `Steam initialization OK!` and lists the tags.
       In the window: "Select mod file" = the zip from step 3.1; leave
       "Select preview image" empty (optional); leave the workshop ID field
       empty the first time; pick the tag `Utilities`; press Upload. The
@@ -95,7 +101,8 @@ The three rules:
    4. On the same page press Subscribe. Steam downloads the zip into
       `D:\SteamLibrary\steamapps\workshop\content\1942280\<item id>\`.
    5. Put the id into `scripts\sync_mod.ps1` as the `-ItemId` default and
-      into the path table above.
+      into the path table above. Done 2026-10-22: item `3825008026`,
+      title BrotatoBot, Hidden.
    Later uploads (only needed if the local copy in step 4 is not enough,
    e.g. to reinstall from Steam): repeat 3.1 and 3.2 with the ID in the
    workshop ID field.
@@ -109,13 +116,13 @@ The three rules:
      stale installs from the earlier methods: `Pasha-AutoBattler` and
      `Ellie-BrotatoBot` under `<game>\mods-unpacked`,
      `<game>\mods\Ellie-BrotatoBot.zip` and the fake item folder
-     `9999999999`, printing `Removed <path>` for each. Without an item id
-     it stops with `No Workshop item id`; with a missing item folder it
-     stops with `Workshop item folder not found` and the subscribe link.
+     `9999999999`, printing `Removed <path>` for each. With a missing item
+     folder it stops with `Workshop item folder not found` and the
+     subscribe link.
    - It then runs `pack_mod.ps1` and copies the build over the item
      folder's zip, printing
      `Packed 49 files into <repo>\build\BrotatoBot.zip` and
-     `Installed D:\SteamLibrary\steamapps\workshop\content\1942280\<item id>\BrotatoBot.zip`.
+     `Installed D:\SteamLibrary\steamapps\workshop\content\1942280\3825008026\BrotatoBot.zip`.
      Any other zip in that folder is renamed to `*.zip.disabled`. Steam
      rewrites the folder only when the item itself is updated, which is the
      owner's own upload, so the local copy survives game launches. The zip

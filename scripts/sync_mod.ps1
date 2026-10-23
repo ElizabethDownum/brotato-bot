@@ -25,14 +25,14 @@ docs/runbook.md, Mod section 2).
 Stale installs from earlier methods (<GameDir>\mods\Ellie-BrotatoBot.zip,
 <GameDir>\mods-unpacked\{Pasha-AutoBattler,Ellie-BrotatoBot} and the fake
 item folder 9999999999) are removed. Refuses to run while Brotato.exe is
-running. -ItemId is the owner's Workshop item id; pass it until the default
-below is filled in after the first upload.
+running. -ItemId is the owner's hidden Workshop item, BrotatoBot (3825008026,
+uploaded 2026-10-22).
 #>
 [CmdletBinding()]
 param(
     [string]$GameDir = 'D:\SteamLibrary\steamapps\common\Brotato',
     [string]$WorkshopDir = 'D:\SteamLibrary\steamapps\workshop\content\1942280',
-    [string]$ItemId = ''
+    [string]$ItemId = '3825008026'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -43,11 +43,6 @@ if (Get-Process Brotato -ErrorAction SilentlyContinue) {
 }
 if (-not (Test-Path -LiteralPath $GameDir -PathType Container)) {
     Write-Error "Game directory not found: $GameDir"
-    exit 1
-}
-if ($ItemId -eq '') {
-    Write-Error ('No Workshop item id. Upload the mod once as a hidden Workshop item ' +
-        '(docs/runbook.md, Mod section 2) and pass -ItemId <id>.')
     exit 1
 }
 
