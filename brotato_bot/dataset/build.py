@@ -174,7 +174,7 @@ def build_dataset(
         discover.find_set_dirs(root),
         lambda e: build_set_record(
             _read(e["set_data_path"]),
-            {c: _read(p) for c, p in e["count_effect_paths"].items()},
+            {c: [_read(p) for p in ps] for c, ps in e["count_effect_paths"].items()},
             set_id=e["set_id"],
             name=e["name"],
             tr=tr,

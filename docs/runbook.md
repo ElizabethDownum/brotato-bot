@@ -1092,8 +1092,9 @@ collect are local. Decisions also need the authenticated `claude` CLI's model se
    idempotent, and leaves a file whose target has no stat or difficulty goal alone.
    `proposal validate` rejects an unshaped plan: `## Plan: not shaped for <target>:
    run proposal shape FILE (goal <stat> <value>)`. The `brotato-next` skill runs it
-   as step 5i. Weapon sets are not chosen: the dataset keeps one effect per set
-   bonus, so a set that also moves the stat (blunt lowers speed) is invisible to it.
+   as step 5i. Shaping never selects a weapon set, and the command prints the goal
+   data (items and weapon-set bonuses that move the stat) for the proposal writer;
+   the same lines go into the decision prompt's Objective.
    Why: the shop scorer subtracts a stat's weight for an item that lowers it, so a
    negative weight rewards every item that lowers the stat and penalises every item
    that raises it; without shaping, run 1 (2026-10-22) won on `chal_slow` with no

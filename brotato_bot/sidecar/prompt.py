@@ -34,6 +34,7 @@ from typing import Any
 
 from brotato_bot.dataset.unlocks import challenge_texts
 from brotato_bot.knowledge.cache import excerpt
+from brotato_bot.run import shape
 from brotato_bot.sidecar.schema import SCHEMA_PATH
 
 PROMPTS_DIR = Path(__file__).with_name("prompts")
@@ -138,7 +139,9 @@ def _target(state: dict, plan: dict) -> str:
     return ""
 
 
-def _objective(state: dict, plan: dict, unlock_state: dict, kind: str = "") -> list[str]:
+def _objective(
+    state: dict, plan: dict, unlock_state: dict, kind: str = "", *, dataset: dict | None = None
+) -> list[str]:
     target = _target(state, plan)
     if not target:
         return [NO_TARGET + "."]
@@ -166,6 +169,9 @@ def _objective(state: dict, plan: dict, unlock_state: dict, kind: str = "") -> l
             "remaining waves."
         )
     else:
+        goal = shape.goal_for(target, unlock_state)
+        if goal is not None and goal.stat and dataset:
+            lines.extend(shape.brief_lines(goal, shape.goal_data(goal, dataset)))
         lines.append("Play this run to complete the target; survive while doing so.")
     return lines
 
@@ -353,7 +359,9 @@ def build(
             "## Objective",
             [
                 f"Decision: {kind} (screen {request.get('screen') or kind}).",
-                *_objective(state, plan, unlock_state or {}, request.get("kind") or ""),
+                *_objective(
+                    state, plan, unlock_state or {}, request.get("kind") or "", dataset=dataset
+                ),
             ],
         ),
         ("## State", _state_lines(state, look)),

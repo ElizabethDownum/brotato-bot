@@ -262,7 +262,8 @@ def _shape(args: argparse.Namespace) -> int:
     p = paths.load()
     try:
         unlock_state = load_unlock_state(p.data_dir / "unlock_state.json")
-        items = shape.load_items(p.data_dir / "brotato.json")
+        dataset = shape.load_dataset(p.data_dir / "brotato.json")
+        items = [i for i in dataset.get("items") or [] if isinstance(i, dict)]
         markdown = Path(args.file).read_text(encoding="utf-8-sig")
         goal = shape.goal_for(next_run(markdown)["target"], unlock_state)
         changes = shape.shape_file(Path(args.file), unlock_state, items)
@@ -270,6 +271,9 @@ def _shape(args: argparse.Namespace) -> int:
         print(f"proposal: {exc}")
         return 1
     print(shape.describe(goal, changes, args.file))
+    if goal is not None:
+        for line in shape.brief_lines(goal, shape.goal_data(goal, dataset)):
+            print(line)
     return 0
 
 

@@ -420,9 +420,11 @@ def find_set_dirs(extracted_root: str,
         for sub in sorted(glob.glob(os.path.join(d, "*"))):
             b = os.path.basename(sub)
             if os.path.isdir(sub) and b.isdigit():
-                eff = glob.glob(os.path.join(sub, f"set_{b}_effect_1.tres"))
+                # Every effect file of the count, not just effect_1: blunt at 6 weapons
+                # is set_6_effect_1 (+3 armor), _2 (+6 max hp) and _3 (-10 speed).
+                eff = sorted(glob.glob(os.path.join(sub, f"set_{b}_effect_*.tres")))
                 if eff:
-                    count_effects[int(b)] = eff[0]
+                    count_effects[int(b)] = eff
         results.append({
             "set_id": f"set_{folder}", "name": _title(folder),
             "set_data_path": set_data, "count_effect_paths": count_effects,

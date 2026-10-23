@@ -188,3 +188,25 @@ def test_starting_weapon_pool_empty_without_weapon_map():
         POOL_DATA, [], char_id="c", name="C",
         wanted_tags=[], banned_item_groups=[])
     assert rec["starting_weapon_pool"] == []
+
+
+def test_set_bonus_keeps_every_effect_and_effect_is_the_first():
+    set_data = '[gd_resource type="Resource" format=2]\n[resource]\nmy_id = "set_blunt"\n'
+
+    def eff(key, value):
+        return f'[resource]\nkey = "{key}"\nvalue = {value}\n'
+
+    rec = build_set_record(
+        set_data,
+        {6: [eff("stat_armor", 3), eff("stat_max_hp", 6), eff("stat_speed", -10)], 2: eff("stat_armor", 1)},
+        set_id="set_blunt",
+        name="Blunt",
+    )
+    two, six = rec["bonuses"]
+    assert two["effects"] == [two["effect"]] == [{"key": "stat_armor", "value": 1}]
+    assert six["effect"] == {"key": "stat_armor", "value": 3}
+    assert six["effects"] == [
+        {"key": "stat_armor", "value": 3},
+        {"key": "stat_max_hp", "value": 6},
+        {"key": "stat_speed", "value": -10},
+    ]

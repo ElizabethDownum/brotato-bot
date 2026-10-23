@@ -197,7 +197,7 @@ def test_cli_shape_rewrites_the_file_and_prints_the_changes(tmp_path, monkeypatc
         proposal.extract_plan(file.read_text(encoding="utf-8"))["plan_id"] == "well-rounded-slow-v1"
     )
     assert cli.main(["proposal", "shape", str(file)]) == 0
-    assert capsys.readouterr().out.strip() == f"{file} is already shaped for chal_slow"
+    assert capsys.readouterr().out.splitlines()[0] == f"{file} is already shaped for chal_slow"
 
 
 def test_real_dataset_lists_the_speed_lowering_items():
@@ -209,3 +209,136 @@ def test_real_dataset_lists_the_speed_lowering_items():
     bonus = shaped["plan"]["item_bonus"]
     assert bonus["item_estys_couch"] == 30.0 and bonus["item_statue"] == 15.0
     assert len([k for k in bonus if k != "item_bag"]) >= 15
+
+
+GOAL_DATASET = {
+    "items": [
+        {
+            "id": "item_slug",
+            "tier": 1,
+            "value": 20,
+            "effects": [{"key": "stat_speed", "value": -5}],
+        },
+        {
+            "id": "item_couch",
+            "tier": 3,
+            "value": 90,
+            "effects": [{"key": "stat_speed", "value": -20}],
+        },
+        {"id": "item_fin", "tier": 1, "value": 10, "effects": [{"key": "stat_speed", "value": 10}]},
+        {
+            "id": "item_plain",
+            "tier": 1,
+            "value": 5,
+            "effects": [{"key": "stat_max_hp", "value": 3}],
+        },
+    ],
+    "weapons": [
+        {"id": "weapon_mace_1", "weapon_type": "melee", "sets": ["Blunt"]},
+        {"id": "weapon_club_1", "weapon_type": "melee", "sets": ["Blunt", "Primitive"]},
+        {"id": "weapon_gun_1", "weapon_type": "ranged", "sets": ["Gun"]},
+    ],
+    "sets": [
+        {
+            "id": "set_blunt",
+            "name": "Blunt",
+            "display_name": "Blunt",
+            "bonuses": [
+                {"count": 2, "effect": {"key": "stat_speed", "value": -2}},
+                {
+                    "count": 6,
+                    "effect": {"key": "stat_armor", "value": 3},
+                    "effects": [
+                        {"key": "stat_armor", "value": 3},
+                        {"key": "stat_max_hp", "value": 6},
+                        {"key": "stat_speed", "value": -10},
+                    ],
+                },
+            ],
+        },
+        {
+            "id": "set_gun",
+            "name": "Gun",
+            "display_name": "Gun",
+            "bonuses": [{"count": 2, "effect": {"key": "stat_ranged_damage", "value": 1}}],
+        },
+    ],
+}
+
+
+def test_goal_data_lists_items_and_set_bonuses_that_move_the_stat():
+    goal = shape.goal_for("chal_slow", SLOW)
+    assert shape.goal_data(goal, GOAL_DATASET) == {
+        "items": [
+            {"id": "item_couch", "value": -20.0, "tier": 3, "price": 90},
+            {"id": "item_slug", "value": -5.0, "tier": 1, "price": 20},
+        ],
+        "sets": [
+            {
+                "id": "set_blunt",
+                "name": "Blunt",
+                "weapon_types": ["melee"],
+                "by_count": {2: -2.0, 6: -10.0},
+            }
+        ],
+    }
+    assert shape.goal_data(
+        shape.goal_for("chal_gatherer_1", PLAIN) or shape.Goal("x"), GOAL_DATASET
+    ) == {
+        "items": [],
+        "sets": [],
+    }
+
+
+def test_brief_lines_text():
+    goal = shape.goal_for("chal_slow", SLOW)
+    assert shape.brief_lines(goal, shape.goal_data(goal, GOAL_DATASET)) == [
+        "Goal data for chal_slow: lower stat_speed to -20.",
+        "item_couch -20 (tier 3, price 90), item_slug -5 (tier 1, price 20)",
+        "set_blunt (melee): 2 weapons -2, 6 weapons -10",
+    ]
+    empty = {"items": [], "sets": []}
+    assert shape.brief_lines(goal, empty)[1:] == [
+        "No item in the dataset lowers stat_speed.",
+        "No weapon set in the dataset lowers stat_speed.",
+    ]
+    assert shape.brief_lines(shape.Goal("x"), empty) == []
+
+
+def test_objective_includes_the_goal_data_only_with_a_dataset():
+    from brotato_bot.sidecar import prompt
+
+    state = {"target_challenge": "chal_slow"}
+    without = prompt._objective(state, {}, SLOW, "shop")
+    assert not any(line.startswith("Goal data") for line in without)
+    with_data = prompt._objective(state, {}, SLOW, "shop", dataset=GOAL_DATASET)
+    assert with_data[-1] == without[-1]
+    assert with_data[-4] == "Goal data for chal_slow: lower stat_speed to -20."
+    assert with_data[-3].startswith("item_couch -20")
+    assert with_data[-2] == "set_blunt (melee): 2 weapons -2, 6 weapons -10"
+    assert len(with_data) == len(without) + 3
+    checkpoint = prompt._objective(state, {}, SLOW, "checkpoint", dataset=GOAL_DATASET)
+    assert checkpoint == prompt._objective(state, {}, SLOW, "checkpoint")
+
+
+def test_cli_shape_prints_the_goal_data_after_the_shaped_line(tmp_path, monkeypatch, capsys):
+    from brotato_bot import paths
+
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "unlock_state.json").write_text(json.dumps({"profile": 1, **SLOW}), encoding="utf-8")
+    (data / "brotato.json").write_text(json.dumps(GOAL_DATASET), encoding="utf-8")
+    real = paths.load()
+    monkeypatch.setattr(
+        paths, "load", lambda: real.__class__(**{**real.__dict__, "data_dir": data})
+    )
+    file = tmp_path / "2026-10-22-003.md"
+    file.write_text(_proposal("chal_slow"), encoding="utf-8")
+    assert cli.main(["proposal", "shape", str(file)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].startswith(f"shaped {file} for chal_slow")
+    assert lines[1:] == [
+        "Goal data for chal_slow: lower stat_speed to -20.",
+        "item_couch -20 (tier 3, price 90), item_slug -5 (tier 1, price 20)",
+        "set_blunt (melee): 2 weapons -2, 6 weapons -10",
+    ]

@@ -23,8 +23,10 @@ character's normal build and reaches the goal only by accident (run 1, 2026-10-2
 A ``chal_difficulty_<n>`` target raises ``## Next run`` ``- danger:`` to ``n``. A target with
 neither a stat nor a difficulty number leaves the file unchanged.
 
-Weapon sets are not selected: the dataset keeps one effect per set bonus, so a set whose
-bonus also moves the goal stat (blunt lowers speed) is invisible to it.
+Shaping never selects a weapon set (the owner's call, 2026-10-22). The goal data, meaning
+every item and every weapon-set bonus that moves the goal stat, is surfaced instead:
+``goal_data`` collects it and ``brief_lines`` words it for the proposal writer
+(``proposal shape`` prints it) and for the in-run model (the decision prompt's Objective).
 """
 
 from __future__ import annotations
@@ -178,16 +180,116 @@ def goal_errors(plan: dict | None, run: dict, unlock_state: dict) -> list[str]:
     return errors
 
 
-def load_items(dataset_json: Path) -> list[dict]:
-    """The dataset's item list; ValueError naming the fix when it is missing."""
+def load_dataset(dataset_json: Path) -> dict:
+    """The dataset object; ValueError naming the fix when it is missing or malformed."""
     try:
         data = json.loads(Path(dataset_json).read_text(encoding="utf-8"))
     except OSError:
         raise ValueError(f"{dataset_json} is missing; run dataset build first") from None
-    items = data.get("items") if isinstance(data, dict) else None
+    except json.JSONDecodeError:
+        raise ValueError(f"{dataset_json} is not valid JSON; run dataset build") from None
+    if not isinstance(data, dict):
+        raise ValueError(f"{dataset_json} is not a dataset object; run dataset build")  # noqa: TRY004
+    return data
+
+
+def load_items(dataset_json: Path) -> list[dict]:
+    """The dataset's item list; ValueError naming the fix when it is missing."""
+    items = load_dataset(dataset_json).get("items")
     if not isinstance(items, list):
         raise ValueError(f"{dataset_json} has no items list")  # noqa: TRY004
     return [i for i in items if isinstance(i, dict)]
+
+
+def _num(v: Any) -> float:
+    return float(v) if isinstance(v, int | float) and not isinstance(v, bool) else 0.0
+
+
+def _sum_on(effects: Any, stat: str) -> float:
+    return sum(
+        _num(e.get("value")) for e in effects or [] if isinstance(e, dict) and e.get("key") == stat
+    )
+
+
+def goal_data(goal: Goal, dataset: dict) -> dict:
+    """Every item and weapon-set bonus in ``dataset`` that moves ``goal.stat`` the goal's way."""
+    out: dict = {"items": [], "sets": []}
+    if not goal.stat:
+        return out
+    items = []
+    for item in dataset.get("items") or []:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+            continue
+        total = _sum_on(item.get("effects"), goal.stat)
+        if total * goal.sign > 0:
+            items.append(
+                {
+                    "id": item["id"],
+                    "value": total,
+                    "tier": item.get("tier"),
+                    "price": item.get("value"),
+                }
+            )
+    items.sort(key=lambda i: (-abs(i["value"]), i["id"]))
+    out["items"] = items
+    weapons = [w for w in dataset.get("weapons") or [] if isinstance(w, dict)]
+    for s in dataset.get("sets") or []:
+        if not isinstance(s, dict) or not isinstance(s.get("id"), str):
+            continue
+        by_count: dict[int, float] = {}
+        for b in s.get("bonuses") or []:
+            if not isinstance(b, dict) or not isinstance(b.get("count"), int):
+                continue
+            total = _sum_on(b.get("effects") or [b.get("effect")], goal.stat)
+            if total * goal.sign > 0:
+                by_count[b["count"]] = total
+        if not by_count:
+            continue
+        names = {s["id"], s.get("name"), s.get("display_name")}
+        types = {
+            str(w["weapon_type"])
+            for w in weapons
+            if w.get("weapon_type") and names & set(w.get("sets") or [])
+        }
+        out["sets"].append(
+            {
+                "id": s["id"],
+                "name": s.get("name") or s["id"],
+                "weapon_types": sorted(types),
+                "by_count": dict(sorted(by_count.items())),
+            }
+        )
+    out["sets"].sort(key=lambda s: s["id"])
+    return out
+
+
+def brief_lines(goal: Goal, data: dict) -> list[str]:
+    """Plain lines presenting ``goal_data`` to a model; empty when the goal has no stat."""
+    if not goal.stat:
+        return []
+    verb = "raise" if goal.value > 0 else "lower"
+    lines = [f"Goal data for {goal.target}: {verb} {goal.stat} to {goal.value:+d}."]
+    items = data.get("items") or []
+    if items:
+        lines.append(
+            ", ".join(
+                f"{i['id']} {i['value']:+g} (tier {i['tier']}, price {i['price']})" for i in items
+            )
+        )
+    else:
+        lines.append(f"No item in the dataset {verb}s {goal.stat}.")
+    sets = data.get("sets") or []
+    if sets:
+        lines.append(
+            "; ".join(
+                f"{s['id']} ({'/'.join(s['weapon_types'])}): "
+                + ", ".join(f"{c} weapons {v:+g}" for c, v in s["by_count"].items())
+                for s in sets
+            )
+        )
+    else:
+        lines.append(f"No weapon set in the dataset {verb}s {goal.stat}.")
+    return lines
 
 
 def shape_file(path: Path, unlock_state: dict, items: list[dict]) -> list[str]:

@@ -409,3 +409,19 @@ def test_find_zone_waves_excludes_test_wave(tmp_path):
 
     waves = discover.find_zone_waves(str(tmp_path))
     assert [w["wave"] for w in waves] == [1]  # wave 21 (test) excluded
+
+
+def test_find_set_dirs_keeps_every_effect_file_sorted(tmp_path):
+    # blunt at 6 weapons: +3 armor, +6 max hp, -10 speed in three files.
+    base = tmp_path / "items" / "sets" / "blunt"
+    (base / "6").mkdir(parents=True)
+    (base / "blunt_set_data.tres").write_text("setdata")
+    for n in (3, 1, 2):
+        (base / "6" / f"set_6_effect_{n}.tres").write_text(f"e{n}")
+    found = find_set_dirs(str(tmp_path))
+    paths = found[0]["count_effect_paths"][6]
+    assert [p.rsplit("set_6_", 1)[1] for p in paths] == [
+        "effect_1.tres",
+        "effect_2.tres",
+        "effect_3.tres",
+    ]
