@@ -24,6 +24,8 @@ would replace the row's own bans.
   ``item_bonus`` of ``ITEM_BONUS_PER_POINT`` per point, capped at ``ITEM_BONUS_CAP``;
 - for a goal of exactly 0 (keep the stat at zero) items that move it the other way are
   banned;
+- ``min_buy`` is raised to ``MIN_BUY_UNDER_GOAL`` (never lowered), so low-scoring junk is
+  harder to buy while a goal needs the gold;
 - the plan family gains the goal as a suffix (``well-rounded-slow-v1``), so the stagnation
   rule sees a different family from the plain row.
 
@@ -47,6 +49,7 @@ from typing import Any
 ITEM_BONUS_PER_POINT = 1.5
 ITEM_BONUS_CAP = 30.0
 DOMINANT_MARGIN = 4.0
+MIN_BUY_UNDER_GOAL = 4.0  # placeholder; recalibrate with ``python -m brotato_bot score``
 MIN_STATS = 4  # weights besides the goal stat a plan's ``stats`` must carry
 _DIFFICULTY = re.compile(r"chal_difficulty_(\d+)")
 _FENCED_JSON = re.compile(r"```json[ \t]*\n(.*?)```", re.DOTALL)
@@ -120,6 +123,7 @@ def shape_plan(plan: dict, goal: Goal, items: list[dict]) -> dict:
     suffix = "-" + goal_slug(goal.target)
     if not family.endswith(suffix):
         family += suffix
+    body["min_buy"] = max(float(body.get("min_buy", 0)), MIN_BUY_UNDER_GOAL)
     out["plan_id"] = f"{family}-v{version}"
     return out
 
@@ -151,6 +155,8 @@ def shape_markdown(markdown: str, goal: Goal | None, items: list[dict]) -> tuple
         changes.append(f"{goal.stat} weight {w:g} (goal {goal.value:+g}), {n} item bonuses")
         if shaped["plan"].get("ban_items") != plan["plan"].get("ban_items"):
             changes.append(f"{len(shaped['plan'].get('ban_items', []))} banned items")
+        if shaped["plan"]["min_buy"] != plan["plan"].get("min_buy"):
+            changes.append(f"min_buy {shaped['plan']['min_buy']:g}")
         if shaped["plan_id"] != plan["plan_id"]:
             changes.append(f"plan_id {shaped['plan_id']}")
     if goal.danger is not None:

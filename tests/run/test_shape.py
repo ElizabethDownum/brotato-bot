@@ -172,9 +172,31 @@ def test_shape_markdown_rewrites_the_plan_block_and_reports_changes():
     assert plan["plan_id"] == "well-rounded-slow-v1"
     assert changes == [
         "stat_speed weight -14 (goal -20), 2 item bonuses",
+        "min_buy 4",
         "plan_id well-rounded-slow-v1",
     ]
     assert proposal.validate(text, SLOW, "2026-10-22-003.md") == []
+
+
+def test_shape_plan_raises_a_low_min_buy_under_a_stat_goal():
+    goal = shape.goal_for("chal_slow", SLOW)
+    assert shape.shape_plan(_plan(min_buy=2.0), goal, ITEMS)["plan"]["min_buy"] == 4.0
+    assert shape.shape_plan(_plan(), goal, ITEMS)["plan"]["min_buy"] == 4.0
+
+
+def test_shape_plan_keeps_a_higher_min_buy_and_is_idempotent():
+    goal = shape.goal_for("chal_slow", SLOW)
+    assert shape.shape_plan(_plan(min_buy=6.0), goal, ITEMS)["plan"]["min_buy"] == 6.0
+    once = shape.shape_plan(_plan(), goal, ITEMS)
+    assert shape.shape_plan(once, goal, ITEMS) == once
+
+
+def test_shape_markdown_reports_min_buy_only_when_it_changed():
+    goal = shape.goal_for("chal_slow", SLOW)
+    _, low = shape.shape_markdown(_proposal("chal_slow", plan=_plan(min_buy=2.0)), goal, ITEMS)
+    assert "min_buy 4" in low
+    _, high = shape.shape_markdown(_proposal("chal_slow", plan=_plan(min_buy=6.0)), goal, ITEMS)
+    assert not any(c.startswith("min_buy") for c in high)
 
 
 def test_shape_markdown_raises_danger_for_a_difficulty_target():
