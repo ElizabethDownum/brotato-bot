@@ -200,3 +200,36 @@ change only when a later run or a code read confirms it.
      when the board is full, or when a better affordable weapon is on offer). Evidence: the
      held build in `death` / `complete` lines. After step 7.
 
+
+## 2026-10-23 run 3 (20261023-085402-well_rounded-d0): won wave 20, target not fired, no speed item ever bought
+
+- Plan `well-rounded-slow-v2` (proposal 4, min_buy 6, stat_speed -14). Won at wave 20 with
+  98 HP (max 119), 78 damage taken in the whole run, all in wave 20. Speed went +5 to -1
+  (helmet -2, campfire -2, plus one more point); the goal is -20. Unlocked chal_gatherer_3,
+  chal_survivor_4 and chal_robust along the way; chal_slow did not fire.
+- Watch points from the handoff: weapons came first (5 weapons by wave 3, 6 by wave 6,
+  combines from wave 4 on), so items outranking a plain weapon did not starve the build.
+  Gold was not banked: every shop spent down to the reroll floor (wave 19 entered with 562,
+  spent 359 on buys and 175 on rerolls). 11 sidecar asks, all answered by haiku, all 11
+  rationales name the speed goal.
+- The miss: none of Bag, Ugly Tooth, Reinforced Steel, Statue, Esty's Couch or Evil Hat was
+  bought in about 95 rerolls across 19 shops (roughly 380 offers). Checked and ruled out:
+  `score_shop_entry` has no filter beyond the scorer (Helmet's 16.33 in the run log matches
+  the Python mirror exactly); all of them except Evil Hat are unlocked on profile 1. So
+  they were never on the board, or never affordable when they were. The run stream only
+  records buys, rerolls and locks, not what was offered, and the 11 ask snapshots (the only
+  offer records) show none of them. Telemetry gap: log the offering (ids and scores) on
+  every shop view, so the next run answers "offered and skipped" versus "never offered".
+- Remaining junk through min_buy 6: alien worm 7 (x4), lens 8 (x4), bat 8 (x3), duct tape
+  6.33, scope 6.2, little muscley dude 8.33 (x2). Their scores come from several weak
+  on-plan effects adding up, not from magnitude; a price-per-score factor (step 4) would
+  rank them below a reroll but does not address the target.
+- Dataset note: the profile save's `items_unlocked` is a list of Godot `String.hash()`
+  values (djb2: h = h * 33 + byte, 32-bit, seed 5381) of the item ids; the formula maps
+  all 197 entries to ids in `data/brotato.json`. `unlock-state` could list locked items
+  (Evil Hat is locked on profile 1), which matters for goal item bonuses.
+- Consequence for the plan: survival and economy are not the problem at danger 0; finding
+  the goal items is. Step 4 (intangible weights) would not have changed this run. Go to
+  step 5 as planned, and carry the offer log into the next mod sync; a goal-item hunt
+  (reroll while gold stays above a keep and no goal item is on the board, like the
+  `prefer_weapons` hunt in `base_shop.gd`) belongs with the step 7 shop changes.
