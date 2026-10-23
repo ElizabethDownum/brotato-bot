@@ -74,9 +74,15 @@ The three rules:
    loads only under a Godot editor binary, which is how the 2026-10-21
    probe was written.
    1. Build the zip: `pwsh -File <repo>\scripts\pack_mod.ps1` prints
-      `Packed 49 files into <repo>\build\BrotatoBot.zip`. The basename
-      `BrotatoBot` becomes the item title; the uploader sets the title from
-      the zip name on every upload.
+      `Packed 49 files and 1 imported assets into <repo>\build\BrotatoBot.zip`.
+      The basename `BrotatoBot` becomes the item title; the uploader sets
+      the title from the zip name on every upload. The script needs
+      `tools\godot` (`get_godot.ps1`): it imports the mod's textures with
+      the Godot 3.6 editor, headless, in `build\import-stage`, because the
+      release game cannot import a PNG at runtime. The 2026-10-22 22:13
+      launch without that step logged `Parse Error: [ext_resource]
+      referenced nonexistent resource at: .../ui/defect.png` and the player
+      extension installed as `Null`.
    2. Start the uploader by hand (Brotato has no Steam launch option for
       it) with Steam running, from PowerShell:
 
@@ -121,14 +127,18 @@ The three rules:
      subscribe link.
    - It then runs `pack_mod.ps1` and copies the build over the item
      folder's zip, printing
-     `Packed 49 files into <repo>\build\BrotatoBot.zip` and
+     `Packed 49 files and 1 imported assets into <repo>\build\BrotatoBot.zip` and
      `Installed D:\SteamLibrary\steamapps\workshop\content\1942280\3825008026\BrotatoBot.zip`.
      Any other zip in that folder is renamed to `*.zip.disabled`. Steam
      rewrites the folder only when the item itself is updated, which is the
      owner's own upload, so the local copy survives game launches. The zip
-     holds `mods-unpacked/Ellie-BrotatoBot/<files>`, the layout the loader
+     holds `.import/defect.png-<md5 of its res path>.stex` and
+     `mods-unpacked/Ellie-BrotatoBot/<files>`, the layout the loader
      expects. The count is the number of files in `mod\Ellie-BrotatoBot` at
-     `568aaee`, including the `.import` files.
+     `568aaee`, including the `.import` files. `pack_mod.ps1` fails with
+     `name a .stex the Godot import did not produce` if a `.import` file in
+     the mod carries a stale hash; fix it by copying the regenerated
+     `.import` file from `build\import-stage` back into `mod\`.
    - Use `-GameDir <path>` only if the game moves; `-ItemId` / `-WorkshopDir`
      only if the item or library changes.
 5. Launch Brotato through Steam. The title screen shows the Mod Loader's
