@@ -155,6 +155,14 @@ The three rules:
    - Open `%APPDATA%\Brotato\logs\godot.log` and search it for
      `SCRIPT ERROR` and `Parse Error`. The game-side scripts are
      parse-checked only by this load (see Known limitations).
+   - If `modloader.log` says `Mods are currently disabled` and nothing
+     else, the game's own crash reporter (`singletons/crash_reporter.gd`,
+     which runs before the loader) found `ERROR` lines naming a mod in the
+     previous launch's engine log and switched mods off for this one start.
+     Fix whatever that earlier log complained about, then launch again: it
+     only reads the latest log, so a clean launch re-enables mods. Seen
+     2026-10-22 22:20 after the 22:13 launch logged the `defect.png` parse
+     errors.
    - The title screen has a "Mods" button. It should list BrotatoBot 0.1.0
      by Ellie, from `manifest.json` (verify what that page shows). The
      manifest's two Mod Loader options, "Enable Bot" and "Autoshop", are
