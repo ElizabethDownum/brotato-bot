@@ -1039,6 +1039,8 @@ collect are local. Decisions also need the authenticated `claude` CLI's model se
    40% of the configured timeout (18 s / 48 s by default); later ladder
    steps are skipped if a full call's budget no longer remains.
    The ladder is `haiku`, `haiku-retry`, `repair`, then `fallback`.
+   Every call runs at `--effort medium` (pinned 2026-10-23; the Haiku default at the
+   time, kept fixed so decisions stay comparable; `claude_cli.EFFORT`).
    On `fallback` no response is written: the mod times out and its rules
    decide. Expired requests are deleted without a call.
 5. Press Ctrl+C in the sidecar terminal to stop it. Shutdown removes the

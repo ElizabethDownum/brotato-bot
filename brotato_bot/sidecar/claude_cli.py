@@ -35,6 +35,9 @@ from typing import Any
 
 CLAUDE = "claude"
 MAX_TURNS = "2"
+# Pinned (owner, 2026-10-23): the CLI default for Haiku 5.5 was medium and the runs so far
+# used it; a pin keeps decisions comparable if the default moves. A lever to lower later.
+EFFORT = "medium"
 _API_CREDENTIALS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 
 
@@ -70,6 +73,7 @@ def command(*, system_prompt_file: Path, model: str, schema_path: Path) -> list[
     return [
         CLAUDE, "-p",
         "--model", model,
+        "--effort", EFFORT,
         "--output-format", "json",
         "--json-schema", schema_arg(schema_path),
         "--system-prompt-file", str(system_prompt_file),

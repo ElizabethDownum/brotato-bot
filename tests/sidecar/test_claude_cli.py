@@ -53,6 +53,8 @@ def test_run_builds_expected_command(tmp_path: Path):
         "-p",
         "--model",
         "claude-haiku-5-5",
+        "--effort",
+        "medium",
         "--output-format",
         "json",
         "--json-schema",
