@@ -248,7 +248,26 @@ def test_collect_writes_report_copy_and_index_row(tmp_paths):
         "hp_end_last_wave": 5,
         "proposal_n": None,
         "profile_id": 1,
+        "target_fired": True,
     }
+
+
+def test_index_row_target_fired_is_false_without_a_completed_target():
+    s = collect.summarize([{"kind": "header", "run_id": "r", "plan_id": "p1"}])
+    assert collect.index_row(s)["target_fired"] is False
+
+
+def test_recollect_refreshes_target_fired(tmp_paths):
+    # O7: a row written before target_fired existed gains it on re-collect.
+    p = tmp_paths
+    _install(p, "run_small.jsonl")
+    p.runs_out.mkdir(parents=True)
+    old = {"run_id": RUN_ID, "outcome": "death", "target_challenge": "chal_gatherer_1"}
+    (p.runs_out / "index.json").write_text(json.dumps([old]), encoding="utf-8")
+    collect.collect(RUN_ID, p)
+    index = json.loads((p.runs_out / "index.json").read_text(encoding="utf-8"))
+    assert len(index) == 1
+    assert index[0]["target_fired"] is True
 
 
 def test_collect_twice_keeps_one_row_and_creates_index(tmp_paths):

@@ -279,7 +279,8 @@ def _atomic_copy(src: Path, dst: Path) -> None:
 
 
 def index_row(summary: RunSummary) -> dict:
-    """The ``runs/index.json`` row. Plan 3's stagnation check reads exactly these keys."""
+    """The ``runs/index.json`` row. Plan 3's stagnation check reads exactly these keys;
+    ``target_fired`` is true when the run completed a target challenge."""
     return {
         "run_id": summary.run_id,
         "character_id": summary.character_id,
@@ -291,6 +292,7 @@ def index_row(summary: RunSummary) -> dict:
         "hp_end_last_wave": summary.hp_end_last_wave,
         "proposal_n": None,
         "profile_id": summary.profile_id,
+        "target_fired": bool(summary.targets_completed),
     }
 
 
