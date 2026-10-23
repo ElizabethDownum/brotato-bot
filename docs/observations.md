@@ -72,9 +72,9 @@ change only when a later run or a code read confirms it.
   bought one too. The scorer sees only the max-HP effect; the downside is an unweighted
   effect key, so Weird Ghost is a concrete negative intangible for step 4 of the plan,
   the mirror of Dangerous Bunny's unscored free rerolls.
-- Cheap hardening, optional: log the `took_damage` connect result and emit a `warning`
-  event when it fails; have `collect` flag a run whose HP fell between snapshots with
-  no damage event in between.
+- Hardening, agreed by the owner 2026-10-23: log the `took_damage` connect result and
+  emit a `warning` event when it fails; have `collect` flag a run whose HP fell between
+  snapshots with no damage event in between. Do it with the next harness/mod change.
 
 ## 2026-10-22 idea: ask the sidecar after rerolls too, under a per-visit budget
 
