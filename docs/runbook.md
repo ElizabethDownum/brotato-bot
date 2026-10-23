@@ -973,8 +973,8 @@ collect are local. Decisions also need the authenticated `claude` CLI's model se
    `bot_profile_id`, default 1) is skipped: no collect, no call.
 3. While that call runs, the loop answers no requests and does not refresh
    the heartbeat. Once it is more than 10 s old the mod's rules decide until
-   the call returns. The flag is wired; the `/brotato-next` skill belongs
-   to plan 3 and lands later.
+   the call returns. The flag is wired; the `/brotato-next` skill exists at
+   `.claude/skills/brotato-next/SKILL.md`.
 
 ### 6. After a run
 
@@ -1053,3 +1053,48 @@ Restart the sidecar after changes and the game for shared timeouts (Mod section 
 | `RuntimeError: cannot find the Brotato save folder` | Set `BROTATO_BOT_SAVE_DIR` or `BROTATO_BOT_STEAM_ID`; create profile id 1 in game if its save is absent (Mod section 3.1). |
 | Mod never asks | Check heartbeat age, profile id (0 is your profile), bot enabled, and asking conditions. Two consecutive timeouts disable asking for that run; see Mod sections 4.10 and 6.6. |
 | `error_max_turns` or 4xx in attempts | The ladder stops early on `error_max_turns` and HTTP 400/401/403; inspect the recorded CLI error. The wrapper uses two turns for structured output; other 4xx are not all classified deterministic. |
+
+## Full session
+
+One bot run from proposal to next proposal, then the advisor pass. Each step
+points to the section that has the detail; this section only orders them.
+Run every command from the project root.
+
+Three windows:
+
+1. **Sidecar terminal** (project root): `uv run python -m brotato_bot sidecar`. Keep it open for the whole run.
+2. **Claude Code terminal** (project root): where `/brotato-next`, `/brotato-decide` and `/brotato-advise` are invoked. The `uv run` commands below can run here too.
+3. **Game**: you launch it. Profile id 1 for bot runs (the button labelled "Profile 2"; Mod section 1).
+
+Order for one bot run:
+
+1. Claude Code: `/brotato-next` prints the proposal path and an install line. Use `/brotato-next-sonnet` instead when the stagnation line starts with `escalate:` or Haiku's proposal keeps failing validation.
+2. Project-root terminal: `uv run python -m brotato_bot prepare --from-proposal <path>` (Harness section 4).
+3. Sidecar terminal: `uv run python -m brotato_bot sidecar` (Harness section 4, step 3). Start it before the run so the heartbeat is fresh.
+4. Game: launch, select profile 1, check that `plan.json` names the character (Mod section 4, step 2). Pick the proposal's character and danger, start the run, then press Shift+Space once wave 1 has started (Mod section 4, step 4).
+5. Game: play until the run ends, at wave 20 cleared or death (Mod section 4, step 9).
+6. Sidecar terminal: Ctrl+C (Harness section 4, step 5).
+7. Project-root terminal: `uv run python -m brotato_bot collect --latest` (Harness section 6).
+8. Project-root terminal: `uv run python -m brotato_bot unlock-state --profile 1`.
+9. Project-root terminal, optional: `uv run python -m brotato_bot stagnation --target <id>`. `/brotato-next` runs it anyway.
+10. Claude Code: `/brotato-next` for the next proposal.
+
+Advisor mode during your own play (Mod section 5):
+
+1. Game, any profile: press F9 (or `export_hotkey`) while you play. It also works from the ESC pause menu.
+2. Claude Code: `/brotato-advise`, optionally with the state file path from `%APPDATA%\Brotato\brotato-bot\state\`. The advice note is written under `advice/`.
+3. The sidecar does not need to run. F9 never acts on the game.
+
+Where to look when something stalls:
+
+- Mod overlay, top-left (Mod section 4, step 5): line 1 is the status (`HALTED: <reason>`, `Bot refused: <reason>`, `DECIDING: <kind>`); line 4 `sidecar: off` means two decisions timed out in a row.
+- Sidecar console, `[<id>] <kind> -> <action> via <source> in <ms> ms`: one line per handled decision. No line at all means the mod never asked; check the heartbeat (Harness section 4, step 3).
+- `decisions/<run_id>.jsonl`: one record per decision. `attempts` lists each model call, with its `returncode`, `raw` and `errors`.
+- `runs/<run_id>.md`: the run report, with the decisions table and the outcome.
+- `%APPDATA%\Brotato\logs\modloader.log`: mod load and error output. Check it first when the overlay never appears (Mod section 2).
+
+The three rules:
+
+- Profile 1 only for bot runs.
+- Any bot action on profile 0 or during your own play means halt the bot: Shift+Space turns it off, a move key halts it (Mod section 1, rule 3 and section 4, step 8).
+- The bot never runs unattended: you start every run and press Shift+Space yourself (Mod section 1, rule 2).
