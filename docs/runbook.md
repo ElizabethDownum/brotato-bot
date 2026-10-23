@@ -13,7 +13,7 @@ Paths used throughout:
 |---|---|
 | Repository (`<repo>` below) | `<workspace>\brotato-bot` |
 | Game folder | `D:\SteamLibrary\steamapps\common\Brotato` |
-| Installed mod | `D:\SteamLibrary\steamapps\common\Brotato\mods-unpacked\Ellie-BrotatoBot` |
+| Installed mod | `D:\SteamLibrary\steamapps\common\Brotato\mods\Ellie-BrotatoBot.zip` |
 | Bot root (`user://brotato-bot`) | `%APPDATA%\Brotato\brotato-bot` |
 | Save folder | `%APPDATA%\Brotato\<steam64 id>` (the one 17-digit folder there) |
 | Game logs | `%APPDATA%\Brotato\logs` (`godot.log`, `modloader.log`) |
@@ -60,19 +60,26 @@ The three rules:
    - If it says `Godot not found`, run
      `<repo>\scripts\get_godot.ps1`
      once, then run the tests again.
-3. Copy the mod into the game:
+3. Pack the mod into the game:
 
    ```powershell
    pwsh -File <repo>\scripts\sync_mod.ps1
    ```
 
-   - The script removes any `Pasha-AutoBattler` and `Ellie-BrotatoBot`
-     folders under `mods-unpacked`. For each folder it removes it prints
-     `Removed <path>`.
+   - The Steam build runs from `Brotato.pck` and loads mods only from zip
+     files in `<game>\mods`. Its loader logs
+     `Can't open unpacked mods folder res://mods-unpacked/` and
+     `No mods were setup` for an unpacked folder (seen 2026-10-22). An
+     unpacked folder loads only when the extracted project runs under a
+     Godot editor binary, which is how the 2026-10-21 probe was written.
+   - The script removes any stale `Pasha-AutoBattler` and
+     `Ellie-BrotatoBot` folders under `mods-unpacked` and the previous zip,
+     printing `Removed <path>` for each.
    - It then prints
-     `Copied 46 files to D:\SteamLibrary\steamapps\common\Brotato\mods-unpacked\Ellie-BrotatoBot`.
-     The count is the number of files in `mod\Ellie-BrotatoBot` at
-     `ec55a43`, including the `.import` files.
+     `Packed 49 files into D:\SteamLibrary\steamapps\common\Brotato\mods\Ellie-BrotatoBot.zip`.
+     The zip holds `mods-unpacked/Ellie-BrotatoBot/<files>`, the layout the
+     loader expects. The count is the number of files in
+     `mod\Ellie-BrotatoBot` at `568aaee`, including the `.import` files.
    - Use `-GameDir <path>` only if the game moves.
 4. Launch Brotato through Steam. The title screen shows the Mod Loader's
    one-time "mods are loaded" warning (unverified; it may not appear).
