@@ -1,9 +1,11 @@
 """CLI: ``decide-once STATE_FILE [--kind shop|levelup|checkpoint] [--plan FILE]
-[--print-prompt]``.
+[--print-prompt]`` and ``decide-validate [FILE|-] [--state STATE_FILE --kind KIND]``.
 
-Builds a request from a state file (options from its shop slots or level-up options),
-the prompt from the real dataset, cached knowledge and no experience, runs the
-validation ladder once (real ``claude`` calls) and prints the ``Outcome`` as JSON.
+``decide-once`` builds a request from a state file (options from its shop slots or
+level-up options), the prompt from the real dataset, cached knowledge and no experience,
+runs the validation ladder once (real ``claude`` calls) and prints the ``Outcome`` as JSON.
+``decide-validate`` checks an answer (a bare decision object) against the schema and,
+with a state, against that screen's actions and options.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ from pathlib import Path
 from brotato_bot import cli, paths
 from brotato_bot.fsutil import read_json, read_json_or_empty
 from brotato_bot.knowledge import cache
-from brotato_bot.sidecar import decide, prompt
+from brotato_bot.sidecar import decide, prompt, schema
 
 DEADLINE_MS = {"checkpoint": "checkpoint_timeout_ms"}
 
@@ -117,4 +119,50 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     parser.set_defaults(func=_decide_once)
 
 
+def _decide_validate(args: argparse.Namespace) -> int:
+    source = args.file
+    try:
+        text = sys.stdin.read() if source == "-" else Path(source).read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"decide-validate: cannot read {source}: {exc}")
+        return 1
+    try:
+        answer = json.loads(text)
+    except json.JSONDecodeError as exc:
+        print(f"not JSON: {exc}")
+        return 1
+    request = None
+    if args.state or args.kind:
+        if not (args.state and args.kind):
+            print("decide-validate: --state and --kind must be given together")
+            return 1
+        try:
+            state = read_json(args.state)
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"decide-validate: cannot read {args.state}: {exc}")
+            return 1
+        request = request_from_state(state, Path(args.state), args.kind, decide.settings({}))
+    errors = schema.validate(answer, request)
+    for error in errors:
+        print(error)
+    if errors:
+        return 1
+    print("ok")
+    return 0
+
+
+def register_validate(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser(
+        "decide-validate",
+        help="validate a decision answer (JSON) against the schema, and a state's screen",
+    )
+    parser.add_argument(
+        "file", nargs="?", default="-", metavar="FILE|-", help="answer JSON (default: stdin)"
+    )
+    parser.add_argument("--state", default=None, metavar="STATE_FILE", help="exported state JSON")
+    parser.add_argument("--kind", choices=["shop", "levelup", "checkpoint"], default=None)
+    parser.set_defaults(func=_decide_validate)
+
+
 cli.COMMANDS["decide-once"] = register
+cli.COMMANDS["decide-validate"] = register_validate
