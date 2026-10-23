@@ -23,7 +23,7 @@ _NAME = re.compile(r"\d{4}-\d{2}-\d{2}-(\d+)\.md")
 _TITLE = re.compile(r"# Proposal \d+")
 _FENCED_JSON = re.compile(r"```json[ \t]*\n(.*?)```", re.DOTALL)
 _NEXT_RUN = re.compile(r"^- (character|danger|target): (.+?)\s*$", re.MULTILINE)
-_PLACEHOLDER = re.compile(r"<[a-z][^<>\n]*>")
+_PLACEHOLDER = re.compile(r"<[A-Za-z][^<>\n]*>")
 
 
 def next_path(proposals_dir: Path, today: date) -> Path:

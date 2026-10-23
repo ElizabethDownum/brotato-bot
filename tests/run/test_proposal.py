@@ -96,3 +96,25 @@ def test_cli_next_path_is_under_proposals_dir(tmp_paths, capsys):
     out = Path(capsys.readouterr().out.strip())
     assert out.parent == tmp_paths.proposals_dir
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}-001\.md", out.name)
+
+
+REPO = Path(__file__).resolve().parents[2]
+
+
+def test_template_has_the_section_order():
+    text = (REPO / "proposals" / "TEMPLATE.md").read_text(encoding="utf-8")
+    assert proposal._check_sections(text) == []
+
+
+def test_validate_rejects_unfilled_template_placeholders():
+    template = (REPO / "proposals" / "TEMPLATE.md").read_text(encoding="utf-8")
+    errors = proposal.validate(template, UNLOCKED)
+    assert "unfilled placeholder <character_id>" in errors
+
+
+def test_skill_skeleton_lists_every_plan_key_the_mod_reads():
+    skill = (REPO / ".claude" / "skills" / "brotato-next" / "SKILL.md").read_text(encoding="utf-8")
+    skeleton = json.loads(re.search(r"```json\n(.*?)```", skill, re.DOTALL).group(1))
+    gd = (REPO / "mod" / "Ellie-BrotatoBot" / "core" / "plan_file.gd").read_text(encoding="utf-8")
+    table = re.search(r"const KEY_TYPES = \{(.*?)\n\}", gd, re.DOTALL).group(1)
+    assert set(skeleton["plan"]) == set(re.findall(r'"(\w+)": "', table))
