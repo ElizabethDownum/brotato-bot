@@ -27,17 +27,17 @@ Do not start the game. Do not run the `claude` command.
 2. Run the stagnation check.
    - If the first line of `targets.md` is a challenge id, run: `uv run python -m brotato_bot stagnation --target <challenge id>`
    - Otherwise run: `uv run python -m brotato_bot stagnation`
-   Keep the printed line exactly. You copy it in step 6.
+   Keep the printed line exactly. You copy it into `## Stagnation check` in step 5.
 
 3. Decide the escalated target. This is the target the stagnation check is about. It is the challenge id from `targets.md` if the first line is a challenge id; otherwise it is `target_challenge` of the newest finished run (see step 1). Call it ESCALATED. Use it only if the line from step 2 starts with `escalate:`. Otherwise there is no escalated target.
 
 4. Choose the target and the character.
    a. Read the line from step 2 first.
    b. The excluded ids are the paused ids from step 1, plus ESCALATED when the line starts with `escalate:`.
-   c. Method A: if the first line of `targets.md` is a challenge id that is not excluded, that id is the target.
+   c. Method A: if the first line of `targets.md` is a challenge id that is not excluded and is listed in `open` in `unlock_state.json`, that id is the target. A named id that is in `done` or `blocked`, or is unknown, cannot be run: use Method B and say so in `## Target`.
       - The character is `progress[<target>].requires_character` from `unlock_state.json`, if that value is not `null`.
       - If that value is `null`, choose an unlocked character (one with `"unlocked": true` in `characters`) that the guides support.
-   d. Method B: use this when Method A does not apply. This includes `any locked character`, a missing `targets.md`, and a named target that is excluded.
+   d. Method B: use this when Method A does not apply. This includes `any locked character`, a missing `targets.md`, and a named target that is excluded or not in `open`.
       - Candidates: the ids in `open` that are the `unlocked_by` of a character whose `unlocked` is `false` in `characters`. Remove the excluded ids.
       - The target is the candidate with the smallest `value` in `progress`. `value` is the completion target, not a cost. It is the only ordering the file gives.
       - The character follows the same rule as Method A: `requires_character` if not `null`; otherwise an unlocked character that the guides support.
