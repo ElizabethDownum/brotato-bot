@@ -157,3 +157,25 @@ change only when a later run or a code read confirms it.
   speed item (Bag 6.17, Helmet 16.3, Statue 89.7, Esty's Couch 96.3); Coral (8.0, a
   stand-still regen counted in full) and Mouse (14.0) still pass. 87 of 247 items score
   above 6. A rule buy is gated by `min_buy`; a model (`haiku`) buy is not.
+
+## 2026-10-23 owner observation: the bot does not go after trees (or materials) when it should
+
+- Owner, before run 3: the bot does not seem to prioritise trees. Some goals or characters
+  want trees avoided, but Well Rounded on a goal that does not require avoiding them should
+  fell them. Same family of issue as the uncollected materials (runs 1 and 2).
+- Mechanism (`steering/world_view.gd`): a living tree is a reward only when the character's
+  steering row sets `tree_value`; the default is 0, and only Pacifist (5.0) and the one-hit
+  tree lap character (6.0) set it. Well Rounded has no steering row, so trees are never a
+  destination; they fall only when a weapon happens to target one. The tree reward is also
+  gated to trees inside the pickup radius, so even a row value would not steer toward a
+  tree across the map.
+- Materials: `GOLD_VALUE` 0.8 is by design a tie-breaker that never outbids a dodge; the
+  greedy draw (x1.5) applies only with no live enemy within 280 px, and the between-bursts
+  `sweep` multiplier is a per-row opt-in. BOTato's author tuned this for survival at high
+  danger (the comment records a flat x1.2 greed dropping Well Rounded from waves 18/18/20
+  to 9/14/20). At danger 0 the survival margin is large and that caution costs economy.
+- Candidate for step 5 (behaviour profile, Well Rounded first): a Well Rounded row, or a
+  danger-aware default, with `tree_value` > 0 and a sweep/greed level scaled to danger,
+  plus a tree reward that reaches beyond the pickup radius. Evidence first: run 3's
+  wave_end `gold` versus a human's, and the parked `floor`/`mats` snapshot field.
+
