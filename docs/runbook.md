@@ -13,7 +13,7 @@ Paths used throughout:
 |---|---|
 | Repository (`<repo>` below) | `<workspace>\brotato-bot` |
 | Game folder | `D:\SteamLibrary\steamapps\common\Brotato` |
-| Installed mod | `D:\SteamLibrary\steamapps\common\Brotato\mods\Ellie-BrotatoBot.zip` |
+| Installed mod | `D:\SteamLibrary\steamapps\workshop\content\1942280\9999999999\Ellie-BrotatoBot.zip` |
 | Bot root (`user://brotato-bot`) | `%APPDATA%\Brotato\brotato-bot` |
 | Save folder | `%APPDATA%\Brotato\<steam64 id>` (the one 17-digit folder there) |
 | Game logs | `%APPDATA%\Brotato\logs` (`godot.log`, `modloader.log`) |
@@ -66,17 +66,24 @@ The three rules:
    pwsh -File <repo>\scripts\sync_mod.ps1
    ```
 
-   - The Steam build runs from `Brotato.pck` and loads mods only from zip
-     files in `<game>\mods`. Its loader logs
-     `Can't open unpacked mods folder res://mods-unpacked/` and
-     `No mods were setup` for an unpacked folder (seen 2026-10-22). An
-     unpacked folder loads only when the extracted project runs under a
-     Godot editor binary, which is how the 2026-10-21 probe was written.
-   - The script removes any stale `Pasha-AutoBattler` and
-     `Ellie-BrotatoBot` folders under `mods-unpacked` and the previous zip,
-     printing `Removed <path>` for each.
+   - The Steam build runs from `Brotato.pck` with the loader's `steam`
+     options profile (`steam_workshop_enabled = true`). In that mode the
+     loader scans only Steam's workshop content folder for zips,
+     `<library>\steamapps\workshop\content\1942280\<item id>\*.zip`. It
+     never reads `<game>\mods` (its log says `No zipped mods found` with a
+     zip there, seen 2026-10-22 21:44) and it cannot open an unpacked
+     folder (`Can't open unpacked mods folder res://mods-unpacked/`, seen
+     2026-10-22 20:30). An unpacked folder loads only when the extracted
+     project runs under a Godot editor binary, which is how the 2026-10-21
+     probe was written. The release build has no CLI switch for this.
+   - So the script writes the zip into a local, fake workshop item folder,
+     id `9999999999`, which Steam ignores because it is not a subscribed
+     item. Use `-WorkshopDir` or `-ItemId` only if that changes.
+   - The script first removes stale installs from the earlier methods:
+     `Pasha-AutoBattler` and `Ellie-BrotatoBot` under `mods-unpacked`, and
+     `<game>\mods\Ellie-BrotatoBot.zip`, printing `Removed <path>` for each.
    - It then prints
-     `Packed 49 files into D:\SteamLibrary\steamapps\common\Brotato\mods\Ellie-BrotatoBot.zip`.
+     `Packed 49 files into D:\SteamLibrary\steamapps\workshop\content\1942280\9999999999\Ellie-BrotatoBot.zip`.
      The zip holds `mods-unpacked/Ellie-BrotatoBot/<files>`, the layout the
      loader expects. The count is the number of files in
      `mod\Ellie-BrotatoBot` at `568aaee`, including the `.import` files.
