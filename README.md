@@ -9,8 +9,9 @@ The project has three subsystems: the in-game mod (`mod/Ellie-BrotatoBot`, Godot
 GDScript loaded by Godot Mod Loader 6.0.0), which drives the player, follows
 file-based plans and records runs; the Python harness and sidecar, which launches
 runs, reads recordings and answers mid-run decisions; and the Claude Code skills,
-which plan, review and theorycraft between runs. `scripts/sync_mod.ps1` copies the
-mod into the game's `mods-unpacked` folder.
+which plan, review and theorycraft between runs. `scripts/pack_mod.ps1` builds the
+mod zip and `scripts/sync_mod.ps1` installs it into the owner's hidden Steam Workshop
+item folder, the only place the Steam build loads mods from.
 
 The design, goals and decisions are in the spec:
 [docs/superpowers/specs/2026-10-21-brotato-bot-design.md](docs/superpowers/specs/2026-10-21-brotato-bot-design.md).

@@ -8,3 +8,4 @@ tools/
 # Fetched wiki prose (licence undeclared): fetched by `knowledge fetch`, not shipped.
 knowledge/cache/wiki-*.md
 knowledge/cache/character-*.md
+build/

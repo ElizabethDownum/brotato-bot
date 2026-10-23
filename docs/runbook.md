@@ -13,7 +13,7 @@ Paths used throughout:
 |---|---|
 | Repository (`<repo>` below) | `<workspace>\brotato-bot` |
 | Game folder | `D:\SteamLibrary\steamapps\common\Brotato` |
-| Installed mod | `D:\SteamLibrary\steamapps\workshop\content\1942280\2965027290\Ellie-BrotatoBot.zip` (Botato's Workshop item folder) |
+| Installed mod | `D:\SteamLibrary\steamapps\workshop\content\1942280\<item id>\BrotatoBot.zip` (the owner's hidden Workshop item folder) |
 | Bot root (`user://brotato-bot`) | `%APPDATA%\Brotato\brotato-bot` |
 | Save folder | `%APPDATA%\Brotato\<steam64 id>` (the one 17-digit folder there) |
 | Game logs | `%APPDATA%\Brotato\logs` (`godot.log`, `modloader.log`) |
@@ -60,50 +60,70 @@ The three rules:
    - If it says `Godot not found`, run
      `<repo>\scripts\get_godot.ps1`
      once, then run the tests again.
-3. Once only: subscribe to Botato on the Steam Workshop
-   (https://steamcommunity.com/sharedfiles/filedetails/?id=2965027290,
-   item id `2965027290`) and wait for Steam to download it. Steam then
-   creates `D:\SteamLibrary\steamapps\workshop\content\1942280\2965027290`.
-   The game loads zips only from Workshop item folders whose id is in the
-   account's subscription list, so this folder is where the bot has to live.
-4. Pack the mod into the game:
+3. Once only: upload the mod as a hidden Workshop item and subscribe to
+   it. The game loads zips only from Workshop item folders whose id is in
+   the account's subscription list (Brotato's fork of the loader,
+   `addons/mod_loader/internal/third_party/steam.gd`, filters on
+   `Platform.get_subscribed_mods()`, i.e. `Steam.getSubscribedItems()`).
+   It never reads `<game>\mods` (`No zipped mods found` with a zip there,
+   seen 2026-10-22 21:44), cannot open an unpacked folder (`Can't open
+   unpacked mods folder res://mods-unpacked/`, seen 2026-10-22 20:30), and
+   lists but never reads an unsubscribed item folder (`Checking workshop
+   item path` then `No zipped mods found`, seen 2026-10-22 21:47). The
+   release build has no CLI switch for any of this. An unpacked folder
+   loads only under a Godot editor binary, which is how the 2026-10-21
+   probe was written.
+   1. Build the zip: `pwsh -File <repo>\scripts\pack_mod.ps1` prints
+      `Packed 49 files into <repo>\build\BrotatoBot.zip`. The basename
+      `BrotatoBot` becomes the item title; the uploader sets the title from
+      the zip name on every upload.
+   2. In Steam, click Play on Brotato and choose the Workshop uploader
+      launch option (it runs `GodotWorkshopUtility.exe` from the game
+      folder; the utility needs Steam to launch it so it gets the app id).
+      In the window: "Select mod file" = the zip from step 3.1; leave
+      "Select preview image" empty (optional); leave the workshop ID field
+      empty the first time; pick the tag `Utilities`; press Upload. The
+      console prints `Workshop item created successfully. Please take note
+      of the generated workshop ID.` and then `Item successfully uploaded.`
+      The ID also appears in the workshop ID field. Write it down.
+   3. The utility opens the Workshop legal agreement in the Steam overlay.
+      Accept it (one-time; required before Steam serves the item). Then
+      open the item page,
+      `https://steamcommunity.com/sharedfiles/filedetails/?id=<item id>`,
+      and under the owner controls on the right set Visibility to Hidden
+      if it is not already. Hidden means visible to the owner alone.
+   4. On the same page press Subscribe. Steam downloads the zip into
+      `D:\SteamLibrary\steamapps\workshop\content\1942280\<item id>\`.
+   5. Put the id into `scripts\sync_mod.ps1` as the `-ItemId` default and
+      into the path table above.
+   Later uploads (only needed if the local copy in step 4 is not enough,
+   e.g. to reinstall from Steam): repeat 3.1 and 3.2 with the ID in the
+   workshop ID field.
+4. Install the current build into the game:
 
    ```powershell
    pwsh -File <repo>\scripts\sync_mod.ps1
    ```
 
-   - The Steam build runs from `Brotato.pck` with the loader's `steam`
-     options profile (`steam_workshop_enabled = true`). Brotato's fork of
-     the loader (`addons/mod_loader/internal/third_party/steam.gd`) scans
-     `<library>\steamapps\workshop\content\1942280\<item id>\*.zip` and
-     skips every item folder that is not in `Platform.get_subscribed_mods()`
-     (`Steam.getSubscribedItems()`). It never reads `<game>\mods` (its log
-     says `No zipped mods found` with a zip there, seen 2026-10-22 21:44),
-     it cannot open an unpacked folder (`Can't open unpacked mods folder
-     res://mods-unpacked/`, seen 2026-10-22 20:30), and a fake item folder
-     `9999999999` was listed but not read (`Checking workshop item path`
-     then `No zipped mods found`, seen 2026-10-22 21:47). An unpacked
-     folder loads only when the extracted project runs under a Godot editor
-     binary, which is how the 2026-10-21 probe was written. The release
-     build has no CLI switch for any of this.
-   - So the script writes the zip into Botato's item folder (step 3) and
-     renames any other zip there, Botato's own, to `*.zip.disabled` so the
-     loader sees only this mod. Steam rewrites that folder only when the
-     Workshop item itself updates; run the script again afterwards. Use
-     `-WorkshopDir` or `-ItemId` only if the subscribed item changes.
-   - The script refuses to run while Brotato is open and first removes
+   - The script refuses to run while Brotato is open. It first removes
      stale installs from the earlier methods: `Pasha-AutoBattler` and
      `Ellie-BrotatoBot` under `<game>\mods-unpacked`,
      `<game>\mods\Ellie-BrotatoBot.zip` and the fake item folder
-     `9999999999`, printing `Removed <path>` for each. If the item folder
-     is missing it stops with `Workshop item folder not found` and the
-     subscribe link.
-   - It then prints
-     `Packed 49 files into D:\SteamLibrary\steamapps\workshop\content\1942280\2965027290\Ellie-BrotatoBot.zip`.
-     The zip holds `mods-unpacked/Ellie-BrotatoBot/<files>`, the layout the
-     loader expects. The count is the number of files in
-     `mod\Ellie-BrotatoBot` at `568aaee`, including the `.import` files.
-   - Use `-GameDir <path>` only if the game moves.
+     `9999999999`, printing `Removed <path>` for each. Without an item id
+     it stops with `No Workshop item id`; with a missing item folder it
+     stops with `Workshop item folder not found` and the subscribe link.
+   - It then runs `pack_mod.ps1` and copies the build over the item
+     folder's zip, printing
+     `Packed 49 files into <repo>\build\BrotatoBot.zip` and
+     `Installed D:\SteamLibrary\steamapps\workshop\content\1942280\<item id>\BrotatoBot.zip`.
+     Any other zip in that folder is renamed to `*.zip.disabled`. Steam
+     rewrites the folder only when the item itself is updated, which is the
+     owner's own upload, so the local copy survives game launches. The zip
+     holds `mods-unpacked/Ellie-BrotatoBot/<files>`, the layout the loader
+     expects. The count is the number of files in `mod\Ellie-BrotatoBot` at
+     `568aaee`, including the `.import` files.
+   - Use `-GameDir <path>` only if the game moves; `-ItemId` / `-WorkshopDir`
+     only if the item or library changes.
 5. Launch Brotato through Steam. The title screen shows the Mod Loader's
    one-time "mods are loaded" warning (unverified; it may not appear).
    Dismiss it if it does.

@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-Packs mod\Ellie-BrotatoBot into a zip the Steam build of Brotato will load.
+Packs mod\Ellie-BrotatoBot and installs the zip where the Steam build of
+Brotato will load it: the owner's own hidden Workshop item folder.
 
 .DESCRIPTION
 The Steam build runs from Brotato.pck with the mod loader's "steam" profile
@@ -11,38 +12,42 @@ Steam.getSubscribedItems). It never reads <GameDir>\mods, cannot open an
 unpacked res://mods-unpacked folder, and skips workshop folders that are
 not subscribed. There is no CLI switch for any of this.
 
-So this script writes the zip into the folder of a Workshop item the owner
-is subscribed to. The default is Botato (item 2965027290), the mod this one
-derives from. Steam fills that folder on subscription; the script renames
-any other zip in it to *.zip.disabled so only this mod loads from it. Steam
-only rewrites the folder when the item itself updates, after which the
-script simply has to run again.
+So the mod lives in the folder of a Workshop item the owner uploaded as a
+hidden item (visible to the owner alone) and is subscribed to. Steam fills
+that folder with the uploaded zip; this script overwrites it with a fresh
+build so a change can be tested without re-uploading. Any other zip in the
+folder is renamed to *.zip.disabled so only this build loads. Steam rewrites
+the folder only when the Workshop item itself is updated, which is the
+owner's own upload, so the two never fight. Uploading a new version is a
+separate manual step with the game's GodotWorkshopUtility.exe (see
+docs/runbook.md, Mod section 2).
 
-The zip holds the loader's expected layout, mods-unpacked/Ellie-BrotatoBot/
-<mod files>, with forward-slash entry names. Stale installs from earlier
-methods (<GameDir>\mods\Ellie-BrotatoBot.zip, <GameDir>\mods-unpacked\
-{Pasha-AutoBattler,Ellie-BrotatoBot} and the fake item folder 9999999999)
-are removed. Refuses to run while Brotato.exe is running.
+Stale installs from earlier methods (<GameDir>\mods\Ellie-BrotatoBot.zip,
+<GameDir>\mods-unpacked\{Pasha-AutoBattler,Ellie-BrotatoBot} and the fake
+item folder 9999999999) are removed. Refuses to run while Brotato.exe is
+running. -ItemId is the owner's Workshop item id; pass it until the default
+below is filled in after the first upload.
 #>
 [CmdletBinding()]
 param(
     [string]$GameDir = 'D:\SteamLibrary\steamapps\common\Brotato',
     [string]$WorkshopDir = 'D:\SteamLibrary\steamapps\workshop\content\1942280',
-    [string]$ItemId = '2965027290'
+    [string]$ItemId = ''
 )
 
 $ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName System.IO.Compression
-Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 if (Get-Process Brotato -ErrorAction SilentlyContinue) {
     Write-Error 'Brotato is running; quit the game before syncing the mod.'
     exit 1
 }
-
-$source = (Join-Path $PSScriptRoot '..\mod\Ellie-BrotatoBot' | Resolve-Path).Path
 if (-not (Test-Path -LiteralPath $GameDir -PathType Container)) {
     Write-Error "Game directory not found: $GameDir"
+    exit 1
+}
+if ($ItemId -eq '') {
+    Write-Error ('No Workshop item id. Upload the mod once as a hidden Workshop item ' +
+        '(docs/runbook.md, Mod section 2) and pass -ItemId <id>.')
     exit 1
 }
 
@@ -70,7 +75,8 @@ if (-not (Test-Path -LiteralPath $itemDir -PathType Container)) {
     exit 1
 }
 
-$zipPath = Join-Path $itemDir 'Ellie-BrotatoBot.zip'
+$built = & (Join-Path $PSScriptRoot 'pack_mod.ps1') | Select-Object -Last 1
+$zipPath = Join-Path $itemDir 'BrotatoBot.zip'
 foreach ($other in Get-ChildItem -LiteralPath $itemDir -File -Filter '*.zip') {
     if ($other.FullName -ne $zipPath) {
         $disabled = "$($other.FullName).disabled"
@@ -79,23 +85,5 @@ foreach ($other in Get-ChildItem -LiteralPath $itemDir -File -Filter '*.zip') {
         Write-Host "Disabled $($other.FullName) -> $disabled"
     }
 }
-if (Test-Path -LiteralPath $zipPath) {
-    Remove-Item -LiteralPath $zipPath -Force
-    Write-Host "Removed $zipPath"
-}
-
-$files = Get-ChildItem -LiteralPath $source -Recurse -File
-$zip = [System.IO.Compression.ZipFile]::Open($zipPath, [System.IO.Compression.ZipArchiveMode]::Create)
-try {
-    foreach ($file in $files) {
-        $relative = $file.FullName.Substring($source.Length).TrimStart('\', '/') -replace '\\', '/'
-        $entryName = "mods-unpacked/Ellie-BrotatoBot/$relative"
-        [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
-            $zip, $file.FullName, $entryName,
-            [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
-    }
-} finally {
-    $zip.Dispose()
-}
-
-Write-Host "Packed $($files.Count) files into $zipPath"
+Copy-Item -LiteralPath $built -Destination $zipPath -Force
+Write-Host "Installed $zipPath"
