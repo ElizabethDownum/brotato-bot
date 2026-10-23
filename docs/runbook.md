@@ -923,6 +923,11 @@ Back up first, every time.
    Package: `brotato_bot/`; Python >= 3.12; only runtime dependency: `pydantic>=2`.
    The dev group adds pytest and ruff.
 2. Run the commands below from that root with `uv run python -m brotato_bot`.
+   Without `uv` (not installed on the desktop as of 2026-10-22), create the
+   environment once with `py -3.12 -m venv .venv` and
+   `.venv\Scripts\pip install "pydantic>=2" pytest ruff`, then use
+   `.venv\Scripts\python -m brotato_bot` wherever this file or a skill says
+   `uv run python -m brotato_bot`. The skills carry the same note.
    The harness never launches Brotato or injects input. You launch the game,
    start each run and enable the mod as described in Mod section 4.
 3. `brotato_bot/paths.py` resolves these defaults; set overrides before commands.

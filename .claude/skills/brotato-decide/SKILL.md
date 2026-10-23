@@ -9,6 +9,7 @@ model: haiku
 Answer one mid-run Brotato decision request from an exported state file. Your answer is a single JSON object that validates against the decision schema.
 
 Run every command from the project root: the folder that contains `brotato_bot/`.
+If `uv` is not installed, run `.venv\Scripts\python` wherever a command below says `uv run python` (same arguments; PowerShell, from the project root).
 
 ## Arguments
 

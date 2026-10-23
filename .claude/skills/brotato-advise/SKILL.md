@@ -9,6 +9,7 @@ model: sonnet
 Read one exported Brotato state file from a manual run and write an advice note for the owner. You are an advisor: the owner plays the run, you read the state and write advice. You do not answer a decision request and you do not play.
 
 Run every command from the project root: the folder that contains `brotato_bot/`.
+If `uv` is not installed, run `.venv\Scripts\python` wherever a command below says `uv run python` (same arguments; PowerShell, from the project root).
 
 ## Arguments
 
