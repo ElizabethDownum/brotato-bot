@@ -899,6 +899,8 @@ Discovery waits until a command needs the save; path loading requires `APPDATA`.
    0-based: id 1 is the menu's "Profile 2" (Mod section 3.1).
    `--profile` defaults to 1; `--save`, `--translations`, `--out` override the
    save, translation CSV and output JSON. Refresh after unlocks too.
+   `proposal validate` and `prepare --from-proposal` refuse a file built for
+   another profile: `<path> was built for profile <n>; run unlock-state --profile 1`.
 
 ### 3. Knowledge
 
@@ -936,6 +938,8 @@ collect are local. Decisions also need the authenticated `claude` CLI's model se
    to `""`. A non-empty target in the input plan still wins and triggers a
    warning if it differs. Use `"target_challenge": ""` or omit that key in
    the plan too. Both target keys absent or empty mean "no target".
+   `prepare --from-proposal FILE` validates the proposal (with `runs/index.json` when
+   present) and writes its `## Next run` target into both `config.json` and the plan.
 3. In its own terminal at the project root, start:
 
    ```powershell
@@ -991,6 +995,10 @@ collect are local. Decisions also need the authenticated `claude` CLI's model se
    experience is appended only for a finished run (outcome `won` or `death`, not
    `incomplete`) on the bot profile (`config.json` `bot_profile_id`, default 1),
    so the owner's own runs never reach it and a run in progress is not frozen.
+4. `stagnation [--target ID]` prints `<state> (<target>): <reason> [runs: ...]` from
+   bot-profile index rows; a row with `target_fired` true counts like a win.
+   `--mark-paused PROPOSAL` adds one `paused:` line per target to `targets.md`;
+   when it is already there it prints `already paused: <target>` and writes nothing.
 
 | Project output | Contents |
 |---|---|
@@ -1068,10 +1076,10 @@ Three windows:
 
 Order for one bot run:
 
-1. Claude Code: `/brotato-next` prints the proposal path and an install line. Use `/brotato-next-sonnet` instead when the stagnation line starts with `escalate:` or Haiku's proposal keeps failing validation.
+1. Claude Code: `/brotato-next` prints the proposal path and an install line. Use `/brotato-next-sonnet` instead when Haiku's proposal keeps failing validation.
 2. Project-root terminal: `uv run python -m brotato_bot prepare --from-proposal <path>` (Harness section 4).
 3. Sidecar terminal: `uv run python -m brotato_bot sidecar` (Harness section 4, step 3). Start it before the run so the heartbeat is fresh.
-4. Game: launch, select profile 1, check that `plan.json` names the character (Mod section 4, step 2). Pick the proposal's character and danger, start the run, then press Shift+Space once wave 1 has started (Mod section 4, step 4).
+4. Game: launch (restart the game if `prepare` printed `config.json changed: restart Brotato`), select profile 1, check that `plan.json` names the character (Mod section 4, step 2). Pick the proposal's character and danger, start the run, then press Shift+Space once wave 1 has started (Mod section 4, step 4).
 5. Game: play until the run ends, at wave 20 cleared or death (Mod section 4, step 9).
 6. Sidecar terminal: Ctrl+C (Harness section 4, step 5).
 7. Project-root terminal: `uv run python -m brotato_bot collect --latest` (Harness section 6).

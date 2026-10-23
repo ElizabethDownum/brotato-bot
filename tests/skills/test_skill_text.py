@@ -2,6 +2,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 SKILL = REPO / ".claude" / "skills" / "brotato-advise" / "SKILL.md"
+NEXT = REPO / ".claude" / "skills" / "brotato-next" / "SKILL.md"
+DECIDE = REPO / ".claude" / "skills" / "brotato-decide" / "SKILL.md"
 
 
 def test_advise_skill_forbids_writes():
@@ -24,3 +26,49 @@ def test_advise_skill_uses_sonnet():
         "description: Analyse an exported Brotato state file from a manual run and write advice"
         in front
     )
+
+
+def test_next_skill_refreshes_unlock_state_first():
+    # O6/S5: the unlock state is refreshed before anything else is read.
+    text = NEXT.read_text(encoding="utf-8")
+    step1 = text[text.index("1. Read the state.") : text.index("2. Run the stagnation check.")]
+    first = step1.splitlines()[1]
+    assert "uv run python -m brotato_bot unlock-state --profile 1" in first
+    assert "`data/unlock_state.json` exists, continue" in step1
+    assert "`data/unlock_state.json` is missing, stop" in step1
+    assert "`## Risk`" in step1
+
+
+def test_next_skill_pauses_before_choosing_and_takes_the_target_from_the_line():
+    # S3/O12: ESCALATED comes from the verdict line; the pause runs before the choice.
+    text = NEXT.read_text(encoding="utf-8")
+    pause = text.index("--mark-paused <path>")
+    assert pause < text.index("4. Choose the target and the character.")
+    assert "inside the parentheses of that line" in text
+    assert "all open targets paused" in text
+    assert "starts with `escalate:`" not in text
+
+
+def test_next_skill_material_change_matches_the_validator():
+    # O1/S1: a new -vN alone is not a change; the comparison row is finished and on profile 1.
+    text = NEXT.read_text(encoding="utf-8")
+    assert "A new `-vN` alone does not count" in text
+    assert "`outcome` is `win` or `death`" in text
+    assert "`profile_id` is 1" in text
+    assert "`proposal validate` rejects it" in text
+
+
+def test_next_skill_character_page_slug():
+    # S8: the fetcher's slug, not character-<character_id>.
+    text = NEXT.read_text(encoding="utf-8")
+    assert "knowledge/cache/character-well-rounded.md" in text
+    assert "character-<character_id>" not in text
+
+
+def test_decide_skill_prints_only_json_or_not_valid():
+    # S7: a JSON-only answer when valid; no JSON when invalid.
+    text = DECIDE.read_text(encoding="utf-8")
+    report = text[text.index("4. Report.") :]
+    assert "print only the final JSON object" in report
+    assert "`decision not valid`" in report
+    assert "Do not print the JSON object." in report

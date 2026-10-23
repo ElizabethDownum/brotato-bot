@@ -17,9 +17,12 @@ Do not start the game. Do not run the `claude` command.
 ## Procedure
 
 1. Read the state.
+   - First refresh the unlock state: run `uv run python -m brotato_bot unlock-state --profile 1`.
+     - If it fails and `data/unlock_state.json` exists, continue with that file. Say in `## Risk` that the refresh failed and the unlock state may be stale.
+     - If it fails and `data/unlock_state.json` is missing, stop. Report the command's output. Do nothing else.
    - `targets.md` (project root). If the file is missing, treat its first line as `any locked character`. Otherwise the first line is either a challenge id (for example `chal_...`) or the text `any locked character`. Every line that starts with `paused:` names a challenge id after `paused:`. Write those ids down. Never choose a paused id.
-   - `data/unlock_state.json`. If the file is missing, stop. Tell the operator to run `uv run python -m brotato_bot unlock-state --profile 1`. Do nothing else.
-   - `runs/index.json`. If the file is missing, there are no runs. Otherwise its last row is the newest run. Note that row's `danger`, `plan_id`, `character_id`, `target_challenge` and `outcome`. The newest row with `outcome` `win` or `death` is the newest finished run.
+   - `data/unlock_state.json`.
+   - `runs/index.json`. If the file is missing, there are no runs. Use only the bot's rows: rows whose `profile_id` is 1, and rows that have no `profile_id`. Skip every other row; those are the owner's own runs. The last bot row is the newest run. Note its `danger`, `plan_id`, `character_id`, `target_challenge` and `outcome`.
    - The newest file in `runs/` (the last `runs/*.md` by name), for context only. Take danger, plan and character from `runs/index.json`, not from this file. If `runs/` is missing, skip it.
    - The last 20 lines of `decisions/experience.jsonl`. If the file is missing, skip it.
    - `knowledge/cache/botato-shop-guides.md` and `knowledge/cache/botato-character-profiles.md`.
@@ -27,30 +30,34 @@ Do not start the game. Do not run the `claude` command.
 2. Run the stagnation check.
    - If the first line of `targets.md` is a challenge id, run: `uv run python -m brotato_bot stagnation --target <challenge id>`
    - Otherwise run: `uv run python -m brotato_bot stagnation`
+   - The line has the form `<state> (<target>): <reason> [runs: ...]`, where `<state>` is `fresh`, `progressing`, `stagnant` or `escalate`. With no runs at all it is `fresh: no runs on any target`.
    Keep the printed line exactly. You copy it into `## Stagnation check` in step 5.
 
-3. Decide the escalated target. This is the target the stagnation check is about. It is the challenge id from `targets.md` if the first line is a challenge id; otherwise it is `target_challenge` of the newest finished run (see step 1). Call it ESCALATED. Use it only if the line from step 2 starts with `escalate:`. Otherwise there is no escalated target.
+3. Handle an escalation. Do this step only if the line from step 2 starts with `escalate (`. Otherwise there is no escalated target; go to step 4.
+   a. ESCALATED is the challenge id inside the parentheses of that line. Take it from the line only; do not work it out from `runs/index.json`.
+   b. Run `uv run python -m brotato_bot proposal next-path`. Its output is the path of the new proposal. Keep it; step 5 writes the proposal to this path.
+   c. Run `uv run python -m brotato_bot stagnation --target <ESCALATED> --mark-paused <path>` now, before you choose a target. It adds a paused line for ESCALATED to `targets.md`, or prints `already paused: <ESCALATED>` when the line is there. Both are fine.
+   d. Add ESCALATED to the paused ids from step 1.
 
 4. Choose the target and the character.
-   a. Read the line from step 2 first.
-   b. The excluded ids are the paused ids from step 1, plus ESCALATED when the line starts with `escalate:`.
-   c. Method A: if the first line of `targets.md` is a challenge id that is not excluded and is listed in `open` in `unlock_state.json`, that id is the target. A named id that is in `done` or `blocked`, or is unknown, cannot be run: use Method B and say so in `## Target`.
+   a. The excluded ids are the paused ids (step 1, plus ESCALATED from step 3).
+   b. Method A: if the first line of `targets.md` is a challenge id that is not excluded and is listed in `open` in `unlock_state.json`, that id is the target. A named id that is in `done` or `blocked`, or is unknown, cannot be run: use Method B and say so in `## Target`.
       - The character is `progress[<target>].requires_character` from `unlock_state.json`, if that value is not `null`.
       - If that value is `null`, choose an unlocked character (one with `"unlocked": true` in `characters`) that the guides support.
-   d. Method B: use this when Method A does not apply. This includes `any locked character`, a missing `targets.md`, and a named target that is excluded or not in `open`.
+   c. Method B: use this when Method A does not apply. This includes `any locked character`, a missing `targets.md`, and a named target that is excluded or not in `open`.
       - Candidates: the ids in `open` that are the `unlocked_by` of a character whose `unlocked` is `false` in `characters`. Remove the excluded ids.
       - The target is the candidate with the smallest `value` in `progress`. `value` is the completion target, not a cost. It is the only ordering the file gives.
       - The character follows the same rule as Method A: `requires_character` if not `null`; otherwise an unlocked character that the guides support.
       - Never choose a character whose `unlocked` is `false`, including the locked character that the target unlocks.
-      - If there are no candidates, stop and report that no open target is left.
-   e. Danger: the `danger` of the newest row in `runs/index.json`. If there is no index, use 0.
-   f. If the line from step 2 starts with `stagnant:`, the new plan must differ from the newest row: change the plan family (the `plan_id` without its `-vN` suffix) or the character.
-   g. Read `knowledge/cache/character-<character_id>.md` if that file exists.
+      - If there are no candidates, stop and do not write a proposal. Report `all open targets paused` when paused ids removed the last candidates, otherwise report that no open target is left. Include the line from step 2 and any pause from step 3.
+   d. Danger: the `danger` of the newest bot row in `runs/index.json` (step 1). If there is no bot row, use 0.
+   e. The material change. Find the newest finished bot row on the chosen target: the last bot row whose `target_challenge` is the target and whose `outcome` is `win` or `death`. If the line from step 2 starts with `stagnant (` or `escalate (` and names this target, the new plan family (the `plan_id` without its `-vN` suffix) or the character must differ from that row's. A new `-vN` alone does not count. `proposal validate` checks this.
+   f. Read `knowledge/cache/character-<slug>.md` if that file exists. `<slug>` is the character id without its `character_` prefix, with every `_` replaced by `-`: `character_well_rounded` gives `knowledge/cache/character-well-rounded.md`.
 
 5. Write the proposal.
-   a. Run `uv run python -m brotato_bot proposal next-path`. Its output is the path of the new file. Write the proposal to that path.
+   a. If step 3 gave you a path, write the proposal to that path. Otherwise run `uv run python -m brotato_bot proposal next-path`; its output is the path of the new file. Write the proposal to that path.
    b. Start from `proposals/TEMPLATE.md` and copy the whole file. Set the title to `# Proposal N`, where N is the number in the file name without leading zeros (`2026-10-22-003.md` gives `# Proposal 3`).
-   c. `## Target`: one or two sentences. If the target is ESCALATED, say that it is paused and why.
+   c. `## Target`: one or two sentences. If step 3 paused ESCALATED, say that it is paused and why.
    d. `## Next run` has exactly three bullets, in this order:
       - `- character: <character id>`
       - `- danger: <number>`
@@ -60,6 +67,8 @@ Do not start the game. Do not run the `claude` command.
       - If there is a row, copy every key it sets over the skeleton's value. For `stats`, use the row's whole `stats` map. For every other key, copy the row's value, including `item_bonus` and `phase_boost`. Keys the row does not set keep the skeleton's value. If there is no row, the skeleton stands.
       - Why: the mod overlays the plan file on the built-in plan key by key (`stats` and `item_bonus` merge one level deep; every other key is replaced). A skeleton value left in place would override the curated row for that character.
       - Set `plan_id` to the family with a version: `<family>-v<N>`. Use a new `N` when you change values. Set `character_id` to the character in `## Next run`.
+      - After a `stagnant` or `escalate` line on this target, the plan family or the character must be new (step 4e). A new `-vN` alone does not count, and `proposal validate` rejects it.
+      - Do not add `target_challenge` to the plan. Installing the proposal writes the `## Next run` target into it.
       - Change values only as the guides support. Keep every key.
    f. `## Why`: at most three sentences. Each sentence names the file or the dataset fact it relies on.
    g. `## Risk`: one to three sentences.
@@ -67,13 +76,12 @@ Do not start the game. Do not run the `claude` command.
    Do not add any other `##` heading. Do not leave any `<...>` placeholder in the file.
 
 6. Validate the proposal: run `uv run python -m brotato_bot proposal validate <path>`.
-   If it prints lines, fix each line in the file and run it again. Stop after three attempts. When it prints `ok`, continue.
+   If it prints lines, fix each line in the file and run it again. A line `stagnation is <state> on <target>: ...` means the plan family or the character must change (step 4e). Stop after three attempts. When it prints `ok`, continue.
 
-7. If the line from step 2 starts with `escalate:`, run `uv run python -m brotato_bot stagnation --target <ESCALATED> --mark-paused <path>`. Do this whether or not validation passed. This adds a paused line for ESCALATED to `targets.md`.
-
-8. Report.
+7. Report.
    - If validation printed `ok`, print the path of the proposal file, then one line: `To install it, run: uv run python -m brotato_bot prepare --from-proposal <path>`.
    - If validation did not print `ok`, print the path of the proposal file and the remaining lines, and say the proposal is not valid. Do not give the install line.
+   - If step 3 paused a target, say so.
 
 ## Plan skeleton
 

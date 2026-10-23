@@ -38,5 +38,5 @@ Do not start the game. Do not run the `claude` command. Never write into `reques
    - When it prints `ok`, continue.
 
 4. Report.
-   - Print the final JSON object.
-   - Print the validator's output: `ok`, or the remaining error lines. If there are error lines, say the decision is not valid.
+   - If the validator printed `ok`, print only the final JSON object: no `ok`, no prose, no markdown fence.
+   - If error lines remain after the retries, print the remaining error lines and the words `decision not valid`. Do not print the JSON object.
