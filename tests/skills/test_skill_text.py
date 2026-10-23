@@ -58,6 +58,15 @@ def test_next_skill_material_change_matches_the_validator():
     assert "`proposal validate` rejects it" in text
 
 
+def test_next_skill_shapes_the_plan_before_validating():
+    # Run 1 (2026-10-22): a plan copied from the row ignores the target's stat goal.
+    text = NEXT.read_text(encoding="utf-8")
+    shape_at = text.index("proposal shape <path>")
+    assert text.index("5. Write the proposal.") < shape_at < text.index("6. Validate the proposal")
+    assert "Do not edit `## Plan` by hand after it runs" in text
+    assert "`chal_difficulty_<n>`" in text
+
+
 def test_next_skill_character_page_slug():
     # S8: the fetcher's slug, not character-<character_id>.
     text = NEXT.read_text(encoding="utf-8")

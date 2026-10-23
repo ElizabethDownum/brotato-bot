@@ -66,10 +66,19 @@ def test_three_flat_deaths_is_stagnant():
     assert v.runs_considered == ["r1", "r2", "r3"]
 
 
-def test_win_resets():
-    rows = [row("r1", 14), row("r2", 13), row("r3", 15, outcome="win")]
+def test_win_without_the_target_firing_is_not_progress():
+    # Run 1 (2026-10-22) won on chal_slow without lowering speed: a win that misses the
+    # target must count toward stagnant, and a win's end wave never beats a death.
+    rows = [row("r1", 14), row("r2", 13), row("r3", 20, hp=60, outcome="win")]
+    assert stagnation.verdict(rows, TARGET).state == "stagnant"
+    wins = [row(f"r{i}", 20, hp=h, outcome="win") for i, h in enumerate((60, 70, 88), 1)]
+    assert stagnation.verdict(wins, TARGET).state == "stagnant"
+
+
+def test_win_that_fired_the_target_is_progress():
+    rows = [row("r1", 14), row("r2", 13), row("r3", 20, outcome="win", fired=True)]
     v = stagnation.verdict(rows, TARGET)
-    assert v.state == "progressing"
+    assert v.state == "progressing" and v.reason == "the target fired in run r3"
 
 
 def test_escalate_after_two_stagnant_with_changes():

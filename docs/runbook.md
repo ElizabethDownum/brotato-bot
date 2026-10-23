@@ -1076,9 +1076,28 @@ collect are local. Decisions also need the authenticated `claude` CLI's model se
    `incomplete`) on the bot profile (`config.json` `bot_profile_id`, default 1),
    so the owner's own runs never reach it and a run in progress is not frozen.
 4. `stagnation [--target ID]` prints `<state> (<target>): <reason> [runs: ...]` from
-   bot-profile index rows; a row with `target_fired` true counts like a win.
+   bot-profile index rows. Only a row with `target_fired` true is progress on the
+   target; a win that did not fire it counts toward `stagnant` like a death, and a
+   win's end wave never "beats" an earlier run (run 1 on 2026-10-22 won on
+   `chal_slow` without lowering speed, which must not read as progress).
    `--mark-paused PROPOSAL` adds one `paused:` line per target to `targets.md`;
    when it is already there it prints `already paused: <target>` and writes nothing.
+5. `proposal shape FILE` rewrites a proposal's `## Plan` around its target's goal,
+   read from `data/unlock_state.json` (`progress[<target>].stat` and `.value`) and
+   `data/brotato.json` (item effects): the goal stat gets the plan's largest weight
+   with the goal's sign, items that move the stat the right way get an `item_bonus`
+   of 1.5 per point (capped at 30), items that break a keep-at-zero goal are banned,
+   and the plan family gains the goal (`well-rounded-slow-v1`). A `chal_difficulty_<n>`
+   target raises `- danger:` to `n`. It prints `shaped FILE for <target>: ...`, is
+   idempotent, and leaves a file whose target has no stat or difficulty goal alone.
+   `proposal validate` rejects an unshaped plan: `## Plan: not shaped for <target>:
+   run proposal shape FILE (goal <stat> <value>)`. The `brotato-next` skill runs it
+   as step 5i. Weapon sets are not chosen: the dataset keeps one effect per set
+   bonus, so a set that also moves the stat (blunt lowers speed) is invisible to it.
+   Why: the shop scorer subtracts a stat's weight for an item that lowers it, so a
+   negative weight rewards every item that lowers the stat and penalises every item
+   that raises it; without shaping, run 1 (2026-10-22) won on `chal_slow` with no
+   speed handling at all.
 
 | Project output | Contents |
 |---|---|

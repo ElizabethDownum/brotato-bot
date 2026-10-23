@@ -7,9 +7,12 @@ no ``profile_id`` key (written before the key existed) is kept. The window is th
 ``window`` counted runs.
 
 - fewer than ``window`` finished runs -> ``fresh``
-- a win, or a run whose ``target_fired`` is true, in the window -> ``progressing``
+- a run whose ``target_fired`` is true in the window -> ``progressing``. A win that did not
+  fire the target is not progress on it: the bot can win every run and still never reach
+  the goal (run 1, 2026-10-22, won on ``chal_slow`` without lowering speed).
 - no later run beats the first run -> ``stagnant``. A run beats the first when it died at a
-  later wave, or at the same wave with more end HP (a missing value reads as 0).
+  later wave, or at the same wave with more end HP (a missing value reads as 0). A win
+  never beats anything: surviving to the end is not progress on the target either.
 - otherwise -> ``progressing``
 - ``escalate``: the window is stagnant, a material change (plan family or character) landed
   at run k with the window starting at or after k, the ``window`` runs before k were
@@ -69,10 +72,12 @@ def finished_runs(rows: list[dict], target: str) -> list[dict]:
 
 
 def _success(r: dict) -> bool:
-    return r.get("outcome") == "win" or r.get("target_fired") is True
+    return r.get("target_fired") is True
 
 
 def _beats(r: dict, first: dict) -> bool:
+    if r.get("outcome") == "win":
+        return False
     wave, wave0 = _n(r.get("death_wave")), _n(first.get("death_wave"))
     return wave > wave0 or (
         wave == wave0 and _n(r.get("hp_end_last_wave")) > _n(first.get("hp_end_last_wave"))
@@ -103,8 +108,6 @@ def verdict(rows: list[dict], target: str, window: int = 3) -> Verdict:
 
     last = finished[-window:]
     ids = [str(r.get("run_id")) for r in last]
-    if any(r.get("outcome") == "win" for r in last):
-        return Verdict("progressing", f"a win in the last {window} runs", ids)
     fired = [r for r in last if r.get("target_fired") is True]
     if fired:
         return Verdict("progressing", f"the target fired in run {fired[-1].get('run_id')}", ids)

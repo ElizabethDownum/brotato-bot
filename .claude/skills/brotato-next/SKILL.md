@@ -51,7 +51,7 @@ Do not start the game. Do not run the `claude` command.
       - The character follows the same rule as Method A: `requires_character` if not `null`; otherwise an unlocked character that the guides support.
       - Never choose a character whose `unlocked` is `false`, including the locked character that the target unlocks.
       - If there are no candidates, stop and do not write a proposal. Report `all open targets paused` when paused ids removed the last candidates, otherwise report that no open target is left. Include the line from step 2 and any pause from step 3.
-   d. Danger: the `danger` of the newest bot row in `runs/index.json` (step 1). If there is no bot row, use 0.
+   d. Danger: the `danger` of the newest bot row in `runs/index.json` (step 1), or the number a `chal_difficulty_<n>` target requires if that is higher. If there is no bot row, use 0 (or that number).
    e. The material change. Find the newest finished bot row on the chosen target: the last bot row whose `target_challenge` is the target and whose `outcome` is `win` or `death`. If the line from step 2 starts with `stagnant (` or `escalate (` and names this target, the new plan family (the `plan_id` without its `-vN` suffix) or the character must differ from that row's. A new `-vN` alone does not count. `proposal validate` checks this.
    f. Read `knowledge/cache/character-<slug>.md` if that file exists. `<slug>` is the character id without its `character_` prefix, with every `_` replaced by `-`: `character_well_rounded` gives `knowledge/cache/character-well-rounded.md`.
 
@@ -75,6 +75,7 @@ Do not start the game. Do not run the `claude` command.
    g. `## Risk`: one to three sentences.
    h. `## Stagnation check`: the line from step 2, copied exactly (see below).
    Do not add any other `##` heading. Do not leave any `<...>` placeholder in the file.
+   i. Shape the plan for the target. After the file is written, run `uv run python -m brotato_bot proposal shape <path>`. It rewrites `## Plan` from the target's goal in `unlock_state.json` (`progress[<target>].stat` and `.value`): the goal stat gets the plan's largest weight with the goal's sign (negative for a goal below zero), every item in `data/brotato.json` that moves the stat the right way gets an `item_bonus`, items that break a keep-at-zero goal are banned, and the goal joins the plan family (`well-rounded-slow-v1`). It also raises `- danger:` to what a `chal_difficulty_<n>` target needs. It prints `shaped <path> for <target>: ...`, or says there is nothing to shape when the target has no stat or difficulty goal. Do not edit `## Plan` by hand after it runs; `proposal validate` rejects a plan that is not shaped for its target. Mention the shaping in `## Why` in one sentence when it changed the file.
 
 6. Validate the proposal: run `uv run python -m brotato_bot proposal validate <path>`.
    If it prints lines, fix each line in the file and run it again. A line `stagnation is <state> on <target>: ...` means the plan family or the character must change (step 4e). Stop after three attempts. When it prints `ok`, continue.

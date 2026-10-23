@@ -8,6 +8,10 @@ character, danger, target.
 Given the ``runs/index.json`` rows, ``validate`` also enforces the stagnation rule: after a
 ``stagnant`` or ``escalate`` verdict on the proposal's target, the plan family or the
 character must differ from the newest finished bot-profile run on that target.
+
+``validate`` also requires the plan to be shaped for the target's goal (``shape.goal_errors``):
+a stat target's stat must carry the plan's largest weight with the goal's sign, and a
+``chal_difficulty_<n>`` target needs danger at least ``n``. ``proposal shape FILE`` does that.
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ from typing import Any
 
 from brotato_bot import cli, paths
 from brotato_bot.fsutil import read_json
-from brotato_bot.run import prepare, stagnation
+from brotato_bot.run import prepare, shape, stagnation
 
 SECTIONS = ("## Target", "## Next run", "## Plan", "## Why", "## Risk", "## Stagnation check")
 _NAME = re.compile(r"\d{4}-\d{2}-\d{2}-(\d+)\.md")
@@ -225,6 +229,7 @@ def validate(
         errors.append(f"character {character} is locked on the bot profile")
     if run["target"] is not None:
         errors.extend(_target_errors(run["target"], character, unlock_state))
+        errors.extend(shape.goal_errors(plan, run, unlock_state))
     if rows is not None and plan is not None:
         errors.extend(_change_errors(plan, character, run["target"], rows))
     return errors
@@ -253,6 +258,21 @@ def _validate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _shape(args: argparse.Namespace) -> int:
+    p = paths.load()
+    try:
+        unlock_state = load_unlock_state(p.data_dir / "unlock_state.json")
+        items = shape.load_items(p.data_dir / "brotato.json")
+        markdown = Path(args.file).read_text(encoding="utf-8-sig")
+        goal = shape.goal_for(next_run(markdown)["target"], unlock_state)
+        changes = shape.shape_file(Path(args.file), unlock_state, items)
+    except (OSError, ValueError) as exc:
+        print(f"proposal: {exc}")
+        return 1
+    print(shape.describe(goal, changes, args.file))
+    return 0
+
+
 def register(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser("proposal", help="proposal files written by brotato-next")
     sub = parser.add_subparsers(dest="proposal_command", required=True)
@@ -261,6 +281,9 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     check.set_defaults(func=_validate)
     nxt = sub.add_parser("next-path", help="print the path for today's next proposal")
     nxt.set_defaults(func=_next_path)
+    shp = sub.add_parser("shape", help="rewrite a proposal's plan around its target's goal")
+    shp.add_argument("file", metavar="FILE")
+    shp.set_defaults(func=_shape)
 
 
 cli.COMMANDS["proposal"] = register
