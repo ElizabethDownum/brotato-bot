@@ -76,3 +76,14 @@ source; "audit" means the claim is the auditor's and was not re-checked.
 - Bans: tier 1 `exclude_items` (mod-enforced never-acquire, all profiles) and tier 2
   `ban_items` (per run, set by the planner; spends the game's 8 ban tokens). Tier 2 waits
   until chal_banned_items (a danger-3 win) is unlocked; until then it acts as tier 1.
+- Character mechanics (F01 extended): before the value curves, inventory every character's
+  effects from the dataset and game source and classify each as a plain stat modifier
+  (handled by the curves at current stats) or a mechanic. Mechanics get handlers wherever
+  they change how the character should be played. Owner scope: **any measured behaviour or
+  policy is fair game** when it helps or hurts that character, not only steering, weapon
+  choice and stat preferences (e.g. Engineer: one turret, uncollected materials buff it, so
+  leave some on the floor; the turret copies the best ranged weapon and scales with
+  engineering). A negative weight alone never stands in for a playstyle. The output is a
+  per-character spec for owner review before it is built.
+- Progression (owner, 2026-10-24): keep well_rounded and climb danger 2 -> 5 with one
+  controlled change per run; novel challenges/characters wait until the levers settle.
