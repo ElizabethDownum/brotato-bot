@@ -21,8 +21,10 @@ choice close or the offer unusual.
 - Respect the economy: never `buy` an option whose price is above the current gold.
 - `option_index` is the `option_index` shown in the Options section (the request's
   `options[]` position). It is never the shop slot number in the State section.
-- Shop actions: `buy`, `lock`, `reroll`, `skip`, `revise_plan`. Level-up: `pick` only.
-  `buy`, `lock` and `pick` need `option_index`.
+- Shop actions: `buy`, `lock`, `pass`, `reroll`, `skip`, `revise_plan`. Level-up: `pick` only.
+  `buy`, `lock`, `pass` and `pick` need `option_index`. `pass` declines this one option's
+  item id for the rest of the visit, including rerolls, and lets the rules keep shopping.
+  `skip` ends the visit. Prefer `pass` when only the option in question is wrong.
 - When the objective is an unlock target, weight survival to the wave the challenge needs over
   damage. When there is no unlock target, optimise this character's current and prospective
   build, including pivots the offering justifies.

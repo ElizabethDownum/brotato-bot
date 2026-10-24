@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from brotato_bot.run import collect
 from brotato_bot.sidecar import experience
 
@@ -208,6 +210,23 @@ def test_append_after_a_truncated_line_starts_a_new_line(tmp_path):
 def _resp(action, index=None):
     r = {"action": action, "confidence": 0.7, "rationale": "r", "tags": []}
     return r if index is None else {**r, "option_index": index}
+
+
+@pytest.mark.parametrize("applied", ["pass", "rule", None])
+def test_join_outcomes_pass_names_declined_item_without_claiming_ownership(tmp_path, applied):
+    decisions = tmp_path / "decisions.jsonl"
+    opts = [{"index": 3, "id": "item_bag"}]  # use the option index, not its list position
+    rec = _decision(1, 1, _resp("pass", 3), opts)
+    experience.append(decisions, rec)
+    run = tmp_path / "run.jsonl"
+    if applied is not None:
+        experience.append(run, {"kind": "decision_applied", "id": rec["id"], "applied": applied})
+    row = experience.join_outcomes(decisions, _summary(), run_jsonl=run)[0]
+    assert row["action"] == "pass"
+    assert row["applied"] is (None if applied is None else applied == "pass")
+    assert row["chosen"] == (None if applied == "rule" else "item_bag")
+    assert row["kept_to_end"] is None  # the fixture holds this item; passing is not buying
+    assert row["hp_next_wave"] == 5
 
 
 def test_join_outcomes_reads_what_the_mod_applied(tmp_path):

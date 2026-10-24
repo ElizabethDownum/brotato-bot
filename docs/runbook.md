@@ -262,7 +262,7 @@ it while idle (`BOT idle` plus the plan line), turn on AI visuals. This also dra
 | `export_hotkey` | string | `"F9"` | Key name for the advisor export, as Godot names keys (`OS.find_scancode_from_string`). An unknown name falls back to F9. |
 
 Shop ask rules, in order (`DecisionClient.should_ask`), at most once per board
-of a visit (the first view and each board after a reroll; a lock or a buy
+of a visit (the first view and each board after a reroll; a lock, buy or pass
 leaves the same board), only while a sidecar heartbeat is fresh (section 4):
 
 1. `ask_per_visit` asks already made this visit: no ask.
@@ -468,8 +468,8 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    | `halt` | `reason` (`human input`, `wrong profile`) | the bot halts |
    | `export` | `export_kind`, `path`, `seq` | every state export (F9 or a decision) |
    | `decision` | `request_kind`, `id`, `wave`, `source`, `response` | every decision request. `source` is `haiku` (valid answer), `invalid`, `timeout`, `interrupted` or `busy`. |
-   | `decision_applied` | `id`, `action`, `option_index`, `applied` | shop only, after a decision. `applied` is `buy`, `lock`, `reroll`, `skip`, `revise_plan` or `rule`. |
-   | `shop` | `wave`, `action` (`buy`, `reroll`, `lock`, `ban`, `go`), `item_id`, `price`, `score`, `source` (`rule`, `haiku`), `gold_after` | every bot shop action. `item_id` is null for `reroll` and `go`; `price` is the reroll's cost (0 when free) and null for `go`; `score` is null for `reroll`, `ban` and `go` |
+   | `decision_applied` | `id`, `action`, `option_index`, `applied` | shop only, after a decision. `applied` is `buy`, `lock`, `pass`, `reroll`, `skip`, `revise_plan` or `rule`. |
+   | `shop` | `wave`, `action` (`buy`, `reroll`, `lock`, `pass`, `ban`, `go`), `item_id`, `price`, `score`, `source` (`rule`, `haiku`), `gold_after` | every bot shop action. `item_id` is null for `reroll` and `go`; `price` is the reroll's cost (0 when free) and null for `go`; `score` is null for `reroll`, `ban` and `go` |
    | `levelup` | `wave`, `id` (the decision's id, `""` when not asked), `picked`, `alternatives`, `source` (`haiku`, `rule`, `timeout`) | every bot level-up pick that landed |
    | `challenge` | `id`, `is_target` | a challenge completes for the first time on this profile |
    | `checkpoint` | `wave`, `id`, `action`, `applied`, `reason` | the target checkpoint; wave at write time, even before its delayed `wave_end` |
@@ -577,12 +577,18 @@ All files are under `%APPDATA%\Brotato\brotato-bot\` (`user://brotato-bot`).
 
   | Field | Rule |
   |---|---|
-  | `action` | `buy`, `lock`, `reroll`, `skip` (shop); `pick` (level-up); `revise_plan` (shop and `checkpoint` only); `skip` (`checkpoint`) |
-  | `option_index` | int >= 0, required for `buy`, `lock` and `pick` |
+  | `action` | `buy`, `lock`, `pass`, `reroll`, `skip` (shop); `pick` (level-up); `revise_plan` (shop and `checkpoint` only); `skip` (`checkpoint`) |
+  | `option_index` | int >= 0, required for `buy`, `lock`, `pass` and `pick` |
   | `confidence` | number in 0..1, required |
   | `rationale` | string, optional |
   | `plan_patch` | object of section 3.5 plan keys, required for `revise_plan` (merged into `plan.json`; unknown or wrong-typed keys are dropped) |
   | `tags` | optional, ignored |
+
+  `pass` declines the selected item id for the rest of this visit, including after
+  rerolls, unlocks the selected node if locked, and lets the rules keep shopping.
+  Its saved gold is released if that node was the saving target. The next visit
+  may judge the item again. `skip` ends the whole visit. Prefer `pass` when only
+  the option in question is wrong.
 
   A response that fails these rules counts as `invalid` and the rules decide.
   An action that does not fit the screen (e.g. `pick` in the shop) is applied

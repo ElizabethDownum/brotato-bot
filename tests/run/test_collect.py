@@ -280,6 +280,34 @@ def test_collect_tolerates_truncated_last_line():
     assert "| 2 |" in render.run_report(s)
 
 
+def test_shop_pass_renders_like_lock_and_keeps_the_board_open():
+    declined = {"id": "item_weird_ghost", "price": 20, "score": 30.0}
+    bought = {"id": "item_bag", "price": 10, "score": 8.0}
+    response = {"action": "pass", "option_index": 0, "confidence": 0.8}
+    events = [
+        {"kind": "header", "run_id": "pass-run"},
+        {"kind": "offer", "wave": 1, "view": 1, "gold": 50, "items": [declined, bought]},
+        {"kind": "decision", "id": "pass-run-001", "wave": 1, "request_kind": "shop",
+         "source": "haiku", "response": response},
+        {"kind": "shop", "wave": 1, "action": "pass", "item_id": declined["id"],
+         "price": 20, "score": 30.0, "source": "haiku", "gold_after": 50},
+        {"kind": "decision_applied", "id": "pass-run-001", "action": "pass",
+         "option_index": 0, "applied": "pass"},
+        {"kind": "shop", "wave": 1, "action": "buy", "item_id": bought["id"],
+         "price": 10, "score": 8.0, "source": "rule", "gold_after": 40},
+    ]  # fmt: skip
+    summary = collect.summarize(events)
+    assert [row.action for row in summary.shop] == ["pass", "buy"]
+    assert summary.shop[0].gold_after == 50
+    assert summary.offers[0].bought == ["item_bag"]
+    assert summary.decisions[0].action == "pass"
+    report = render.run_report(summary)
+    assert "| 1 | pass | item_weird_ghost | 20 | 30 | haiku |" in report
+    assert "| 1 | buy | item_bag | 10 | 8 | rule |" in report
+    assert "| shop | pass | haiku | 0.8 |" in report
+    assert render.run_report(render.ReportSummary.model_validate(summary.model_dump())) == report
+
+
 def test_parse_jsonl_skips_only_a_bad_final_line(tmp_path):
     f = tmp_path / "x.jsonl"
     f.write_text('{"kind":"header"}\nnot json\n{"kind":"end"}\n', encoding="utf-8")

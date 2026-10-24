@@ -11,11 +11,11 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 SCHEMA_PATH = Path(__file__).with_name("decision.schema.json")
 
-Action = Literal["buy", "reroll", "lock", "skip", "pick", "revise_plan"]
-NEEDS_OPTION_INDEX = frozenset({"buy", "lock", "pick"})
+Action = Literal["buy", "reroll", "lock", "pass", "skip", "pick", "revise_plan"]
+NEEDS_OPTION_INDEX = frozenset({"buy", "lock", "pass", "pick"})
 # The actions each screen applies (base_shop.gd, upgrades_ui.gd, Checkpoint.wanted).
 SCREEN_ACTIONS = {
-    "shop": ("buy", "lock", "reroll", "skip", "revise_plan"),
+    "shop": ("buy", "lock", "pass", "reroll", "skip", "revise_plan"),
     "levelup": ("pick",),
     "checkpoint": ("revise_plan", "skip"),
 }

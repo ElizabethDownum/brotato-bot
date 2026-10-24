@@ -26,7 +26,7 @@ A line carrying ``decision`` instead of ``response`` is read the same way.
 applied it, read from the run recording's ``decision_applied`` (shop), ``levelup``
 (``source`` ``haiku``) and ``checkpoint`` (``applied`` with no ``reason``) lines for the
 decision id; null when the recording has none. ``chosen`` is the option id for an indexed
-action (buy/lock/pick), the action word otherwise, null without a response or when
+action (buy/lock/pass/pick), the action word otherwise, null without a response or when
 ``applied`` is false (``kept_to_end`` is then null too).
 ``hp_next_wave`` is the HP at the end of the wave after the decision's wave (0 when the
 player died in it; null when the run never got there). ``kept_to_end`` is set for buys
@@ -46,7 +46,7 @@ from typing import Any
 
 from brotato_bot.run.models import RunSummary
 
-INDEXED_ACTIONS = frozenset({"buy", "lock", "pick"})
+INDEXED_ACTIONS = frozenset({"buy", "lock", "pass", "pick"})
 _TIER_SUFFIX = re.compile(r"_\d+$")
 
 

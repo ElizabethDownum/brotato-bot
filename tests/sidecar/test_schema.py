@@ -31,7 +31,7 @@ def test_valid_skip_and_reroll_without_index():
         assert schema.validate(obj) == []
 
 
-@pytest.mark.parametrize("action", ["buy", "lock", "pick"])
+@pytest.mark.parametrize("action", ["buy", "lock", "pass", "pick"])
 def test_buy_requires_option_index(action):
     obj = _buy(action=action)
     del obj["option_index"]
@@ -89,7 +89,15 @@ def test_schema_json_matches_model():
     assert data["type"] == "object"
     assert data["additionalProperties"] is False
     assert data["required"] == ["action", "confidence", "rationale", "tags"]
-    assert props["action"]["enum"] == ["buy", "reroll", "lock", "skip", "pick", "revise_plan"]
+    assert props["action"]["enum"] == [
+        "buy",
+        "reroll",
+        "lock",
+        "pass",
+        "skip",
+        "pick",
+        "revise_plan",
+    ]
     assert set(props) == set(schema.Decision.model_fields)
     assert props["option_index"]["minimum"] == 0
     assert props["confidence"]["minimum"] == 0
@@ -106,6 +114,7 @@ def test_schema_json_matches_model():
     assert conditionals == {
         "buy": ["option_index"],
         "lock": ["option_index"],
+        "pass": ["option_index"],
         "pick": ["option_index"],
         "revise_plan": ["plan_patch"],
     }
@@ -245,6 +254,7 @@ CHECKPOINT = {"screen": "checkpoint", "options": []}
     ("request_", "obj"),
     [
         (SHOP, _buy(option_index=1)),
+        (SHOP, _buy(action="pass", option_index=1)),
         (SHOP, _buy(action="reroll", option_index=0)),
         (SHOP, _revise({"min_buy": 3.0})),
         (LEVELUP, _buy(action="pick", option_index=2)),
@@ -262,6 +272,13 @@ def test_validate_accepts_actions_legal_for_the_screen(request_, obj):
         (LEVELUP, _revise({"min_buy": 3.0}), "action"),
         (LEVELUP, {k: v for k, v in _buy(action="skip").items() if k != "option_index"}, "action"),
         (SHOP, _buy(action="pick", option_index=0), "action"),
+        (LEVELUP, _buy(action="pass", option_index=0), "action"),
+        (CHECKPOINT, _buy(action="pass", option_index=0), "action"),
+        (SHOP, _buy(action="pass", option_index=2), "option_index"),
+        (SHOP, _buy(action="pass", option_index=-1), "option_index"),
+        (SHOP, _buy(action="pass", option_index=None), "<root>"),
+        (SHOP, _buy(action="pass", option_index=True), "option_index"),
+        (SHOP, _buy(action="pass", option_index=1.5), "option_index"),
         (CHECKPOINT, _buy(option_index=0), "action"),
         (SHOP, _buy(option_index=2), "option_index"),
         (LEVELUP, _buy(action="pick", option_index=3), "option_index"),

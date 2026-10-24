@@ -29,8 +29,8 @@ extends Reference
 # headless test project (res://mod/...) alike.
 const BotPaths = preload("bot_paths.gd")
 
-const ACTIONS = ["buy", "reroll", "lock", "skip", "pick", "revise_plan"]
-const INDEX_ACTIONS = ["buy", "lock", "pick"]
+const ACTIONS = ["buy", "reroll", "lock", "pass", "skip", "pick", "revise_plan"]
+const INDEX_ACTIONS = ["buy", "lock", "pass", "pick"]
 const DEFAULT_TIE_MARGIN = 3.0
 const DEFAULT_FLOOR = 6.0
 const DEFAULT_GOLD_FLOOR = 200
@@ -238,7 +238,7 @@ func poll_response(id):
 # option_index (JSON numbers parse as floats) becomes an int, and confidence
 # becomes a float.
 #   action        one of ACTIONS
-#   option_index  int >= 0, required for buy / lock / pick
+#   option_index  int >= 0, required for buy / lock / pass / pick
 #   confidence    number in 0..1
 #   rationale     String when present
 #   plan_patch    Dictionary, required for revise_plan

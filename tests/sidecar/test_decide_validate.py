@@ -64,6 +64,20 @@ def test_valid_shop_answer_from_stdin_is_ok(monkeypatch, capsys):
     assert capsys.readouterr().out.strip() == "ok"
 
 
+def test_shop_pass_with_a_valid_index_is_ok(monkeypatch, capsys):
+    _stdin(monkeypatch, json.dumps(dict(SHOP_BUY, action="pass", option_index=1)))
+    assert cli.main(["decide-validate", "--state", str(FIXTURE), "--kind", "shop"]) == 0
+    assert capsys.readouterr().out.strip() == "ok"
+
+
+def test_prompt_explains_pass_and_skip():
+    text = _collapsed("decide.md")
+    assert "`pass` declines this one option's item id for the rest of the visit" in text
+    assert "including rerolls, and lets the rules keep shopping" in text
+    assert "`skip` ends the visit" in text
+    assert "Prefer `pass` when only the option in question is wrong" in text
+
+
 def test_non_ascii_rationale_on_stdin_is_ok(monkeypatch, capsys):
     answer = dict(SHOP_BUY, rationale="Ā gold → damage ✓ (é, ü)")
     _stdin(monkeypatch, json.dumps(answer, ensure_ascii=False))

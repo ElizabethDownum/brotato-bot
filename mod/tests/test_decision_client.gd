@@ -237,6 +237,30 @@ func test_validate_response_coerces_float_index():
 	assert_eq(c.get("confidence"), 1.0, "confidence coerced to float")
 
 
+func test_validate_pass_requires_a_nonnegative_whole_index():
+	var r = {"action": "pass", "option_index": 1.0, "confidence": 0.8}
+	assert_true(DecisionClient.validate_response(r), "pass accepted")
+	assert_eq(r.get("option_index"), 1, "whole float coerced to int")
+	assert_false(DecisionClient.validate_response({"action": "pass", "confidence": 0.8}),
+		"pass needs a target")
+	for index in [-1, 1.5, null, "1", true]:
+		assert_false(DecisionClient.validate_response({"action": "pass", "option_index": index, "confidence": 0.8}),
+			"invalid pass index: %s" % str(index))
+
+
+func test_poll_returns_a_pass_response():
+	var root = _make_root("decision-pass")
+	var client = DecisionClient.new(root)
+	var path = root.plus_file("responses").plus_file("test-run-001.json")
+	_write(path, '{"action":"pass","option_index":0,"confidence":0.8}')
+	var r = client.poll_response("test-run-001")
+	assert_eq(r.get("action"), "pass", "pass survives file protocol")
+	assert_true(DecisionClient.validate_response(r), "polled pass validates and normalizes")
+	assert_eq(r.get("option_index"), 0, "selected option retained")
+	assert_false(File.new().file_exists(path), "response consumed")
+	_remove_tree(root)
+
+
 func test_build_request_carries_screen_and_kind():
 	var opts = [{"index": 0, "id": "item_anvil"}]
 	var r = DecisionClient.build_request("pivot", "levelup", "run-a", 4, "user://s.json", opts, 99)

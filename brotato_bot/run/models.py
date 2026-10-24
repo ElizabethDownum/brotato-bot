@@ -37,7 +37,7 @@ class MaterialRow(BaseModel):
 
 
 class ShopRow(BaseModel):
-    """One shop action, from a ``shop`` event: ``action`` is buy/reroll/lock/ban/go and
+    """One shop action, from a ``shop`` event: ``action`` is buy/reroll/lock/pass/ban/go and
     ``source`` is rule/haiku."""
 
     wave: int | None = None

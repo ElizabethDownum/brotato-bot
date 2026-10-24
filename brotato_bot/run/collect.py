@@ -82,7 +82,11 @@ def _str(v: Any) -> str | None:
 
 
 def summarize(events: list[dict], plan: dict | None = None) -> render.ReportSummary:
-    """Fold the run's events into a RunSummary."""
+    """Fold the run's events into a RunSummary.
+
+    Shop pass/lock events retain the offered item, price and score without counting
+    as purchases or ending the current offer board. Applied decisions join in experience.
+    """
     header: dict = next((e for e in events if e.get("kind") == "header"), {})
     waves: dict[int, WaveRow] = {}
     shop: list[ShopRow] = []
