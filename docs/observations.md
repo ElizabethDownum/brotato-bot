@@ -587,3 +587,47 @@ the headless tests cover the pure logic and the scene extensions are read-checke
   waves (to add when such a goal comes up, not before); the post-target checkpoint's
   "shift to survival" patch is a bonus, not a requirement; reports should lead with the
   target outcome (item 1 of the 2026-10-24 harness dispatch puts it in the Outcome line).
+
+## 2026-10-24 audit C (GPT 6.1 Sol xhigh, read-only): steering, materials and trees
+
+Report: `.superpowers/sdd/2026-10-24-steering-audit/sol-report.md` (brief beside it).
+
+- **Two premise corrections.** Trees are already scanned out to 900 px (`PICKUP_RANGE`),
+  not the pickup radius; Well Rounded's obstacle is only its `tree_value` 0 default (no
+  steering row at all). And the bag is not "paid out" at the next wave: the game folds the
+  bag into newly spawned pickups and debits it on spawn, so a bag reaching zero proves
+  allocation to drops, not redemption into the wallet.
+- **Run 4 numbers (first `mats` run).** Mean floor count by wave thirds 2.8 / 9.2 / 17.5:
+  the backlog builds through the wave and peaks at its end. 333 material value was
+  swept into bags over 17 waves (19.6 per wave, max 47 at wave 17). The quiet-draw
+  condition (no enemy within 280 px) held in 24% of Old's snapshots against 88-89% in
+  Well Rounded's runs 1 and 3; the stricter 420 px sweep condition in 9% versus 60%.
+  Wave 17's backlog of 50 had zero quiet samples, so a quiet-only sweep would not have
+  touched it. Death-wave leftovers (38 objects) are the only value lost outright.
+- **Every steering constant is upstream BOTato's**, unchanged by the fork, tuned and
+  validated at danger 5-6; the gold terms are documented tie-breakers that "cannot
+  outbid a dodge", and upstream recorded a flat x1.2 greed dropping Well Rounded from
+  waves 18/18/20 to 9/14/20. The per-row `sweep` is dormant on every row; Old already
+  prices materials at 1.8 (2.25x Well Rounded's 0.8). Standing continuity (-1.2 after
+  standing) can hold the potato on an idle quiet spot against a single distant drop.
+  Dropped crates have no reward of their own: they ride the food value, zero at full HP.
+  Experimental trap: `--arb-sweep` also toggles the blade swept-hitbox model.
+- **Ranked:** (1) measure first: material value (not count), unattached value, bag in
+  and out, collected value, trees spawned/felled, resolved reward components, at the
+  next mod sync (50-100 lines); (2) a Well Rounded steering row with a positive
+  `tree_value` when the goal allows, tested alone; (3) the existing per-row `sweep` at
+  1.5 then 2.5, one arm at a time; (4) standing continuity made configurable; (5) a
+  danger-aware quiet greed scale; (6) an explicit quiet-floor collection route, parked;
+  (7) no scan-range change, it is not the limit. Proposed plan keys: `tree_policy`
+  (auto / seek / preserve), material scale, quiet draw, `sweep` and radius, final-seconds
+  value, standing continuity; steering reads none of the plan today.
+- **Trees:** preserve for chal_forest (10 living at wave end), Cryptid (12 materials and
+  3 regen per living tree) and Diver's wave 1; seek for chal_lumberjack (50 felled),
+  Explorer, Pacifist and any unrestricted goal; chal_lootworm wants 20 material value
+  left on the floor, which a sweep would defeat. `tree_value` 0 means "do not seek",
+  not "preserve"; preservation needs spacing against incidental fire and has no row
+  today (Cryptid has no steering row at all).
+- **Verdict:** general steering changes go after the next target run; add the value and
+  tree telemetry at the next routine mod sync and run a separate Well Rounded
+  comparison; implement a narrow tree policy before a run only if that run's target
+  needs it.
