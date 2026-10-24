@@ -5,6 +5,7 @@ const BotRuntime = preload("res://mods-unpacked/Ellie-BrotatoBot/bot_runtime.gd"
 
 func _ready():
 	_bot_reset()
+	call_deferred("_bot_launch")
 	# Create the singleton once. main_menu._ready runs on every return to the menu,
 	# so without this guard each visit stacks another AutobattlerOptions node under
 	# /root -- multiple _input handlers that all fire on Shift+Space, toggling the
@@ -31,3 +32,19 @@ func _bot_reset():
 		options.enable_autobattler = false
 		options.enable_autoshop = false
 		options.save_configs()
+
+
+# Launcher: with a valid launch.json, press Start on an idle frame (see
+# BotRuntime.launch_begin). BotRuntime is added deferred, so on the first menu
+# visit wait for it (a few frames at most) before giving up.
+func _bot_launch():
+	var rt = BotRuntime.instance()
+	var frames = 0
+	while rt == null and frames < 120:
+		yield(get_tree(), "idle_frame")
+		rt = BotRuntime.instance()
+		frames += 1
+	if rt == null or not rt.launch_begin():
+		return
+	yield(get_tree(), "idle_frame")
+	_on_StartButton_pressed()

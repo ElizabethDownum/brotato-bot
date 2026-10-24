@@ -6,6 +6,7 @@ extends "res://ui/menus/run/character_selection.gd"
 #     bound to CoopService.autoshop_by_index[slot], default on.
 
 const Coop = preload("res://mods-unpacked/Ellie-BrotatoBot/extensions/ui/menus/run/coop_mouse_select.gd")
+const BotRuntime = preload("res://mods-unpacked/Ellie-BrotatoBot/bot_runtime.gd")
 
 var _active_outline = null
 var _panel_toggles: Array = []   # one AUTO-SHOP CheckButton per panel/slot
@@ -19,6 +20,7 @@ func _ready() -> void:
 	if not CoopService.is_connected("connected_players_updated", self, "_on_players_updated_autoshop"):
 		var _e = CoopService.connect("connected_players_updated", self, "_on_players_updated_autoshop")
 	_refresh_panel_toggles()
+	call_deferred("_bot_launch_pick")
 
 
 func _input(event: InputEvent) -> void:
@@ -54,6 +56,20 @@ func _on_element_focused(element: InventoryElement, inventory_player_index: int,
 			return
 	Coop.route_to(element, CoopService.current_player_index)
 	._on_element_focused(element, inventory_player_index, displayPanelData)
+
+
+# Launcher: press the launch's character (solo flow; _set_selected_element then
+# calls _on_selections_completed, which changes scene).
+func _bot_launch_pick() -> void:
+	var rt = BotRuntime.instance()
+	var launch = rt.launch_step() if rt != null else null
+	if launch == null:
+		return
+	var element = _find_inventory_element_by_id(Keys.generate_hash(launch.character_id), 0)
+	if element == null or element.item.is_locked:
+		rt.launch_cancel("Launch refused: character %s not available" % launch.character_id)
+		return
+	_on_element_pressed(element, 0)
 
 
 # --- Per-bot AUTO-SHOP toggle, hosted inside each player's panel --------------

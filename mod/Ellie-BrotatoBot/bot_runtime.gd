@@ -29,6 +29,9 @@ extends Node
 #                  visit's start and when a decision starts
 #   ask_policy     AskPolicy timeout breaker for this run (reset at run start);
 #                  callers ask only while sidecar_ready()
+#   pending_launch the launch.json dictionary while the run-start screens are being
+#                  pressed through (null otherwise; reset_for_menu leaves it alone)
+#   launch_used    launch.json was taken in this process; it is never read again
 
 const BotConfig = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_config.gd")
 const Guards = preload("res://mods-unpacked/Ellie-BrotatoBot/core/guards.gd")
@@ -40,6 +43,7 @@ const Checkpoint = preload("res://mods-unpacked/Ellie-BrotatoBot/core/checkpoint
 const Overlay = preload("res://mods-unpacked/Ellie-BrotatoBot/core/overlay.gd")
 const HumanPause = preload("res://mods-unpacked/Ellie-BrotatoBot/core/human_pause.gd")
 const AskPolicy = preload("res://mods-unpacked/Ellie-BrotatoBot/core/ask_policy.gd")
+const LaunchFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/launch_file.gd")
 
 const NODE_NAME = "BotRuntime"
 const RECENT_MAX = 10
@@ -59,6 +63,8 @@ var run_outcome = ""
 var deciding_deadline_ms = 0
 var human_paused = false
 var ask_policy = AskPolicy.new()
+var pending_launch = null
+var launch_used = false
 var _halt_after_decide = false   # a move key during a decision: halt once it ends
 var _pause_menu_ref = null       # weakref to the shop's PauseMenu (on_human_pause)
 
@@ -353,6 +359,52 @@ func may_act() -> bool:
 		halt("wrong profile")
 		return false
 	return true
+
+
+# Main menu: take launch.json as the pending launch. A launch is read at most once
+# per process (launch_used, set once a valid file is found), and a pending launch
+# found here means the owner came back to the menu mid-launch: that cancels it.
+# Returns true when the main menu should press Start. The profile check refuses
+# the launch and keeps the file.
+func launch_begin() -> bool:
+	if pending_launch != null:
+		launch_cancel("Launch cancelled: back at the main menu")
+		return false
+	if launch_used:
+		return false
+	var d = LaunchFile.load_from(LaunchFile.DEFAULT_PATH)
+	if d == null:
+		return false
+	launch_used = true
+	pending_launch = d
+	return launch_step() != null
+
+
+# The pending launch for the screen about to press something, or null. Every
+# step re-checks the profile: a wrong profile cancels the launch and keeps the file.
+func launch_step():
+	if pending_launch == null:
+		return null
+	var progress = get_node_or_null("/root/ProgressData")
+	if progress == null or not Guards.profile_ok(progress.current_profile_id, config):
+		var pid = int(progress.current_profile_id) if progress != null else -1
+		pending_launch = null
+		set_status("Launch refused: wrong profile (%d)" % pid)
+		return null
+	return pending_launch
+
+
+# Drops the pending launch, deletes launch.json and shows why.
+func launch_cancel(text: String):
+	pending_launch = null
+	launch_delete()
+	set_status(text)
+
+
+func launch_delete():
+	var d = Directory.new()
+	if d.file_exists(LaunchFile.DEFAULT_PATH):
+		d.remove(LaunchFile.DEFAULT_PATH)
 
 
 # Move-key scancodes for Guards.is_human_move, built from the InputMap once.

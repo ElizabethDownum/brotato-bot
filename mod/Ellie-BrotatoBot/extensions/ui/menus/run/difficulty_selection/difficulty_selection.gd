@@ -6,6 +6,8 @@ extends "res://ui/menus/run/difficulty_selection/difficulty_selection.gd"
 # click), and route the mouse pick to the active slot.
 
 const Coop = preload("res://mods-unpacked/Ellie-BrotatoBot/extensions/ui/menus/run/coop_mouse_select.gd")
+const BotRuntime = preload("res://mods-unpacked/Ellie-BrotatoBot/bot_runtime.gd")
+const LaunchFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/launch_file.gd")
 
 
 func _ready() -> void:
@@ -17,6 +19,21 @@ func _ready() -> void:
 	# human, so default it back to the first player on entry.
 	if Coop.only_p1_is_human():
 		CoopService.current_player_index = 0
+	call_deferred("_bot_launch_pick")
+
+
+# Launcher: press the launch's danger; a danger above the character's maximum is
+# a locked element and cancels the launch. The press starts the run.
+func _bot_launch_pick() -> void:
+	var rt = BotRuntime.instance()
+	var launch = rt.launch_step() if rt != null else null
+	if launch == null:
+		return
+	var element = _find_inventory_element_by_id(Keys.generate_hash(LaunchFile.difficulty_id(launch.danger)), 0)
+	if element == null or element.item.is_locked:
+		rt.launch_cancel("Launch refused: danger %d not available" % launch.danger)
+		return
+	_on_element_pressed(element, 0)
 
 
 func _process(delta: float) -> void:

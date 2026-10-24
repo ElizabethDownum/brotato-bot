@@ -118,6 +118,17 @@ static func shop_event(wave, action, item_id, price, score, source, gold_after) 
 	}
 
 
+# The launch event (spec: the launcher consumed launch.json): which launch the
+# run came from, so the harness can tie the run to the plan's token.
+static func launch_event(launch) -> Dictionary:
+	return {
+		"token": str(launch.get("token", "")),
+		"character_id": str(launch.get("character_id", "")),
+		"starting_weapon": str(launch.get("starting_weapon", "")),
+		"danger": int(launch.get("danger", 0)),
+	}
+
+
 # YYYYMMDD-HHMMSS-<character without "character_">-d<danger>.
 # dt is an OS.get_datetime() dictionary.
 static func make_run_id(character_id, danger, dt):

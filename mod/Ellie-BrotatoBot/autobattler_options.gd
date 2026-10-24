@@ -105,27 +105,40 @@ func _input(event):
 # auto-shop together. Enabling goes through the profile and plan guards every
 # time; a refusal records a warning and leaves the bot off.
 func _toggle_bot():
-	var rt = BotRuntime.instance()
 	if enable_autobattler:
+		var rt = BotRuntime.instance()
 		enable_autobattler = false
 		enable_autoshop = false
 		if rt != null:
 			rt.set_bot_state("idle", "toggle_off")
 			rt.set_status("")
+		_publish_bot_flags()
 	else:
-		if rt == null:
-			push_warning("BrotatoBot: /root/BotRuntime missing; bot not enabled")
-			return
-		var reason = Guards.enable_refusal(ProgressData.current_profile_id, rt.config, PlanFile.DEFAULT_PATH)
-		if reason != "":
-			if rt.recorder != null:
-				rt.recorder.event("warning", {"reason": reason})
-			rt.set_status("Bot refused: " + reason)
-			return
-		enable_autobattler = true
-		enable_autoshop = true
-		rt.set_bot_state("acting", "enabled")
-		rt.set_status("")
+		enable_bot()
+
+
+# The guarded enable path shared by the Shift+Space toggle and the launcher.
+# Returns true when the bot is now on; a refusal records a warning and leaves it off.
+func enable_bot() -> bool:
+	var rt = BotRuntime.instance()
+	if rt == null:
+		push_warning("BrotatoBot: /root/BotRuntime missing; bot not enabled")
+		return false
+	var reason = Guards.enable_refusal(ProgressData.current_profile_id, rt.config, PlanFile.DEFAULT_PATH)
+	if reason != "":
+		if rt.recorder != null:
+			rt.recorder.event("warning", {"reason": reason})
+		rt.set_status("Bot refused: " + reason)
+		return false
+	enable_autobattler = true
+	enable_autoshop = true
+	rt.set_bot_state("acting", "enabled")
+	rt.set_status("")
+	_publish_bot_flags()
+	return true
+
+
+func _publish_bot_flags():
 	# Notify our own listeners (the player's ai_icon marker updates from this).
 	emit_signal("setting_changed", ENABLE_AUTOBATTLER_OPTION_NAME, enable_autobattler, MOD_NAME)
 	emit_signal("setting_changed", ENABLE_AUTOSHOP_OPTION_NAME, enable_autoshop, MOD_NAME)

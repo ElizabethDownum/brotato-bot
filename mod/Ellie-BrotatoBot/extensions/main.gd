@@ -31,6 +31,7 @@ func _ready():
 	add_child(coop_focus_hud)
 	_bot_start_recording()
 	_bot_run_guards()
+	_bot_launch_start()
 	var _e = connect("end_of_the_wave", self, "_bot_on_end_of_the_wave")
 
 # Opens the run file on the first wave of a run. main.tscn reloads every wave,
@@ -95,6 +96,31 @@ func _bot_run_guards():
 		rt.set_status("Warning: pause_on_focus_lost is true")
 	# may_act() halts an acting bot that is on the wrong profile.
 	var _ok = rt.may_act()
+
+
+# A run has started. launch.json is deleted now whether or not a launch was
+# pending (a stale file must never relaunch). With a pending launch (every step
+# passed the profile check), record the launch event and switch the bot on once
+# wave 1 is running, through the same guarded path as Shift+Space.
+func _bot_launch_start():
+	var rt = get_node_or_null("/root/BotRuntime")
+	if rt == null:
+		return
+	var launch = rt.launch_step()
+	rt.pending_launch = null
+	rt.launch_delete()
+	if launch == null:
+		return
+	var rec = _bot_recorder()
+	if rec != null:
+		rec.event("launch", RunRecorder.launch_event(launch))
+	call_deferred("_bot_launch_enable")
+
+
+func _bot_launch_enable():
+	var options = get_node_or_null("/root/AutobattlerOptions")
+	if options != null:
+		var _on = options.enable_bot()
 
 
 func _bot_recorder():

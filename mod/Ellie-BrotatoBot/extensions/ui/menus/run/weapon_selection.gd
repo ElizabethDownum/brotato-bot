@@ -12,6 +12,8 @@ extends "res://ui/menus/run/weapon_selection.gd"
 # node ever see it. It flips false naturally once all slots have picked.
 
 const Coop = preload("res://mods-unpacked/Ellie-BrotatoBot/extensions/ui/menus/run/coop_mouse_select.gd")
+const BotRuntime = preload("res://mods-unpacked/Ellie-BrotatoBot/bot_runtime.gd")
+const LaunchFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/launch_file.gd")
 
 var _active_outline = null
 
@@ -23,6 +25,7 @@ func _ready() -> void:
 	Coop.enable_mouse_grid(self, RunData.is_coop_run)
 	if RunData.is_coop_run:
 		CoopService.listening_for_inputs = true
+	call_deferred("_bot_launch_pick")
 
 
 func _input(event: InputEvent) -> void:
@@ -36,6 +39,25 @@ func _process(delta: float) -> void:
 	Coop.update_outline(self, _active_outline)
 	if RunData.is_coop_run and not _all_selected():
 		CoopService.listening_for_inputs = true
+
+
+# Launcher: press the first existing starting-weapon element among the launch's
+# candidates (the tier-1 my_id form first). "any" leaves the pick to the owner and
+# the launch continues from the next screen.
+func _bot_launch_pick() -> void:
+	var rt = BotRuntime.instance()
+	var launch = rt.launch_step() if rt != null else null
+	if launch == null:
+		return
+	if launch.starting_weapon == "any":
+		rt.set_status("Launch: pick the starting weapon")
+		return
+	for id in LaunchFile.weapon_candidates(launch.starting_weapon):
+		var element = _find_inventory_element_by_id(Keys.generate_hash(id), 0)
+		if element != null:
+			_on_element_pressed(element, 0)
+			return
+	rt.launch_cancel("Launch refused: weapon %s not available" % launch.starting_weapon)
 
 
 func _all_selected() -> bool:

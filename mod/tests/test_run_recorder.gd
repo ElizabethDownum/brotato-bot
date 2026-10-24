@@ -165,3 +165,13 @@ func test_continues_only_the_same_profile_and_character():
 	rec.end_run({"outcome": "abandoned"})
 	assert_false(rec.continues(1, "character_well_rounded"), "closed")
 	_remove_tree(root)
+
+
+func test_launch_event_carries_the_four_launch_fields():
+	var e = RunRecorder.launch_event({"token": "t1", "character_id": "character_old",
+		"starting_weapon": "any", "danger": 4, "created_at": "x"})
+	assert_eq(e.keys().size(), 4, "only the four fields")
+	assert_eq(e.token, "t1", "token")
+	assert_eq(e.character_id, "character_old", "character_id")
+	assert_eq(e.starting_weapon, "any", "starting_weapon")
+	assert_eq(e.danger, 4, "danger an int")
