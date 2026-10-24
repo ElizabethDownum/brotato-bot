@@ -200,12 +200,24 @@ def test_nonpositive_gain_multiplier_is_a_veto(pct):
     assert shape.character_goal_fit(character, shape.Goal("chal_slow", "stat_speed", -20))["veto"]
 
 
-def test_requires_character_is_the_only_candidate_even_if_not_listed_unlocked():
+def test_requires_character_is_the_only_unlocked_candidate():
     rows = _ranked(_state(required="character_rounded"), required="character_rounded")
     assert [r["id"] for r in rows] == ["character_rounded"]
     lines = fit.fit_lines("chal_slow", DATASET, _state(required="character_plain"), BUILD_PLANS)
     assert "chal_slow requires character_plain: the only candidate" in lines
     assert "Top character: character_plain" in lines
+
+
+@pytest.mark.parametrize("listed", [True, False])
+def test_locked_required_character_stops_fit_without_top_choices(listed):
+    state = _state(required="character_locked")
+    if not listed:
+        state["characters"].pop("character_locked")
+    assert _ranked(state, required="character_locked") == []
+    lines = fit.fit_lines("chal_slow", DATASET, state, BUILD_PLANS)
+    assert "chal_slow requires character_locked: locked" in lines
+    assert lines[-1] == "no candidate character"
+    assert not any(line.startswith(("Top ", "Starting weapons")) for line in lines)
 
 
 def test_a_target_without_a_stat_prints_no_stat_goal():

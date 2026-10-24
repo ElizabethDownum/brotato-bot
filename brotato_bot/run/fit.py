@@ -121,7 +121,7 @@ def rank_characters(
         cid = c["id"]
         if required is not None and cid != required:
             continue
-        if required is None and not (state.get(cid) or {}).get("unlocked"):
+        if not (state.get(cid) or {}).get("unlocked"):
             continue
         rows.append(
             {
@@ -215,6 +215,12 @@ def fit_lines(
     required = unlock_state["progress"][target].get("requires_character")
     lines = [f"Fit for {target}: {goal.stat} to {goal.value:+g} (sign {goal.sign:+d})"]
     if required:
+        if not (unlock_state.get("characters", {}).get(required) or {}).get("unlocked"):
+            return [
+                *lines,
+                f"{target} requires {required}: locked",
+                "no candidate character",
+            ]
         lines.append(f"{target} requires {required}: the only candidate")
     ranked = rank_characters(goal, dataset, unlock_state, source, required)
     if not ranked:
