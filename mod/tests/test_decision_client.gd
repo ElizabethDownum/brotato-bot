@@ -82,29 +82,90 @@ func _shop(scores, affordable, ids, ask_on, gold, prices, asked = 0, cfg = SHOP,
 	return DecisionClient.should_ask(scores, affordable, cfg, ids, ask_on, 6.0, gold, prices, asked, ruled)
 
 
+func _board(scores, ids, prices, gold, ruled):
+	var entries = []
+	for i in ids.size():
+		entries.append({"node": ids[i], "id": ids[i], "kind": "item",
+			"price": prices[i], "score": scores[i]})
+	return DecisionClient.shop_options(entries, gold, ruled)
+
+
+func _ask_board(board, ask_on, gold, ruled, asked = 0):
+	return _shop(board.scores, board.affordable, board.ids, ask_on, gold, board.prices, asked, SHOP, ruled)
+
+
 func test_shop_ruled_ids_never_trigger_another_ask():
 	for verdict in ["approve", "decline"]:
 		var ruled = {"goal": {"verdict": verdict, "decision_id": "run-001", "screen": "crate"}}
-		assert_eq(_shop([20.0, 7.0], [0, 1], ["goal", "other"], ["goal"], 50, [10, 10], 1, SHOP, ruled), "",
+		var board = _board([20.0, 7.0], ["goal", "other"], [10, 10], 50, ruled)
+		assert_eq(_ask_board(board, ["goal"], 50, ruled, 1), "",
 			"ruled ask_on is not a pivot: " + verdict)
-		assert_eq(_shop([20.0, 19.0], [0, 1], ["goal", "goal"], [], 50, [10, 10], 1, SHOP, ruled), "",
+		board = _board([20.0, 19.0], ["goal", "goal"], [10, 10], 50, ruled)
+		assert_eq(_ask_board(board, [], 50, ruled, 1), "",
 			"duplicate ruled ids are not a tie: " + verdict)
-		assert_eq(_shop([20.0], [0], ["goal"], [], 400, [100], 1, SHOP, ruled), "",
+		board = _board([20.0], ["goal"], [100], 400, ruled)
+		assert_eq(_ask_board(board, [], 400, ruled, 1), "",
 			"ruled big purchase is not an ask: " + verdict)
 
 
-func test_shop_unruled_triggers_survive_cached_rulings():
-	var ruled = {"old": {"verdict": "approve", "decision_id": "run-001", "screen": "shop"}}
-	assert_eq(_shop([40.0, 10.0, 9.0], [0, 1, 2], ["old", "a", "b"], ["old"], 50, [10, 10, 10], 1, SHOP, ruled), "ask",
-		"tie among unruled options still asks")
-	assert_eq(_shop([40.0, 20.0, 7.0], [0, 1, 2], ["old", "a", "b"], ["old"], 400, [10, 100, 10], 1, SHOP, ruled), "ask",
-		"best unruled big purchase still asks with original price index")
-	assert_eq(_shop([40.0, 20.0], [0, 1], ["old", "new"], ["old", "new"], 50, [10, 10], 1, SHOP, ruled), "pivot",
-		"a new ask_on id still pivots")
-	assert_eq(_shop([40.0, 5.0], [0, 1], ["old", "new"], ["new"], 50, [10, 10], 1, SHOP, ruled), "",
-		"ruled score cannot make a dead unruled board eligible")
-	assert_eq(_shop([40.0, 10.0, 9.0], [0, 1, 2], ["old", "a", "b"], [], 50, [10, 10, 10], 2, SHOP, ruled), "",
-		"unruled tie still respects the unchanged visit budget")
+func test_shop_crate_approved_best_leaves_board_to_rules_before_other_tie():
+	var ruled = {"a": {"verdict": "approve", "decision_id": "run-001", "screen": "crate"}}
+	var board = _board([40.0, 10.0, 9.5], ["a", "b", "c"], [30, 20, 20], 45, ruled)
+	assert_eq(board.ids, ["a", "b", "c"], "approved A stays visible")
+	assert_eq(board.scores, [40.0, 10.0, 9.5], "approved A keeps its score")
+	assert_eq(board.affordable, [0, 1, 2], "A is affordable for the rule buy")
+	assert_eq(_ask_board(board, ["a"], 45, ruled), "", "no B/C tie ask before the rules buy A")
+	assert_eq(_ask_board(board, ["b"], 45, ruled), "", "approved best also buys before a new pivot")
+	board = _board([40.0, 10.0], ["a", "b"], [100, 10], 400, ruled)
+	assert_eq(_ask_board(board, [], 400, ruled), "", "approved best cannot trigger a big-purchase ask")
+
+
+func test_shop_approved_nonbest_stays_visible_in_tie_ask():
+	var ruled = {"a": {"verdict": "approve", "decision_id": "run-001", "screen": "crate"}}
+	var board = _board([7.0, 10.0, 9.5], ["a", "b", "c"], [30, 20, 20], 45, ruled)
+	assert_eq(_ask_board(board, ["a"], 45, ruled), "ask", "B/C tie may ask; A does not pivot")
+	assert_eq(board.ids, ["a", "b", "c"], "Haiku sees approved A alongside B/C")
+	assert_eq(board.options[0].id, "a", "A is a selectable option")
+	assert_eq(board.options[0].score, 7.0, "A's score is visible")
+	assert_eq(_ask_board(board, ["b"], 45, ruled), "pivot", "new ask_on id still pivots")
+	assert_eq(_ask_board(board, [], 45, ruled, 2), "", "visit budget still caps a tie")
+
+
+func test_shop_approved_score_counts_as_second_best_and_only_affordable_best_suppresses():
+	var ruled = {"a": {"verdict": "approve"}}
+	var board = _board([9.5, 10.0, 1.0], ["a", "b", "c"], [30, 20, 20], 45, ruled)
+	assert_eq(_ask_board(board, ["a"], 45, ruled), "ask", "approved second-best score counts in the tie")
+	board = _board([40.0, 10.0, 9.5], ["a", "b", "c"], [60, 20, 20], 45, ruled)
+	assert_eq(_ask_board(board, ["a"], 45, ruled), "ask", "unaffordable approved A does not suppress B/C tie")
+	board = _board([7.0, 20.0], ["a", "b"], [10, 100], 400, ruled)
+	assert_eq(_ask_board(board, ["a"], 400, ruled), "ask", "nonbest approval does not suppress a big purchase")
+
+
+func test_shop_declines_are_filtered_once_with_parallel_option_indices():
+	var ruled = {"old": {"verdict": "decline"}, "a": {"verdict": "approve"}}
+	var board = _board([40.0, 7.0, 40.0, 20.0, 9.0], ["old", "a", "old", "b", "c"],
+		[10, 10, 10, 100, 500], 400, ruled)
+	assert_eq(board.ids, ["a", "b", "c"], "only declines and all their copies are excluded")
+	assert_eq(board.nodes, ["a", "b", "c"], "response targets stay aligned")
+	assert_eq(board.scores, [7.0, 20.0, 9.0], "scores stay aligned")
+	assert_eq(board.prices, [10, 100, 500], "prices stay aligned")
+	assert_eq(board.affordable, [0, 1], "affordable indices address filtered options")
+	for i in board.options.size():
+		assert_eq(board.options[i].index, i, "response index is contiguous")
+		assert_eq(board.options[i].id, board.nodes[i], "option index selects its node")
+	assert_eq(_ask_board(board, ["old", "a"], 400, ruled), "ask", "big purchase uses B's price after filtering")
+	board = _board([40.0, 10.0, 9.5], ["old", "b", "c"], [30, 20, 20], 45, ruled)
+	assert_eq(_ask_board(board, ["old"], 45, ruled), "ask", "declined best does not hide the remaining tie")
+	board = _board([40.0, 5.0], ["old", "new"], [10, 10], 50, ruled)
+	assert_eq(_ask_board(board, ["new"], 50, ruled), "", "declined score cannot make a dead board eligible")
+
+
+func test_shop_rules_can_leave_a_later_pass_to_ask_on_the_same_board():
+	var ruled = {"a": {"verdict": "approve"}}
+	var board = _board([40.0, 10.0, 9.5], ["a", "b", "c"], [30, 20, 20], 65, ruled)
+	assert_eq(_ask_board(board, [], 65, ruled), "", "rules get A first without consuming an ask")
+	board = _board([10.0, 9.5], ["b", "c"], [20, 20], 35, ruled)
+	assert_eq(_ask_board(board, [], 35, ruled), "ask", "after A is bought the remaining affordable tie can ask")
 
 
 func test_shop_fresh_turn_and_unchanged_levelups():

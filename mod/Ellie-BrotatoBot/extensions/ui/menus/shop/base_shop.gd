@@ -445,7 +445,19 @@ func _auto_shop_player(pi) -> void:
 	var tried = {}   # ShopItem instance_id -> true, so a failed buy is not retried
 	var rt = BotRuntime.instance()
 	var turn_wave = RunData.current_wave   # still the crate queue's wave until GO
+	# Live player-map reference: do not reset the turn store mid-visit.
 	var ruled = rt.turn_rulings.for_player(turn_wave, pi)
+	# A crate decline also releases locks carried from an earlier shop.
+	for node in _get_shop_items_container(pi)._shop_items:
+		if node == null or not node.active or not node.locked:
+			continue
+		if ruled.get(node.item_data.my_id, {}).get("verdict", "") != "decline":
+			continue
+		node.change_lock_status(false)
+		if node.item_data.my_id == saved_id:
+			save_floor = gold_floor
+			saved_id = ""
+			saved_note = ""
 	# Proactive bans: spend the run's ban tokens to permanently remove items this
 	# character never wants (e.g. medical guns on a glass cannon) -- they leave BOTH
 	# this shop and all future ones (added to banned_items). Done once up front so the
@@ -501,7 +513,7 @@ func _auto_shop_player(pi) -> void:
 					target = null
 				var target_score = ask.scores[oi] if target != null else null
 				var applied = "rule"
-				if act == "buy" and target != null and not ruled.has(target.item_data.my_id) and int(target.value) <= gold:
+				if act == "buy" and target != null and int(target.value) <= gold:
 					tried[target.get_instance_id()] = true
 					if target.locked:
 						target.change_lock_status(false)
@@ -517,7 +529,7 @@ func _auto_shop_player(pi) -> void:
 						_record_shop(pi, "buy", t_id, t_price, target_score, "haiku")
 						rt.turn_rulings.remember(turn_wave, pi, t_id, "approve", str(rt.last_decision.get("id", "")), "shop")
 						applied = "buy"
-				elif act == "pass" and target != null and not ruled.has(target.item_data.my_id):
+				elif act == "pass" and target != null:
 					rt.turn_rulings.remember(turn_wave, pi, target.item_data.my_id, "decline", str(rt.last_decision.get("id", "")), "shop")
 					for node in nodes:
 						if node != null and node.active and node.item_data.my_id == target.item_data.my_id and node.locked:
@@ -528,7 +540,7 @@ func _auto_shop_player(pi) -> void:
 						saved_note = ""
 					_record_shop(pi, "pass", target.item_data.my_id, int(target.value), target_score, "haiku")
 					applied = "pass"
-				elif act == "lock" and target != null and not ruled.has(target.item_data.my_id):
+				elif act == "lock" and target != null:
 					if not target.locked:
 						target.change_lock_status(true)
 					if target.locked:   # change_lock_status can no-op when locking is disabled
@@ -672,37 +684,29 @@ func _auto_shop_player(pi) -> void:
 		_on_GoButton_pressed(pi)
 		_record_shop(pi, "go", null, null, null, "rule")
 
-# The scored offering for a sidecar decision. Only active, un-ruled ids are options;
+# The scored offering for a sidecar decision. Only active, non-declined ids are options;
+# approved ids remain visible with their scores. shop_options filters declines once.
 # option i (options[i].index == i, the response's option_index) is nodes[i]:
 #   options     [{index, id, kind: "weapon"|"item", price, score}]
 #   nodes       the ShopItem node behind each option
 #   scores      each option's ShopAdvisor.score_shop_entry
 #   prices      each option's price
 #   affordable  indices of the options whose price is <= gold
-#   ids         every offered item id (matched against the plan's ask_on)
+#   ids         every active, non-declined item id (matched against ask_on)
 func _decision_options(nodes, gold, plan, pi, ruled) -> Dictionary:
-	var out = {"options": [], "nodes": [], "scores": [], "affordable": [], "ids": [], "prices": []}
+	var entries = []
 	for node in nodes:
 		if node == null or not is_instance_valid(node) or not node.active:
 			continue
-		if ruled.has(node.item_data.my_id):
-			continue
-		var i = out.options.size()
 		var sc = float(ShopAdvisor.score_shop_entry([node.item_data, node.wave_value], plan, pi))
-		out.options.append({
-			"index": i,
+		entries.append({
+			"node": node,
 			"id": node.item_data.my_id,
 			"kind": "weapon" if node.item_data is WeaponData else "item",
 			"price": int(node.value),
 			"score": sc,
 		})
-		out.nodes.append(node)
-		out.scores.append(sc)
-		out.ids.append(node.item_data.my_id)
-		out.prices.append(int(node.value))
-		if int(node.value) <= gold:
-			out.affordable.append(i)
-	return out
+	return DecisionClient.shop_options(entries, gold, ruled)
 
 # One shop event per bot action (RunRecorder.shop_event): action "buy" |
 # "reroll" | "lock" | "ban" | "go", source "rule" | "haiku", gold_after read

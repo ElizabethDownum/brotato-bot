@@ -85,9 +85,16 @@ func test_turn_crate_verdicts_suppress_shop_asks_but_allow_new_triggers():
 		store.reset(5)
 		store.remember(5, 0, "old", verdict, "run-001", "crate")
 		var ruled = store.for_player(5, 0)
-		assert_eq(DecisionClient.should_ask([20.0], [0], cfg,
-			["old"], ["old"], 6.0, 400, [100], 0, ruled), "", "crate verdict suppresses pivot and big purchase")
-		assert_eq(DecisionClient.should_ask([20.0, 10.0, 9.0], [0, 1, 2], cfg,
-			["old", "a", "b"], ["old"], 6.0, 50, [10, 10, 10], 0, ruled), "ask", "new tie still asks")
+		var entries = [
+			{"node": "old", "id": "old", "kind": "item", "score": 20.0, "price": 100},
+			{"node": "a", "id": "a", "kind": "item", "score": 10.0, "price": 20},
+			{"node": "b", "id": "b", "kind": "item", "score": 9.0, "price": 20}]
+		var board = DecisionClient.shop_options(entries, 400, ruled)
+		assert_eq(DecisionClient.should_ask(board.scores, board.affordable, cfg,
+			board.ids, ["old"], 6.0, 400, board.prices, 0, ruled),
+			"" if verdict == "approve" else "ask", "approved best buys first; declined best leaves the new tie")
+		board = DecisionClient.shop_options(entries, 50, ruled)
+		assert_eq(DecisionClient.should_ask(board.scores, board.affordable, cfg,
+			board.ids, ["old"], 6.0, 50, board.prices, 0, ruled), "ask", "tie asks when old is unaffordable or declined")
 		assert_eq(DecisionClient.should_ask([20.0], [0], cfg,
 			["old"], ["old"], 6.0, 50, [10], 0, store.for_player(5, 1)), "pivot", "other player can ask")

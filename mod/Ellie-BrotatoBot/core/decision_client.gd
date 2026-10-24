@@ -89,6 +89,25 @@ func discard_response(id: String) -> void:
 		d.remove(path)
 
 
+# Build parallel shop arrays once, excluding only declined ids. Entries contain
+# a scored option plus its node; nodes are opaque here so this stays headless-testable.
+static func shop_options(entries: Array, gold: int, ruled: Dictionary) -> Dictionary:
+	var out = {"options": [], "nodes": [], "scores": [], "affordable": [], "ids": [], "prices": []}
+	for entry in entries:
+		if ruled.get(entry.id, {}).get("verdict", "") == "decline":
+			continue
+		var i = out.options.size()
+		out.options.append({"index": i, "id": entry.id, "kind": entry.kind,
+			"price": entry.price, "score": entry.score})
+		out.nodes.append(entry.node)
+		out.scores.append(entry.score)
+		out.ids.append(entry.id)
+		out.prices.append(entry.price)
+		if int(entry.price) <= gold:
+			out.affordable.append(i)
+	return out
+
+
 # Whether to ask the sidecar, and why. scores: one number per option, parallel to
 # offered_ids. affordable: indices into scores the player can pay for (all of
 # them for level-ups). Missing cfg keys use the defaults.
@@ -102,13 +121,15 @@ func discard_response(id: String) -> void:
 #   ""       asked_this_visit has reached ask_per_visit
 #   ""       a dead board: no affordable option scores at or above min_buy
 #            (even with an ask_on id offered: an unaffordable goal never asks)
+#   ""       the best affordable option is approved; let the rules buy it first
 #   "pivot"  an un-ruled offered id is in ask_on
 #   "ask"    a tie: best >= ask_floor and best - second < ask_tie_margin
 #   "ask"    a big purchase: gold >= ask_gold_floor and the best affordable
 #            option costs at least ask_big_share of gold (it cannot be an ask_on
 #            id: any ask_on id on the board already pivoted)
 #   ""       let the rules decide
-# Shop rulings come from the shared turn store; ruled ids cannot trigger any ask.
+# Shop inputs come from shop_options: declines are already excluded, approvals
+# remain visible with their scores but cannot pivot or ask ahead of a rule buy.
 static func should_ask(scores: Array, affordable: Array, cfg: Dictionary,
 		offered_ids: Array = [], ask_on: Array = [], min_buy = null, gold: int = 0,
 		prices: Array = [], asked_this_visit: int = 0, ruled: Dictionary = {}) -> String:
@@ -121,8 +142,6 @@ static func should_ask(scores: Array, affordable: Array, cfg: Dictionary,
 		var k = int(i)
 		if k < 0 or k >= scores.size():
 			continue
-		if shop and k < offered_ids.size() and ruled.has(offered_ids[k]):
-			continue
 		vals.append(float(scores[k]))
 		if best_i < 0 or float(scores[k]) > float(scores[best_i]):
 			best_i = k
@@ -130,6 +149,9 @@ static func should_ask(scores: Array, affordable: Array, cfg: Dictionary,
 	var floor_v = float(cfg.get("ask_floor", DEFAULT_FLOOR))
 	vals.sort()
 	if shop and (best_i < 0 or float(scores[best_i]) < float(min_buy)):
+		return ""
+	if shop and best_i < offered_ids.size() \
+			and ruled.get(offered_ids[best_i], {}).get("verdict", "") == "approve":
 		return ""
 	for id in offered_ids:
 		if shop and ruled.has(id):

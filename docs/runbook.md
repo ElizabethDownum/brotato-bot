@@ -267,9 +267,12 @@ leaves the same board), only while a sidecar heartbeat is fresh (section 4).
 BotRuntime keeps one ruling store per turn and player, shared by the end-of-wave
 crates and the full shop visit that follows. Entries are keyed by item id and keep
 `verdict`, `decision_id` and the originating `screen`: applied `buy`/`take` approve,
-and `pass`/`recycle` decline. Ruled ids are omitted from shop asks and all triggers
-below. Approved copies remain buyable under the rules' usual score/gold checks;
-declined ids are excluded from buying, saving and preferred-weapon hunting.
+and `pass`/`recycle` decline. Declined ids are omitted from shop asks and all triggers
+below. Approved ids stay visible with their scores but cannot trigger a pivot;
+when the best affordable option is approved, the rules buy first under their usual
+score/gold checks. A later pass can ask about the remaining board. Declined ids are
+excluded from buying, saving and preferred-weapon hunting, and their carried locks
+are released at shop entry.
 Locks retain their existing behavior and record no verdict. Rulings clear at
 run start and each wave start (including a repeated wave number), with automatic
 invalidation if the wave stamp changes. Crates and their following shop see the
@@ -279,10 +282,11 @@ same `RunData.current_wave`; GO updates it before loading the next wave.
 2. A dead board, where no affordable option scores at or above the plan's
    `min_buy`: no ask (the rules reroll or leave), even with an `ask_on` id on
    the board.
-3. An `ask_on` id is on the board: `pivot`.
-4. A genuine tie (best affordable `>= ask_floor`, and best minus second
+3. The best affordable option is approved: no ask; let the rules buy first.
+4. An unruled `ask_on` id is on the board: `pivot`.
+5. A genuine tie (best affordable `>= ask_floor`, and best minus second
    `< ask_tie_margin`): `ask`.
-5. A big purchase (gold `>= ask_gold_floor`, and the best affordable option's
+6. A big purchase (gold `>= ask_gold_floor`, and the best affordable option's
    price `>= ask_big_share` of the gold): `ask`.
 
 A level-up asks on a pivot, or on a tie or a best below `ask_floor`; every
