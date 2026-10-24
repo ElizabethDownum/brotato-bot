@@ -7,6 +7,7 @@ extends "res://ui/menus/ingame/upgrades_ui.gd"
 const ShopAdvisor = preload("res://mods-unpacked/Ellie-BrotatoBot/shopping/shop_advisor.gd")
 const BotRuntime = preload("res://mods-unpacked/Ellie-BrotatoBot/bot_runtime.gd")
 const Coop = preload("res://mods-unpacked/Ellie-BrotatoBot/extensions/ui/menus/run/coop_mouse_select.gd")
+const RunRecorder = preload("res://mods-unpacked/Ellie-BrotatoBot/core/run_recorder.gd")
 const DecisionClient = preload("res://mods-unpacked/Ellie-BrotatoBot/core/decision_client.gd")
 const PickWatchdog = preload("res://mods-unpacked/Ellie-BrotatoBot/core/pick_watchdog.gd")
 
@@ -310,9 +311,13 @@ func _auto_pick_loop() -> void:
 				# elemental Mage) does ~0 damage and would waste a weapon slot, so
 				# recycle it for gold instead.
 				var idata = container._item_data
-				if idata is WeaponData and ShopAdvisor.score_weapon(idata, _plan_for(pi), pi) < 0.0:
+				var crate_plan = _plan_for(pi)
+				var crate_score = ShopAdvisor.score_shop_entry([idata, 0], crate_plan, pi)
+				if idata is WeaponData and ShopAdvisor.score_weapon(idata, crate_plan, pi) < 0.0:
+					_record_crate(idata, "recycle", crate_score)
 					container._on_DiscardButton_pressed()
 				else:
+					_record_crate(idata, "take", crate_score)
 					container._on_TakeButton_pressed()
 				acted = true
 		if not acted:
@@ -345,6 +350,13 @@ func _levelup_options(ups, plan, pi) -> Dictionary:
 		out.affordable.append(i)
 		out.ids.append(u.my_id)
 	return out
+
+# One crate event per crate item taken or recycled (telemetry only).
+func _record_crate(idata, action, score) -> void:
+	var rt = BotRuntime.instance()
+	if rt == null or rt.recorder == null or not rt.recorder.is_open():
+		return
+	rt.recorder.event("crate", RunRecorder.crate_event(RunData.current_wave, idata.my_id, action, score))
 
 # One levelup event per bot pick: {wave, id (the decision's id, "" when not
 # asked), picked (upgrade id), alternatives (every option offered, with

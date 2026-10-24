@@ -447,6 +447,7 @@ func _auto_shop_player(pi) -> void:
 	# this shop and all future ones (added to banned_items). Done once up front so the
 	# buy loop and every later reroll are already clean.
 	_apply_bans(pi, plan)
+	var offer_view = 0   # the last board an offer event was recorded for (1 + rerolls)
 	var asks = 0   # sidecar decisions asked this visit (should_ask caps them at ask_per_visit)
 	var actions = 0
 	var abandoned = false
@@ -460,6 +461,9 @@ func _auto_shop_player(pi) -> void:
 		var gold = RunData.get_player_gold(pi)
 		var container = _get_shop_items_container(pi)
 		var nodes = container._shop_items
+		if rerolls + 1 != offer_view:
+			offer_view = rerolls + 1
+			_record_offer(offer_view, gold, nodes, plan, pi)
 		# Sidecar decision on any board of the visit (first view, after a reroll or a
 		# buy), up to ask_per_visit times, and only while a sidecar is alive (fresh
 		# sidecar.alive; otherwise no request, no pause, no decision events -- the
@@ -671,6 +675,20 @@ func _record_shop(pi, action, item_id, price, score, source) -> void:
 		return
 	rt.recorder.event("shop", RunRecorder.shop_event(RunData.current_wave, action, item_id,
 		price, score, source, RunData.get_player_gold(pi)))
+
+# One offer event per board the bot sees: the first view and the board after each
+# reroll (RunRecorder.offer_event). Score is the raw shop score (no locked bonus).
+func _record_offer(view, gold, nodes, plan, pi) -> void:
+	var rt = BotRuntime.instance()
+	if rt == null or rt.recorder == null or not rt.recorder.is_open():
+		return
+	var items = []
+	for node in nodes:
+		if node == null or not is_instance_valid(node) or not node.active:
+			continue
+		items.append(RunRecorder.offer_item(node.item_data.my_id, node.item_data.tier, node.value,
+			ShopAdvisor.score_shop_entry([node.item_data, node.wave_value], plan, pi), node.locked))
+	rt.recorder.event("offer", RunRecorder.offer_event(RunData.current_wave, view, gold, items))
 
 # Follow-up to BotRuntime's decision event: what the shop actually did.
 # {id, action (the response's, or null), option_index (or null), applied:

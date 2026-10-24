@@ -8,6 +8,7 @@ const BotPaths = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_paths.gd
 const PlanFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/plan_file.gd")
 const Guards = preload("res://mods-unpacked/Ellie-BrotatoBot/core/guards.gd")
 const Checkpoint = preload("res://mods-unpacked/Ellie-BrotatoBot/core/checkpoint.gd")
+const StateExport = preload("res://mods-unpacked/Ellie-BrotatoBot/core/state_export.gd")
 
 const MOD_ID = "Ellie-BrotatoBot"
 
@@ -146,6 +147,7 @@ func _bot_on_end_of_the_wave():
 			"gold": RunData.get_player_gold(0),
 			"damage_taken": ai_telemetry.damage_taken_this_wave(),
 			"kills": _bot_kills_this_wave,
+			"stats": StateExport.stats(RunData, get_tree().root, 0),
 		})
 	_bot_checkpoint()
 
@@ -214,6 +216,7 @@ func _bot_end_run(outcome):
 	var rec = _bot_recorder()
 	if rec == null:
 		return
+	ai_telemetry.record_build()
 	var p = _bot_player0()
 	rec.end_run({
 		"outcome": outcome,

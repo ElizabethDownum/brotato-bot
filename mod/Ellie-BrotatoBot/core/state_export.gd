@@ -244,7 +244,7 @@ static func collect(player_index):
 	parts["character_id"] = character_id
 	parts["plan_id"] = effective_plan_id(loaded, character_id)
 	parts["gold"] = rd.get_player_gold(p)
-	parts["stats"] = _stats(rd, root, p)
+	parts["stats"] = stats(rd, root, p)
 	parts["weapons"] = _weapons(rd.get_player_weapons(p))
 	parts["items"] = _items(rd.get_player_items(p))
 
@@ -264,7 +264,7 @@ static func collect(player_index):
 
 # stat_* entries of RunData.get_player_effects(p) (keys are Keys hashes), valued
 # with RunData.get_stat (effect times its gain_ modifier, as ShopAdvisor reads).
-static func _stats(rd, root, p):
+static func stats(rd, root, p):
 	var out = {}
 	var keys = root.get_node_or_null("Keys")
 	if keys == null:

@@ -8,12 +8,15 @@ extends Node
 #   damage       every unblocked hit on player 0 (was HIT, with PHIT / PCHOICE /
 #                PHIST folded in as the hit / choice / hist keys)
 #   death        from main.gd's _on_player_died via record_death() (was DEATH)
+#   build        from main.gd's run end via record_build(), win or death
 #   dash         boss dash state transitions, every frame (was DASH)
 #   bullet_hell  the wave's bullet-hell variant, once per wave (was BULLETHELL)
 #
 # main.gd writes wave_end itself and reads damage_taken_this_wave() for it.
 # Keys beyond the harness's named ones are kept on purpose: they are the tuning
 # fields the BOTLOG lines carried.
+
+const RunRecorder = preload("res://mods-unpacked/Ellie-BrotatoBot/core/run_recorder.gd")
 
 const INTERVAL = 1.0
 
@@ -282,6 +285,14 @@ func _tick():
 			"anc": anc, "us": us, "hop": hop, "stand": stand,
 			"ticks": hs[5], "breaks": hs[6]}
 
+	# Materials: main._active_golds holds the pickups on the floor (decompiled main.gd:29,
+	# pushed at 772, erased on pick-up at 832); RunData.bonus_gold is the bag.
+	var gold_positions = []
+	for g in main._active_golds:
+		if is_instance_valid(g) and not g.already_picked_up:
+			gold_positions.append(g.position)
+	snap.mats = RunRecorder.mats(gold_positions, player.position, RunData.bonus_gold)
+
 	rec.snapshot(snap)
 	var rt = get_node_or_null("/root/BotRuntime")
 	if rt != null:
@@ -305,20 +316,32 @@ func record_death(player, killer):
 	if killer == "":
 		killer = _last_damage_src
 	_last_killer = killer
+	var build = _build()
+	rec.event("death", {
+		"wave": RunData.current_wave,
+		"position": _pos(player.position),
+		"killer": killer,
+		"last_threats": ids,
+		"build": build,
+		"dmg_w": int(_damage_taken_this_wave),
+	})
+
+
+# The "build" event main.gd writes at run end for both outcomes.
+func record_build():
+	var rec = _recorder()
+	if rec != null:
+		rec.event("build", _build())
+
+
+func _build() -> Dictionary:
 	var weapons = []
 	for w in RunData.get_player_weapons(0):
 		weapons.push_back(w.my_id)
 	var items = []
 	for it in RunData.get_player_items(0):
 		items.push_back(it.my_id)
-	rec.event("death", {
-		"wave": RunData.current_wave,
-		"position": _pos(player.position),
-		"killer": killer,
-		"last_threats": ids,
-		"build": {"weapons": weapons, "items": items},
-		"dmg_w": int(_damage_taken_this_wave),
-	})
+	return RunRecorder.build_event(weapons, items)
 
 
 # The killer written into the last death event ("" before any death), for

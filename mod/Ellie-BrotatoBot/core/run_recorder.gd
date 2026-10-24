@@ -118,6 +118,39 @@ static func shop_event(wave, action, item_id, price, score, source, gold_after) 
 	}
 
 
+# One offer event (the board the shop showed): view is 1-based per visit (a reroll
+# starts the next view); items are offer_item() entries.
+static func offer_event(wave, view, gold, items) -> Dictionary:
+	return {"wave": int(wave), "view": int(view), "gold": int(gold), "items": items}
+
+
+static func offer_item(id, tier, price, score, locked) -> Dictionary:
+	return {"id": str(id), "tier": int(tier), "price": int(price), "score": float(score),
+		"locked": bool(locked)}
+
+
+# A crate item the level-up screen took or recycled (action "take" | "recycle").
+static func crate_event(wave, item_id, action, score) -> Dictionary:
+	return {"wave": int(wave), "item_id": str(item_id), "action": str(action), "score": float(score)}
+
+
+# The run's final build: weapon and item ids.
+static func build_event(weapons, items) -> Dictionary:
+	return {"weapons": weapons, "items": items}
+
+
+# The snapshot's mats block: floor = material pickups on the floor (positions),
+# bag = RunData.bonus_gold, nearest = distance from origin to the nearest one
+# (-1 when none).
+static func mats(positions: Array, origin: Vector2, bag) -> Dictionary:
+	var nearest = -1
+	for p in positions:
+		var d = int(origin.distance_to(p))
+		if nearest < 0 or d < nearest:
+			nearest = d
+	return {"floor": positions.size(), "bag": int(bag), "nearest": nearest}
+
+
 # The launch event (spec: the launcher consumed launch.json): which launch the
 # run came from, so the harness can tie the run to the plan's token.
 static func launch_event(launch) -> Dictionary:

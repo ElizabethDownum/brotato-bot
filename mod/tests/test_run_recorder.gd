@@ -175,3 +175,40 @@ func test_launch_event_carries_the_four_launch_fields():
 	assert_eq(e.character_id, "character_old", "character_id")
 	assert_eq(e.starting_weapon, "any", "starting_weapon")
 	assert_eq(e.danger, 4, "danger an int")
+
+
+func test_offer_event_and_item_types():
+	var item = RunRecorder.offer_item("item_anvil", 2.0, 40.0, 7, true)
+	assert_eq(item.id, "item_anvil", "id")
+	assert_eq(item.tier, 2, "tier is an int")
+	assert_eq(item.price, 40, "price is an int")
+	assert_eq(item.score, 7.0, "score is a float")
+	assert_true(item.locked, "locked")
+	var e = RunRecorder.offer_event(3.0, 2, 120.0, [item])
+	assert_eq(e.wave, 3, "wave")
+	assert_eq(e.view, 2, "view")
+	assert_eq(e.gold, 120, "gold")
+	assert_eq(e.items.size(), 1, "items")
+	assert_eq(e.keys().size(), 4, "wave, view, gold, items")
+
+
+func test_crate_and_build_events():
+	var c = RunRecorder.crate_event(5, "item_bag", "recycle", 3)
+	assert_eq(c.wave, 5, "wave")
+	assert_eq(c.item_id, "item_bag", "item_id")
+	assert_eq(c.action, "recycle", "action")
+	assert_eq(c.score, 3.0, "score is a float")
+	var b = RunRecorder.build_event(["weapon_rock_1"], ["item_bag"])
+	assert_eq(b.weapons, ["weapon_rock_1"], "weapons")
+	assert_eq(b.items, ["item_bag"], "items")
+
+
+func test_mats_counts_floor_and_finds_nearest():
+	var m = RunRecorder.mats([Vector2(100, 0), Vector2(30, 40), Vector2(-300, 0)], Vector2(0, 0), 12)
+	assert_eq(m.floor, 3, "floor")
+	assert_eq(m.bag, 12, "bag")
+	assert_eq(m.nearest, 50, "nearest is the 3-4-5 pickup")
+	var none = RunRecorder.mats([], Vector2(5, 5), 0)
+	assert_eq(none.floor, 0, "no pickups")
+	assert_eq(none.nearest, -1, "nearest -1 when none")
+
