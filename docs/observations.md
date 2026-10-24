@@ -824,3 +824,19 @@ Ellie, watching runs, during run 8 (proposal 9):
   `item_bonus` for hard exclusions until the mod enforces `ban_items` itself. Real fix (mod, one
   review): score the combination, never buy an HP-reset item while a drain item is held or
   the reverse, with a hard veto rather than a weight.
+
+## 2026-10-24 owner rulings: review, not bans, for items the scorer cannot value
+
+- Items like Weird Ghost and Blood Donation are not to be hard-banned; they need review. A
+  plan routes them to Haiku through `ask_on` in the shop.
+- Shop: add a `pass` action ("pass on item, not whole shop"): decline one option for the
+  rest of the visit and keep shopping; `skip` still ends the visit.
+- Crates: ask when the item has a description effect (a non-empty `text_key`), not only a
+  stat block; 156 of 247 items have one.
+- Whether such an item is right depends on the run's goal and the held items and weapons,
+  so no fixed rule: the decision must carry that context.
+- Owner: the review is only as good as the context Haiku gets. Measured in
+  `sidecar/prompt.py`: the offered options get full dataset records and the objective gets
+  the goal data, but held items render as bare ids and held weapons as id/type/sets, so an
+  ask in run 8 would have shown `item_blood_donation x1` with no hint of its HP drain. The
+  crate-ask task adds held-item effects to every screen's State section, capped and measured.
