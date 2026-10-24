@@ -437,7 +437,7 @@ The harness side of the owner's rulings above is in. The mod side (consuming
   only): set goal bonus at 6 weapons descending, then a type match with the row's
   `weapon_type`, then the row's weights on the weapon's scaling stats. On chal_slow
   the ranking puts Old first (need 10) with Rock first (Blunt, -10 speed at 6
-  weapons); Well Rounded is second to last (need 25).
+  weapons); Well Rounded ranks near the bottom (need 25).
 - **Proposal `- starting_weapon:`.** A fourth `## Next run` bullet: a dataset weapon id
   in the character's pool and unlocked, or `any`. A proposal without it stays valid
   and means `any` (`validate` returns errors only, so there is no warning line).
