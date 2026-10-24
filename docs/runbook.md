@@ -466,7 +466,7 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    | `shop` | `wave`, `action` (`buy`, `reroll`, `lock`, `ban`, `go`), `item_id`, `price`, `score`, `source` (`rule`, `haiku`), `gold_after` | every bot shop action. `item_id` is null for `reroll` and `go`; `price` is the reroll's cost (0 when free) and null for `go`; `score` is null for `reroll`, `ban` and `go` |
    | `levelup` | `wave`, `id` (the decision's id, `""` when not asked), `picked`, `alternatives`, `source` (`haiku`, `rule`, `timeout`) | every bot level-up pick that landed |
    | `challenge` | `id`, `is_target` | a challenge completes for the first time on this profile |
-   | `checkpoint` | `id`, `action`, `applied`, `reason` | the target checkpoint |
+   | `checkpoint` | `wave`, `id`, `action`, `applied`, `reason` | the target checkpoint; wave at write time, even before its delayed `wave_end` |
    | `complete` | `outcome` (`win`, `death`), `wave`, `extra` (`killer` on death) | the run ends while the bot plays |
    | `end` | `outcome` (`won`, `death`, `abandoned`, `quit`), `wave`, `hp`, `gold` | always the last line (`abandoned`: the main menu, or a new run started over an open file) |
 

@@ -153,6 +153,23 @@ func test_shop_event_shape():
 	assert_eq(s.score, 28.0, "score float")
 
 
+func test_checkpoint_event_carries_wave_for_every_outcome():
+	for result in [
+		{"id": "", "action": null, "applied": "skip", "reason": "asking_disabled"},
+		{"id": "", "action": null, "applied": "skip", "reason": "no_sidecar"},
+		{"id": "cp-10", "action": "revise_plan", "applied": "revise_plan", "reason": ""},
+		{"id": "cp-10", "action": null, "applied": "timeout", "reason": "timeout"},
+	]:
+		var e = RunRecorder.checkpoint_event(10, result)
+		assert_eq(e.wave, 10, "current wave independent of delayed wave_end")
+		assert_eq(e.keys().size(), 5, "wave plus four checkpoint fields")
+		for key in result:
+			assert_eq(e[key], result[key], "preserves " + key)
+		assert_false(result.has("wave"), "input unchanged")
+	var replaced = RunRecorder.checkpoint_event(10, {"wave": 9})
+	assert_eq(replaced.wave, 10, "write-time wave overrides stale data")
+
+
 func test_continues_only_the_same_profile_and_character():
 	var root = _make_root()
 	var rec = RunRecorder.new(root)

@@ -210,9 +210,10 @@ def summarize(events: list[dict], plan: dict | None = None) -> RunSummary:
                 )
             )
         elif kind == "checkpoint":
+            wave = _int(e.get("wave"))
             checkpoints.append(
                 CheckpointRow(
-                    wave=last_wave,
+                    wave=wave if wave is not None else last_wave,
                     id=_str(e.get("id")) or "",
                     action=_str(e.get("action")),
                     applied=_str(e.get("applied")) or "?",

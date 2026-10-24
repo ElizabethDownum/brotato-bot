@@ -44,6 +44,7 @@ const DecisionClient = preload("res://mods-unpacked/Ellie-BrotatoBot/core/decisi
 const BotPaths = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_paths.gd")
 const PlanFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/plan_file.gd")
 const Checkpoint = preload("res://mods-unpacked/Ellie-BrotatoBot/core/checkpoint.gd")
+const RunRecorder = preload("res://mods-unpacked/Ellie-BrotatoBot/core/run_recorder.gd")
 const Overlay = preload("res://mods-unpacked/Ellie-BrotatoBot/core/overlay.gd")
 const HumanPause = preload("res://mods-unpacked/Ellie-BrotatoBot/core/human_pause.gd")
 const AskPolicy = preload("res://mods-unpacked/Ellie-BrotatoBot/core/ask_policy.gd")
@@ -157,7 +158,7 @@ func _on_challenge_completed(chal):
 #     applied with apply_plan_patch for player 0's character (a failed save is
 #     skip / "patch_not_applied"); interrupted, invalid, busy and halted are
 #     skips with that reason; no answer is "timeout".
-# Records checkpoint {id, action, applied, reason} (reason "" when none).
+# Records checkpoint {wave, id, action, applied, reason} (reason "" when none).
 func checkpoint():
 	checkpoint_done = true
 	if not ask_policy.allowed():
@@ -179,7 +180,7 @@ func checkpoint():
 
 func _record_checkpoint(data):
 	if recorder != null and recorder.is_open():
-		recorder.event("checkpoint", data)
+		recorder.event("checkpoint", RunRecorder.checkpoint_event(RunData.current_wave, data))
 
 
 # Applies a revise_plan response's plan_patch to plan.json for character_id

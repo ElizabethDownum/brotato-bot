@@ -188,6 +188,46 @@ def test_older_recording_without_wave_fields():
     assert "warning: pause_on_focus_lost is true" in s.notes
 
 
+def test_checkpoint_uses_own_wave_before_delayed_wave_end():
+    s = collect.summarize(
+        [
+            {"kind": "wave_end", "wave": 9},
+            {
+                "kind": "decision",
+                "request_kind": "checkpoint",
+                "wave": 10,
+                "id": "cp-10",
+                "source": "haiku",
+                "response": {"action": "skip"},
+            },
+            {
+                "kind": "checkpoint",
+                "wave": 10,
+                "id": "cp-10",
+                "action": "skip",
+                "applied": "skip",
+                "reason": "no_patch",
+            },
+            {"kind": "wave_end", "wave": 10},
+        ]
+    )
+    assert s.checkpoints[0].wave == 10
+    assert s.decisions[0].wave == 10
+    assert "| 10 | cp-10 | skip | skip | no_patch |" in render.run_report(s)
+
+
+def test_checkpoint_without_wave_uses_last_wave():
+    s = collect.summarize(
+        [
+            {"kind": "checkpoint", "applied": "skip"},
+            {"kind": "wave_end", "wave": 9},
+            {"kind": "checkpoint", "applied": "skip", "reason": "no_sidecar"},
+        ]
+    )
+    assert [c.wave for c in s.checkpoints] == [None, 9]
+    assert "| 9 | - | - | skip | no_sidecar |" in render.run_report(s)
+
+
 def test_end_outcome_mapping():
     header = {"kind": "header", "run_id": "r", "character_id": "c", "danger": 1, "plan_id": "p"}
     for end, want in [

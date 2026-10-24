@@ -122,6 +122,13 @@ static func shop_event(wave, action, item_id, price, score, source, gold_after) 
 	}
 
 
+# A checkpoint may precede its delayed wave_end: carry the wave at write time.
+static func checkpoint_event(wave, data: Dictionary) -> Dictionary:
+	var out = data.duplicate(true)
+	out["wave"] = int(wave)
+	return out
+
+
 # One offer event (the board the shop showed): view is 1-based per visit (a reroll
 # starts the next view); items are offer_item() entries.
 static func offer_event(wave, view, gold, items) -> Dictionary:
