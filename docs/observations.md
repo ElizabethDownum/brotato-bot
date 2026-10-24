@@ -548,6 +548,34 @@ the headless tests cover the pure logic and the scene extensions are read-checke
   mats, wave_end stats were read by hand); the run-4 report's Outcome line does not
   mention the fired target.
 
+## 2026-10-24 implemented: per-weapon set values and report rendering
+
+- `collect` now renders target firing in Outcome, speed from `wave_end.stats`, launch,
+  offers with goal-item stars and purchases matched to the active board, crates, counted
+  builds on either outcome, and a materials table. The materials run total uses the
+  snapshot-weighted floor mean, maximum floor count and sum of each wave's last bag;
+  the death wave's last snapshot is included. Old recordings retain their sections.
+  Goal markers use a matching installed plan or saved proposal. `target_fired` was
+  already present in the index builder and is retained.
+- Read-only run-4 smoke: 77 offer rows, 39 matched buys, 7 crates, 18 material waves,
+  and Metal Plate x3. Timing correction to the preceding run-4 entry: the `chal_slow`
+  event at JSONL line 539 has no wave field, follows `wave_end` 9 (line 517), and
+  occurs immediately before the wave-9 Warrior Helmet buy log (line 540).
+  The report follows the requested latest-preceding-wave-end rule and says wave 9;
+  wave 10 is the first wave-end stats snapshot showing -21, not the firing event.
+- New harness contract: `prefer_sets[set_id]` is the score value of one additional
+  weapon of that set, added as is by the mod. Shaping keeps the 25%-of-remaining-need
+  selection threshold and caps each value at 30. `SET_WEAPON_FACTOR = 3`:
+  Old's Blunt = 10 / 6 / tier-1 speed unit 3 * shaped weight 12 * 3 = 20 points.
+  A base-22 Blunt weapon scores 42, above a non-set weapon's 22 and below a 100-point
+  combine. This is comparable to mid goal items in the unchanged run-4 plan:
+  Reinforced Steel scores 32.5 (26.5 above min_buy 6), Barricade 33.5 (27.5 above).
+  The score tool only scores items and does not read `prefer_sets`, so it is unchanged.
+- Harness verification: 627 tests pass with SyntaxWarning treated as error; Ruff lint
+  and format checks pass. New fixture covers all new telemetry. No game or Godot run.
+  The mod still needs its separate removal of the division by 6 before this contract
+  takes effect in play. The completed proposal and run artifacts were left unchanged.
+
 ## 2026-10-23 owner ruling: the bar is "goal achieved"
 
 - A run is judged on whether its target fired, not on surviving to wave 20, unless

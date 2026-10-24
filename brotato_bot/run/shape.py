@@ -38,8 +38,13 @@ Shaping may prefer a weapon set (the owner's rulings, 2026-10-23, replacing the 
 full bonus (at 6 weapons) moves the goal stat by at least ``PREFER_SET_SHARE`` of the
 character's ``need`` (what items and level-ups must still supply after the character's flat
 start, ``character_goal_fit``), the plan gains ``prefer_sets: {set_id: bonus}``, the bonus
-being the set's contribution in goal units times ``ITEM_BONUS_PER_POINT`` (capped at
-``ITEM_BONUS_CAP``), and ``weapon_type`` becomes ``any`` so the set's weapons are not typed
+being score points for one additional weapon, added as is by the mod (capped at 30).
+Per-weapon units = full goal-stat bonus / 6 / score.UNITS[stat]; multiply by the
+absolute shaped goal weight and SET_WEAPON_FACTOR (3). Old's Blunt: 10 / 6 / 3
+* 12 * 3 = 20 points, so a weapon scores 22 + 20 = 42, below a 100-point combine.
+That competes like a mid goal item: Reinforced Steel scores 32.5 (26.5 above
+min_buy 6), Barricade 33.5 (27.5 above) in Old's run-4 plan.
+``weapon_type`` becomes ``any`` so the set's weapons are not typed
 out. ``weapon_set``, the hard all-or-nothing gate, is never set by shaping. ``prefer_sets`` is
 a soft score term for the mod. The goal data, meaning every item and every weapon-set bonus
 that moves the goal stat, is also surfaced: ``goal_data`` collects it and ``brief_lines``
@@ -61,6 +66,7 @@ DOMINANT_MARGIN = 4.0
 MIN_BUY_UNDER_GOAL = 6.0  # calibrated 2026-10-23 with `brotato_bot score`; see docs/observations.md
 FULL_SET = 6  # weapon slots: the set bonus at six weapons is the most a build can hold
 PREFER_SET_SHARE = 0.25  # a set must cover this share of the character's need to be preferred
+SET_WEAPON_FACTOR = 3.0
 MIN_STATS = 4  # weights besides the goal stat a plan's ``stats`` must carry
 _DIFFICULTY = re.compile(r"chal_difficulty_(\d+)")
 _FENCED_JSON = re.compile(r"```json[ \t]*\n(.*?)```", re.DOTALL)
@@ -123,8 +129,12 @@ def full_set_bonus(by_count: dict[int, float], sign: int) -> float:
     return by_count[max(counts)] * sign if counts else 0.0
 
 
-def preferred_sets(goal: Goal, dataset: dict, character: dict | None) -> dict[str, float]:
-    """``{set_id: bonus}`` for sets worth at least ``PREFER_SET_SHARE`` of the character's need."""
+def preferred_sets(
+    goal: Goal, dataset: dict, character: dict | None, goal_weight: float
+) -> dict[str, float]:
+    """Per-weapon score values for sets covering at least a quarter of the need."""
+    from brotato_bot.run.score import UNITS  # score imports shape
+
     fit = character_goal_fit(character, goal)
     if fit["veto"]:
         return {}
@@ -133,7 +143,10 @@ def preferred_sets(goal: Goal, dataset: dict, character: dict | None) -> dict[st
     for s in goal_data(goal, dataset)["sets"]:
         bonus = full_set_bonus(s["by_count"], goal.sign)
         if need > 0 and bonus >= PREFER_SET_SHARE * need:
-            out[s["id"]] = min(ITEM_BONUS_CAP, round(ITEM_BONUS_PER_POINT * bonus, 1))
+            units = bonus / FULL_SET / UNITS.get(goal.stat, 1.0)
+            out[s["id"]] = min(
+                ITEM_BONUS_CAP, round(units * abs(goal_weight) * SET_WEAPON_FACTOR, 1)
+            )
     return out
 
 
@@ -181,7 +194,7 @@ def shape_plan(plan: dict, goal: Goal, items: list[dict], dataset: dict | None =
             (c for c in dataset.get("characters") or [] if c.get("id") == out.get("character_id")),
             None,
         )
-        prefer = preferred_sets(goal, dataset, character)
+        prefer = preferred_sets(goal, dataset, character, stats[goal.stat])
         if prefer:
             body["prefer_sets"] = prefer
             body["weapon_type"] = "any"
@@ -257,7 +270,7 @@ def goal_errors(plan: dict | None, run: dict, unlock_state: dict) -> list[str]:
             for v in prefer.values()
         ):
             errors.append(
-                f"## Plan: prefer_sets must map set ids to bonuses above 0 and at most "
+                f"## Plan: prefer_sets must map set ids to per-weapon score values above 0 and at most "
                 f"{ITEM_BONUS_CAP:g}"
             )
         stats = plan.get("plan", {}).get("stats", {})

@@ -513,12 +513,12 @@ def test_shape_prefers_a_set_that_covers_a_quarter_of_the_need():
     goal = shape.goal_for("chal_slow", SLOW)
     shaped = shape.shape_plan(_plan(), goal, ITEMS, _blunt_dataset())
     body = shaped["plan"]
-    assert body["prefer_sets"] == {"set_blunt": 15.0}  # 10 goal units * 1.5 per unit
+    assert body["prefer_sets"] == {"set_blunt": 23.3}  # 10 / 6 / 3 * 14 * 3
     assert body["weapon_type"] == "any"
     assert body["weapon_set"] == ""  # the hard gate stays unset
     # exactly at the threshold: need 20, 25% is 5
     at = shape.shape_plan(_plan(), goal, ITEMS, _blunt_dataset(six=-5.0))
-    assert at["plan"]["prefer_sets"] == {"set_blunt": 7.5}
+    assert at["plan"]["prefer_sets"] == {"set_blunt": 11.7}
 
 
 def test_shape_does_not_prefer_a_set_below_a_quarter_of_the_need():
@@ -549,6 +549,23 @@ def test_prefer_sets_bonus_is_capped():
     assert shaped["plan"]["prefer_sets"] == {"set_blunt": shape.ITEM_BONUS_CAP}
 
 
+def test_old_blunt_value_uses_tier_one_units_and_shaped_weight():
+    goal = shape.goal_for("chal_slow", SLOW)
+    old = {"id": CHARACTER, "flat_bonuses": [{"stat": "stat_speed", "value": -10}]}
+    plan = _plan()
+    plan["plan"]["stats"]["stat_harvesting"] = 8
+    shaped = shape.shape_plan(plan, goal, ITEMS, _blunt_dataset(character=old))
+    value = shaped["plan"]["prefer_sets"]["set_blunt"]
+    assert shaped["plan"]["stats"]["stat_speed"] == -12
+    assert value == 20  # 10 / 6 / UNITS[stat_speed] 3 * abs(-12) * factor 3
+    assert 22 < 22 + value < 100
+    # Halving the goal weight halves the value (before rounding).
+    from brotato_bot.run import score
+
+    assert score.UNITS["stat_speed"] == 3
+    assert shape.preferred_sets(goal, _blunt_dataset(), None, -7)["set_blunt"] == 11.7
+
+
 def test_chunky_cannot_prefer_sets_for_its_vetoed_speed_goal():
     goal = shape.goal_for("chal_slow", SLOW)
     chunky = {
@@ -556,7 +573,7 @@ def test_chunky_cannot_prefer_sets_for_its_vetoed_speed_goal():
         "gain_modifiers": [{"stat": "stat_speed", "pct": -100}],
     }
     dataset = _blunt_dataset(character=chunky)
-    assert shape.preferred_sets(goal, dataset, chunky) == {}
+    assert shape.preferred_sets(goal, dataset, chunky, -14) == {}
     plan = {**_plan(), "character_id": chunky["id"]}
     shaped = shape.shape_plan(plan, goal, ITEMS, dataset)
     assert "prefer_sets" not in shaped["plan"]
@@ -567,9 +584,9 @@ def test_shape_markdown_reports_the_set_and_is_idempotent():
     goal = shape.goal_for("chal_slow", SLOW)
     dataset = _blunt_dataset()
     text, changes = shape.shape_markdown(_proposal("chal_slow"), goal, ITEMS, dataset)
-    assert "prefer_sets set_blunt 15" in changes and "weapon_type any" in changes
+    assert "prefer_sets set_blunt 23.3" in changes and "weapon_type any" in changes
     plan = proposal.extract_plan(text)["plan"]
-    assert plan["prefer_sets"] == {"set_blunt": 15.0} and plan["weapon_type"] == "any"
+    assert plan["prefer_sets"] == {"set_blunt": 23.3} and plan["weapon_type"] == "any"
     again, changes = shape.shape_markdown(text, goal, ITEMS, dataset)
     assert changes == [] and again == text
 
@@ -582,7 +599,7 @@ def test_reshape_removes_olds_preference_after_changing_to_well_rounded():
     dataset["characters"] = [old, rounded]
     text = _proposal("chal_slow").replace(CHARACTER, old["id"])
     text, _ = shape.shape_markdown(text, goal, ITEMS, dataset)
-    assert proposal.extract_plan(text)["plan"]["prefer_sets"] == {"set_blunt": 6.0}
+    assert proposal.extract_plan(text)["plan"]["prefer_sets"] == {"set_blunt": 9.3}
     text = text.replace(old["id"], rounded["id"])
     before = proposal.extract_plan(text)
     reshaped, changes = shape.shape_markdown(text, goal, ITEMS, dataset)

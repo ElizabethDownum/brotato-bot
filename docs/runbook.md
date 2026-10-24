@@ -344,7 +344,7 @@ Common `plan` keys. This table is the full set. The header comment in
 | `prefer_weapons`, `ban_items` | lists of weapon / item ids |
 | `ask_on` | ids that always trigger a `pivot` decision when offered |
 | `phase_boost` | `{"until_wave": N, "stats": {stat key → multiplier}}`; before wave N the named stats' weights are multiplied (`build_plans.gd:40-42`); `{}` disables |
-| `prefer_sets` | `{set id → bonus}`, written by `proposal shape` when a weapon set's full bonus covers at least a quarter of what the character still needs toward the goal stat (bonus = goal units × 1.5, at most 30). `score_weapon` adds `bonus / 6` for each of a weapon's sets (a new weapon and a combine alike), so the term grows as the board fills. Merged one level deep like `item_bonus`; accepted in a sidecar `plan_patch`. Shaping then sets `weapon_type` to `"any"`. It is not the hard `weapon_set` gate |
+| `prefer_sets` | `{set id → per-weapon score value}`, written by `proposal shape` when a set's full bonus covers at least a quarter of the character's remaining goal need. Value = full goal-stat bonus / 6 / tier-1 stat unit × absolute shaped goal weight × `SET_WEAPON_FACTOR` 3, capped at 30. The mod contract adds it as is for each of a weapon's sets, to a new weapon and a combine alike; the next mod sync removes the old division by 6. Merged one level deep like `item_bonus`; accepted in a sidecar `plan_patch`. Shaping then sets `weapon_type` to `"any"`. It is not the hard `weapon_set` gate |
 | `weapon_set` (string), `deprioritize_weapons` (list of ids), `unique_weapons`, `stack_combine`, `hitrate_pref`, `spend_surplus` (booleans) | per-character shop tweaks read by `shop_advisor.gd` and `base_shop.gd` |
 
 `ask_on` is matched against shop offers (item and weapon ids, e.g.
