@@ -741,3 +741,23 @@ Report: `.superpowers/sdd/2026-10-24-steering-audit/sol-report.md` (brief beside
   is steering experiment arm A on Well Rounded (`steering: {"tree_policy": "seek",
   "sweep": 1.5}`), so it is judged twice: the target (a win with 0 curse) and the
   materials numbers against run 5.
+
+## 2026-10-24 owner rule: a curse-0 goal must avoid curse-giving enemies; the launcher must pin the zone
+
+- Owner: at least one enemy type adds curse, so a curse goal must avoid it. Measured: the
+  Sea Pig (Abyssal Terrors, `dlc_1`) "gives 1 curse on death" (wiki-enemies cache, line
+  753); it is in the dataset's enemy list with `appears_in: []` for zone 1, no zone-1
+  wave file under `.decompiled/zones` names it, and runs 4 and 5 saw only base-zone
+  enemies (baby_alien, helmet_alien, chaser, charger, pursuer, bruiser, invoker,
+  spitter, junkie, fin_alien, horned_charger). So in zone 1 the risk is zero today.
+- The zone is not pinned: the character screen reads `ProgressData.settings.zone_selected`
+  (a persisted setting, with a RANDOM option, `character_selection.gd` 36-51) and the
+  launcher never sets it, so a manual pick of the Abyss or RANDOM on profile 2 would
+  carry into a launched run. Fix: `launch.json` gains `zone` (default 0), the
+  character-screen extension selects it before picking the character, and the run
+  header records the zone.
+- For the Abyss zone later: a plan steering key that shuns named enemies (`shun:
+  ["sea_pig"]`, strong repulsion so auto-aim never gets in range) and a prompt note for
+  Haiku; not needed while runs stay in zone 1. The curse stat also rises from cursed
+  items (banned by shaping) and from a level-up option (`main.gd` 920), which the
+  level-up scorer already weights at -14 under the shaped plan.
