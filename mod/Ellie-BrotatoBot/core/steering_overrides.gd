@@ -10,9 +10,12 @@ static func from_plan(loaded, character_id) -> Dictionary:
 	return loaded.plan.get("steering", {})
 
 
-static func resolve(row: Dictionary, overrides: Dictionary) -> Dictionary:
+static func resolve(row: Dictionary, overrides: Dictionary, character_id = "") -> Dictionary:
 	var out = row.duplicate(true)
 	var valid = PlanFile.valid_steering(overrides)
+	# Well Rounded's explicit baseline replaces its former empty character row.
+	out["has_explicit_row"] = not row.empty() and (character_id != "character_well_rounded" \
+		or not valid.empty())
 	for k in valid:
 		out[k] = valid[k]
 	if valid.has("gold_value"):

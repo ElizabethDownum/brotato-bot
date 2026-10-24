@@ -875,13 +875,16 @@ func steering_row(character_id, player) -> Dictionary:
 		if player != null and row.has("if_melee") and _all_melee(player):
 			for k in row["if_melee"]:
 				row[k] = row["if_melee"][k]
+	var has_explicit_row = not row.empty()
 	if sweep_override >= 0.0:
 		row["sweep"] = sweep_override
 	if gold_value_override != null:
 		row["gold"] = gold_value_override
 	row["stand_continuity"] = _stand_continuity_default
 	_plan_steering = SteeringOverrides.from_plan(PlanFile.load_cached(PlanFile.DEFAULT_PATH), character_id)
-	return SteeringOverrides.resolve(row, _plan_steering)
+	var resolved = SteeringOverrides.resolve(row, _plan_steering, character_id)
+	resolved.has_explicit_row = has_explicit_row and resolved.has_explicit_row
+	return resolved
 
 
 # Once-per-run initial settings. Dynamic character gates/phases still apply;
@@ -893,7 +896,8 @@ func steering_event(character_id, player) -> Dictionary:
 	if player != null:
 		material = _gold_value(row, player)
 		hp_ratio = float(player.current_stats.health) / max(float(player.max_stats.health), 1.0)
-	return SteeringOverrides.event(character_id, _plan_steering, row, material, _caution(row, hp_ratio))
+	var caution = _caution(row, hp_ratio) if row.has_explicit_row else 1.0
+	return SteeringOverrides.event(character_id, _plan_steering, row, material, caution)
 
 
 func gather(main, player) -> void:
@@ -1089,7 +1093,7 @@ func gather(main, player) -> void:
 			var t = player._not_moving_timer
 			progress = clamp((t.wait_time - t.time_left) / max(t.wait_time, 0.01), 0.0, 1.0)
 		profile["stand_progress"] = progress
-	if not row.empty():
+	if row.has_explicit_row:
 		var hp_ratio = current_hp / max_hp
 		var caution = _caution(row, hp_ratio)
 		if caution != 1.0:
@@ -1173,7 +1177,7 @@ func _phase_value(phases: Array, fallback: float) -> float:
 func _gold_value(row: Dictionary, player) -> float:
 	var mode = row.get("gold_mode", "")
 	if mode == "builder":
-		return _builder_gold_value(player)
+		return _builder_gold_value(player, float(row.get("gold", GOLD_VALUE)))
 	if gold_value_override != null and not _plan_steering.has("gold_value"):
 		return gold_value_override
 	# End-of-wave sweep: characters that spend the wave NOT collecting (Soldier
@@ -1404,7 +1408,7 @@ func _builder_turret(spawner):
 	return null
 
 
-func _builder_gold_value(player) -> float:
+func _builder_gold_value(player, baseline: float) -> float:
 	var phase = 1
 	var struct_range = 0
 	if RunData.current_wave > BUILDER_ECON_WAVES:
@@ -1414,10 +1418,10 @@ func _builder_gold_value(player) -> float:
 		_builder_phase = phase
 		print("BOTLOG BUILDER phase=%d wave=%d struct_range=%d" % [
 				phase, RunData.current_wave, struct_range])
-	if gold_value_override != null:
+	if gold_value_override != null and not _plan_steering.has("gold_value"):
 		return gold_value_override
 	if phase == 1:
-		return GOLD_VALUE            # economy first, collect everything
+		return baseline              # economy first, collect everything
 	if phase == 2:
 		return BUILDER_GOLD_VALUE    # feed the turret to its final tier
 	return BUILDER_GOLD_LATE         # maxed; take some, not all

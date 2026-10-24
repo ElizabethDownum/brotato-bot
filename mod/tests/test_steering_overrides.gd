@@ -29,6 +29,33 @@ func test_baseline_and_overrides_do_not_mutate_character_row():
 	assert_eq(Steering.resolve({"gold": 1.8}, {}).gold_value, 1.8, "Old retains own value")
 
 
+func test_explicit_character_row_survives_normalization():
+	var well_rounded = {"gold": 0.8, "caution": 1.0, "tree_value": 0.0, "sweep": 1.0}
+	var old = {"gold": 1.8, "caution": 0.7}
+	assert_false(Steering.resolve(well_rounded, {}, "character_well_rounded").has_explicit_row,
+		"Well Rounded baseline retains former empty-row CLI applicability")
+	assert_true(Steering.resolve(old, {}, "character_old").has_explicit_row,
+		"Old retains explicit character row")
+	assert_false(Steering.resolve({}, {}, "character_unknown").has_explicit_row,
+		"normalization does not create an explicit row")
+	var out = Steering.resolve(well_rounded, {"gold_value": 3.0, "sweep": 1.5},
+		"character_well_rounded")
+	assert_true(out.has_explicit_row, "plan activates Well Rounded row")
+	assert_eq(out.gold, 3.0, "plan gold baseline applied")
+	assert_eq(out.sweep, 1.5, "plan sweep applied")
+
+
+func test_builder_resolved_baseline_prefers_plan_over_cli():
+	var row = {"gold_mode": "builder"}
+	assert_eq(Steering.resolve(row, {}).gold_value, 0.8, "Builder default economy baseline")
+	row.gold = 2.0
+	assert_eq(Steering.resolve(row, {}).gold_value, 2.0, "CLI baseline without plan")
+	var out = Steering.resolve(row, {"gold_value": 3.0})
+	assert_eq(out.gold, 3.0, "plan baseline replaces CLI before Builder economy phase")
+	assert_eq(out.gold_mode, "builder", "Builder phase mode retained")
+	assert_eq(Steering.resolve(row, {"gold_value": 0}).gold, 0.0, "explicit zero beats CLI")
+
+
 func test_tree_policies():
 	var row = {"tree_value": 6.0}
 	assert_eq(Steering.resolve(row, {"tree_policy": "auto"}).tree_value, 6.0, "auto keeps row")
