@@ -50,7 +50,7 @@ def validate_plan(plan: Any) -> None:
     weapon = plan.get("starting_weapon", "any")
     if not isinstance(weapon, str) or not weapon:
         raise ValueError("plan starting_weapon must be a non-empty string")
-    sets = plan.get("prefer_sets", {})
+    sets = plan["plan"].get("prefer_sets", {})
     if not isinstance(sets, dict) or any(
         isinstance(v, bool) or not isinstance(v, int | float) for v in sets.values()
     ):

@@ -284,7 +284,9 @@ def test_prepare_from_proposal_refuses_the_plan_only_flags(tmp_paths, tmp_path, 
         {"danger": "2"},
         {"danger": True},
         {"starting_weapon": ""},
-        {"prefer_sets": {"set_blunt": "x"}},
+        {"plan": {"prefer_sets": {"set_blunt": "x"}}},
+        {"plan": {"prefer_sets": []}},
+        {"plan": {"prefer_sets": {"set_blunt": True}}},
     ],
 )
 def test_validate_plan_checks_the_launch_keys(extra):
@@ -292,5 +294,10 @@ def test_validate_plan_checks_the_launch_keys(extra):
     with pytest.raises(ValueError):
         prepare.validate_plan({**base, **extra})
     prepare.validate_plan(
-        {**base, "danger": 2, "starting_weapon": "any", "prefer_sets": {"set_blunt": 12.5}}
+        {
+            **base,
+            "danger": 2,
+            "starting_weapon": "any",
+            "plan": {"prefer_sets": {"set_blunt": 12.5}},
+        }
     )
