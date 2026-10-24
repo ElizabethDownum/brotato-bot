@@ -659,3 +659,19 @@ Report: `.superpowers/sdd/2026-10-24-steering-audit/sol-report.md` (brief beside
   no game launch or sync. `arb.pick`/`arb.threat` are omitted because `last_scores`
   carries totals only. `collect.py` rendering of these fields and its interpretation
   of delayed wave-end lines are follow-ups. Steering and ask rules are unchanged.
+
+## 2026-10-24 reviewed and synced: mod 0.1.3 (crate rule, per-weapon sets, value and tree telemetry)
+
+- Implemented by GPT 6.1 Sol high (three commits), reviewed by Sol xhigh read-only: one
+  HIGH (holding `wave_end` until the post-cleanup bag is observed left `checkpoint`
+  events without a wave, so the collector filed them one wave early), fixed by Sol medium
+  (`58c57b7`: checkpoints carry `wave`, the collector prefers it). All scene hunks
+  compiled by eye against the game source; per-snapshot cost is two linear passes at 1 Hz.
+- Shipped: crate items scoring below zero are recycled (weapons unchanged); `prefer_sets`
+  values add as is (Blunt 20 under Old's plan); `snapshot.mats` gains `floor_value` and
+  `unattached`; `wave_end` gains `materials` {floor_count, floor_value, bag_before,
+  bag_after, collected_value} and `trees` {spawned, felled, alive}; the arbiter's score
+  components were not added (its `last_scores` holds scalar totals only).
+- Synced to the hidden Workshop item with the game closed (52 files). Mod tests 129,
+  harness 630, ruff clean. `collect.py` does not render the new `materials` and `trees`
+  fields yet (follow-up).
