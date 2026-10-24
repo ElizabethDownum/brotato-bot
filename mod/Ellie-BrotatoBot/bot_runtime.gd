@@ -29,6 +29,8 @@ extends Node
 #                  visit's start and when a decision starts
 #   ask_policy     AskPolicy timeout breaker for this run (reset at run start);
 #                  callers ask only while sidecar_ready()
+#   turn_rulings   per-player Haiku verdicts shared by crates and the shop;
+#                  reset at run/wave start, also invalidated by wave changes
 #   pending_launch the launch.json dictionary while the run-start screens are being
 #                  pressed through (null otherwise; reset_for_menu leaves it alone)
 #   launch_request launch.json as read (null until a valid file is found); read
@@ -49,6 +51,7 @@ const Overlay = preload("res://mods-unpacked/Ellie-BrotatoBot/core/overlay.gd")
 const HumanPause = preload("res://mods-unpacked/Ellie-BrotatoBot/core/human_pause.gd")
 const AskPolicy = preload("res://mods-unpacked/Ellie-BrotatoBot/core/ask_policy.gd")
 const LaunchFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/launch_file.gd")
+const TurnRulings = preload("res://mods-unpacked/Ellie-BrotatoBot/core/turn_rulings.gd")
 
 const NODE_NAME = "BotRuntime"
 const RECENT_MAX = 10
@@ -68,6 +71,7 @@ var run_outcome = ""
 var deciding_deadline_ms = 0
 var human_paused = false
 var ask_policy = AskPolicy.new()
+var turn_rulings = TurnRulings.new()
 var pending_launch = null
 var launch_request = null
 var launch_used = false
@@ -547,6 +551,7 @@ func on_run_started():
 	checkpoint_done = false
 	run_outcome = ""
 	ask_policy.reset()
+	turn_rulings.reset()
 	_refresh_plan_info()
 
 

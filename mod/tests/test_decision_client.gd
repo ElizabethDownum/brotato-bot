@@ -83,18 +83,18 @@ func _shop(scores, affordable, ids, ask_on, gold, prices, asked = 0, cfg = SHOP,
 
 
 func test_shop_ruled_ids_never_trigger_another_ask():
-	for action in ["buy", "lock", "pass"]:
-		var ruled = {"goal": action}
+	for verdict in ["approve", "decline"]:
+		var ruled = {"goal": {"verdict": verdict, "decision_id": "run-001", "screen": "crate"}}
 		assert_eq(_shop([20.0, 7.0], [0, 1], ["goal", "other"], ["goal"], 50, [10, 10], 1, SHOP, ruled), "",
-			"ruled ask_on is not a pivot: " + action)
+			"ruled ask_on is not a pivot: " + verdict)
 		assert_eq(_shop([20.0, 19.0], [0, 1], ["goal", "goal"], [], 50, [10, 10], 1, SHOP, ruled), "",
-			"duplicate ruled ids are not a tie: " + action)
+			"duplicate ruled ids are not a tie: " + verdict)
 		assert_eq(_shop([20.0], [0], ["goal"], [], 400, [100], 1, SHOP, ruled), "",
-			"ruled big purchase is not an ask: " + action)
+			"ruled big purchase is not an ask: " + verdict)
 
 
 func test_shop_unruled_triggers_survive_cached_rulings():
-	var ruled = {"old": "buy"}
+	var ruled = {"old": {"verdict": "approve", "decision_id": "run-001", "screen": "shop"}}
 	assert_eq(_shop([40.0, 10.0, 9.0], [0, 1, 2], ["old", "a", "b"], ["old"], 50, [10, 10, 10], 1, SHOP, ruled), "ask",
 		"tie among unruled options still asks")
 	assert_eq(_shop([40.0, 20.0, 7.0], [0, 1, 2], ["old", "a", "b"], ["old"], 400, [10, 100, 10], 1, SHOP, ruled), "ask",
@@ -107,11 +107,11 @@ func test_shop_unruled_triggers_survive_cached_rulings():
 		"unruled tie still respects the unchanged visit budget")
 
 
-func test_shop_rulings_reset_on_next_visit_and_do_not_change_levelups():
+func test_shop_fresh_turn_and_unchanged_levelups():
 	assert_eq(_shop([20.0], [0], ["goal"], ["goal"], 50, [10], 0, SHOP, {}), "pivot",
-		"a fresh visit dictionary permits asking again")
+		"a fresh turn dictionary permits asking again")
 	assert_eq(DecisionClient.should_ask([10.0, 9.0], [0, 1], CFG,
-		["goal", "other"], ["goal"], null, 0, [], 0, {"goal": "pass"}), "pivot",
+		["goal", "other"], ["goal"], null, 0, [], 0, {"goal": {"verdict": "decline"}}), "pivot",
 		"levelups retain their existing ask policy")
 
 

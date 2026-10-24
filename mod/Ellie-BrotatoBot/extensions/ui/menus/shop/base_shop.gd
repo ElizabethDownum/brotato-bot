@@ -443,7 +443,9 @@ func _auto_shop_player(pi) -> void:
 	var saved_note = ""
 	var saved_id = ""   # saved item my_id: rerolls can move a lock to another node
 	var tried = {}   # ShopItem instance_id -> true, so a failed buy is not retried
-	var ruled = {}   # item my_id -> applied Haiku action for this visit, including rerolls
+	var rt = BotRuntime.instance()
+	var turn_wave = RunData.current_wave   # still the crate queue's wave until GO
+	var ruled = rt.turn_rulings.for_player(turn_wave, pi)
 	# Proactive bans: spend the run's ban tokens to permanently remove items this
 	# character never wants (e.g. medical guns on a glass cannon) -- they leave BOTH
 	# this shop and all future ones (added to banned_items). Done once up front so the
@@ -478,9 +480,8 @@ func _auto_shop_player(pi) -> void:
 		# is recorded as a decision_applied event; "rule" means BOTato's own
 		# choice below runs this iteration (timeout, invalid response, or an
 		# answer that cannot be carried out).
-		# "pass" declines one item id for the rest of this visit and lets the
+		# "pass" declines one item id for the rest of this turn and lets the
 		# rules keep shopping; "skip" ends the whole visit.
-		var rt = BotRuntime.instance()
 		if asked_view != offer_view and asks < int(rt.config.get("ask_per_visit", DecisionClient.DEFAULT_PER_VISIT)) and rt.sidecar_ready():
 			var ask = _decision_options(nodes, gold, plan, pi, ruled)
 			var why = DecisionClient.should_ask(ask.scores, ask.affordable, rt.config,
@@ -514,10 +515,10 @@ func _auto_shop_player(pi) -> void:
 						bought.push_back("%s@%d(ai)" % [t_id, t_price])
 						buys += 1
 						_record_shop(pi, "buy", t_id, t_price, target_score, "haiku")
-						ruled[t_id] = "buy"
+						rt.turn_rulings.remember(turn_wave, pi, t_id, "approve", str(rt.last_decision.get("id", "")), "shop")
 						applied = "buy"
 				elif act == "pass" and target != null and not ruled.has(target.item_data.my_id):
-					ruled[target.item_data.my_id] = "pass"
+					rt.turn_rulings.remember(turn_wave, pi, target.item_data.my_id, "decline", str(rt.last_decision.get("id", "")), "shop")
 					for node in nodes:
 						if node != null and node.active and node.item_data.my_id == target.item_data.my_id and node.locked:
 							node.change_lock_status(false)
@@ -536,7 +537,6 @@ func _auto_shop_player(pi) -> void:
 						saved_id = target.item_data.my_id
 						saved_note = " lock=%s@%d(ai)" % [target.item_data.my_id, int(target.value)]
 						_record_shop(pi, "lock", target.item_data.my_id, int(target.value), target_score, "haiku")
-						ruled[target.item_data.my_id] = "lock"
 						applied = "lock"
 				elif act == "reroll" and _reroll_price.size() > pi:
 					var rprice = _reroll_price[pi]
@@ -578,7 +578,7 @@ func _auto_shop_player(pi) -> void:
 		for node in nodes:
 			if node == null or not node.active:
 				continue
-			if ruled.get(node.item_data.my_id, "") == "pass":
+			if ruled.get(node.item_data.my_id, {}).get("verdict", "") == "decline":
 				continue
 			if tried.has(node.get_instance_id()):
 				continue
@@ -595,7 +595,7 @@ func _auto_shop_player(pi) -> void:
 				best_raw_score = raw_sc
 				best_node = node
 		if best_node != null:
-			if ruled.get(best_node.item_data.my_id, "") == "buy":
+			if ruled.get(best_node.item_data.my_id, {}).get("verdict", "") == "approve":
 				print("BOTLOG SHOP reuse player=%d item=%s action=buy" % [pi, best_node.item_data.my_id])
 			tried[best_node.get_instance_id()] = true
 			if best_node.locked:
@@ -756,7 +756,7 @@ func _offering_has_preferred(nodes, plan, ruled) -> bool:
 	for node in nodes:
 		if node == null or not node.active or not (node.item_data is WeaponData):
 			continue
-		if ruled.get(node.item_data.my_id, "") == "pass":
+		if ruled.get(node.item_data.my_id, {}).get("verdict", "") == "decline":
 			continue
 		for pref in prefs:
 			if pref in node.item_data.my_id:
@@ -769,7 +769,7 @@ func _weapon_to_save_for(nodes, gold, plan, pi, ruled):
 	for node in nodes:
 		if node == null or not node.active:
 			continue
-		if ruled.get(node.item_data.my_id, "") == "pass":
+		if ruled.get(node.item_data.my_id, {}).get("verdict", "") == "decline":
 			continue
 		if not (node.item_data is WeaponData):
 			continue

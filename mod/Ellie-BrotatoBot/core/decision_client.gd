@@ -108,7 +108,7 @@ func discard_response(id: String) -> void:
 #            option costs at least ask_big_share of gold (it cannot be an ask_on
 #            id: any ask_on id on the board already pivoted)
 #   ""       let the rules decide
-# Shop rulings are visit-local {my_id: action}; ruled ids cannot trigger any ask.
+# Shop rulings come from the shared turn store; ruled ids cannot trigger any ask.
 static func should_ask(scores: Array, affordable: Array, cfg: Dictionary,
 		offered_ids: Array = [], ask_on: Array = [], min_buy = null, gold: int = 0,
 		prices: Array = [], asked_this_visit: int = 0, ruled: Dictionary = {}) -> String:

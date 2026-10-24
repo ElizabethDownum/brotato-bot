@@ -264,11 +264,16 @@ it while idle (`BOT idle` plus the plan line), turn on AI visuals. This also dra
 Shop ask rules, in order (`DecisionClient.should_ask`), at most once per board
 of a visit (the first view and each board after a reroll; a lock, buy or pass
 leaves the same board), only while a sidecar heartbeat is fresh (section 4).
-Applied `buy`, `lock` and `pass` rulings are kept by item id for this visit:
-ruled ids are omitted from later asks and all triggers below. An approved
-re-offered copy may be bought by the rules under their usual score/gold checks;
-locks retain their existing behavior and passed ids remain excluded. The next
-visit starts with no rulings.
+BotRuntime keeps one ruling store per turn and player, shared by the end-of-wave
+crates and the full shop visit that follows. Entries are keyed by item id and keep
+`verdict`, `decision_id` and the originating `screen`: applied `buy`/`take` approve,
+and `pass`/`recycle` decline. Ruled ids are omitted from shop asks and all triggers
+below. Approved copies remain buyable under the rules' usual score/gold checks;
+declined ids are excluded from buying, saving and preferred-weapon hunting.
+Locks retain their existing behavior and record no verdict. Rulings clear at
+run start and each wave start (including a repeated wave number), with automatic
+invalidation if the wave stamp changes. Crates and their following shop see the
+same `RunData.current_wave`; GO updates it before loading the next wave.
 
 1. `ask_per_visit` asks already made this visit: no ask.
 2. A dead board, where no affordable option scores at or above the plan's
@@ -569,7 +574,7 @@ All files are under `%APPDATA%\Brotato\brotato-bot\` (`user://brotato-bot`).
 
 - **Options.** `options[i].index == i`.
   - `screen: "shop"`: `{index, id, kind ("weapon" or "item"), price, score}`,
-    one per *active* shop slot, compacted.
+    one per *active, unruled* shop slot, compacted.
   - `screen: "levelup"`: `{index, id, stat, value, score}` (`stat` and
     `value` are the upgrade's first effect).
   - `screen: "crate"`: one `{index: 0, id, kind: "item", score}`. There is no price.
@@ -610,10 +615,11 @@ All files are under `%APPDATA%\Brotato\brotato-bot\` (`user://brotato-bot`).
   event records `haiku` only when that answer was applied, `timeout` when the wait
   timed out, and `rule` otherwise. After the pause the bot checks that it may still
   act and the same crate choice is still displayed before touching a button.
-  Later copies of the same id for the same player in this wave reuse an applied
-  `take`/`recycle` answer without asking, even if the sidecar is then unavailable.
+  Copies of an id with a verdict in this player's turn store apply it without
+  asking (approve takes, decline recycles), even if the sidecar is unavailable.
   Each reused crate event keeps `source: "haiku"` and the original decision `id`;
-  there is no extra decision event. The cache clears at the next wave.
+  there is no extra decision event. The same verdict also governs the following
+  shop visit; the store clears at the next wave or run start.
 
   A response that fails these rules counts as `invalid` and the rules decide.
   An action that does not fit the screen (e.g. `pick` in the shop) is applied

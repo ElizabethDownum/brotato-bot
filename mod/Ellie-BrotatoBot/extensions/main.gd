@@ -103,6 +103,8 @@ func _bot_run_guards():
 	var rt = get_node_or_null("/root/BotRuntime")
 	if rt == null:
 		return
+	# A fresh turn even when Hourglass repeats the same wave number.
+	rt.turn_rulings.reset(RunData.current_wave)
 	rt.begin_bot_screen()
 	if not Guards.focus_setting_ok(ProgressData.settings) and rt.focus_warned_run_id != rt.run_id:
 		rt.focus_warned_run_id = rt.run_id
