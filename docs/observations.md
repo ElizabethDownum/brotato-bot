@@ -869,3 +869,28 @@ Ellie, watching runs, during run 8 (proposal 9):
   is bought by the rules without an ask; crate-declined locks released at shop entry). Opus 5.5
   review `.superpowers/sdd/2026-10-24-ruling-cache/review-opus.md`; controller checked the fix
   against it. 157 mod tests, 783 harness tests.
+
+## 2026-10-24 run 9 (`runs/20261024-111641-well_rounded-d1`, proposal 10, mod sync 5): died wave 19
+
+- Best run on this target so far (run 7 died wave 13 and run 8 died wave 11). chal_difficulty_1
+  did not fire, and chal_gatherer_5 did. Killed by helmet_alien at wave 19: 142 damage from 6
+  hits in about 18 s, with 103 enemies on screen at the end. No earlier wave peaked above 53.
+  The bot was 12 px from the map edge. HP was 67/78.
+- Speed weight held: speed went 5 → 11 → 20 → 22, with no collapse like run 7's 6→2. Run 7 died at wave 13.
+- Survival stats drifted down late: armor 0 → -3 and regen +1 → -3 between waves 14 and 18
+  (Sunglasses, Gummy Berserker x2, Broken Mouth x2, Fresh Meat). Harvesting reached 66,
+  past the plan's harvest_cap of 40.
+- Review worked where Haiku used the action. At waves 8 and 9, pivot asks on Weird Ghost
+  answered `reroll` and the ghost was not bought.
+- **Gap: a veto written only in the rationale is not binding.** Wave 15, pivot on Weird Ghost:
+  Haiku bought Fresh Meat and wrote "Weird Ghost would drop HP to 1 next wave". It was not
+  `pass`ed, so the turn store had no verdict on it, and the rule bought it 85 ms later. The bot
+  survived wave 16 anyway. The same pattern hit items outside `ask_on`:
+  - Gentle Alien was bought by the rule three times (waves 9, 16 and 18), each after Haiku
+    named its "+5 enemies" as against survival.
+  - Bait was bought at wave 17 after Haiku called it "a risk for a fragile run".
+  These enemy-count items may contribute to the wave-19 crowd; that is a hypothesis with no
+  baseline yet.
+- Crate asks: 2 of 5 crates asked (Baby Gecko, Pocket Factory), both `take`. That is a low ask
+  load, so eligibility needs no narrowing.
+- Asks overall: 26 decisions across 19 waves.
