@@ -427,7 +427,7 @@ func _auto_shop_player(pi) -> void:
 	var character = RunData.get_player_character(pi)
 	var plan = ShopAdvisor.get_plan(character.my_id if character != null else "")
 	var gold_in = RunData.get_player_gold(pi)
-	var rerolls = 0
+	var rerolls = 0   # accepted rerolls only; rejected calls leave the same board
 	var buys = 0
 	var bought = []
 	# Permanent per-character hold: Saver gains +1% damage per 25 materials KEPT,
@@ -519,12 +519,14 @@ func _auto_shop_player(pi) -> void:
 				elif act == "reroll" and _reroll_price.size() > pi:
 					var rprice = _reroll_price[pi]
 					if rprice <= 0 or _free_rerolls[pi] > 0 or _has_bonus_free_reroll[pi] or gold >= rprice:
-						rerolls += 1
-						tried.clear()
 						var paid = 0 if (rprice <= 0 or _free_rerolls[pi] > 0 or _has_bonus_free_reroll[pi]) else rprice
+						var ai_reroll_count_before = _reroll_count[pi]
 						_on_RerollButton_pressed(pi)
-						_record_shop(pi, "reroll", null, paid, null, "haiku")
-						applied = "reroll"
+						if _reroll_count[pi] > ai_reroll_count_before:
+							rerolls += 1
+							tried.clear()
+							_record_shop(pi, "reroll", null, paid, null, "haiku")
+							applied = "reroll"
 				elif act == "skip":
 					applied = "skip"
 				elif act == "revise_plan":
@@ -620,9 +622,12 @@ func _auto_shop_player(pi) -> void:
 			and not _offering_has_preferred(nodes, plan) \
 			and gold - price >= HUNT_KEEP and rerolls < HUNT_MAX_REROLLS
 		if _reroll_price.size() > pi and (free or can_pay or surplus_spend or hunting):
-			rerolls += 1
-			tried.clear()   # a reroll replaces the offering
+			var reroll_count_before = _reroll_count[pi]
 			_on_RerollButton_pressed(pi)
+			if _reroll_count[pi] <= reroll_count_before:
+				break   # rejected: no new board to shop
+			rerolls += 1
+			tried.clear()   # an accepted reroll replaces the offering
 			_record_shop(pi, "reroll", null, 0 if free else price, null, "rule")
 			yield(get_tree().create_timer(REROLL_WAIT, false), "timeout")
 			continue
