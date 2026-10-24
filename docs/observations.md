@@ -729,3 +729,15 @@ Report: `.superpowers/sdd/2026-10-24-steering-audit/sol-report.md` (brief beside
   measures the package, with separate tree/sweep arms needed for attribution.
 - Pure logic and harness contracts have automated coverage. Scene extensions
   and steering remain inspection-only here; no game launch or installed-mod sync.
+
+## 2026-10-24 target note: chal_uncorrupted completes only on a win
+
+- The game excludes chal_uncorrupted from the per-effect stat-challenge check
+  (`challenge_service.gd` `_should_add_stat_challenge`) and completes it only in the
+  run-won path (`run_data.gd` ~1922: curse stat 0 at the win). So for this target the
+  success bar includes surviving to wave 20 with curse at 0. The unlock state reports it
+  as a stat goal (stat_curse, value 0), which the shaping treats as keep-at-zero: it bans
+  the four curse items and weights curse -14. Proposal 7 (`well-rounded-uncorrupted-v1`)
+  is steering experiment arm A on Well Rounded (`steering: {"tree_policy": "seek",
+  "sweep": 1.5}`), so it is judged twice: the target (a win with 0 curse) and the
+  materials numbers against run 5.
