@@ -485,3 +485,30 @@ the headless tests cover the pure logic and the scene extensions are read-checke
   old tie-or-below-floor rule (now with the 6.0 floor).
 - **Not changed:** the crate take/recycle rule, `MIN_BUY_UNDER_GOAL`, the sidecar,
   `effect_score.gd`, the steering.
+
+## 2026-10-23 reviewed and synced: mod 0.1.2 (launcher, prefer_sets, telemetry, ask retarget)
+
+- Reviews: the harness fit layer by Opus 5.5 (9 findings, fixed by GPT 6.1 Sol high,
+  `.superpowers/sdd/2026-10-23-fit-layer/`), the mod sync by GPT 6.1 Sol xhigh (7
+  findings, 4 HIGH in the launcher: no re-evaluation after the owner loads the bot
+  profile, Start pressed after a yield without a profile recheck, the token deleted on a
+  wrong-profile refusal, co-op attempted; fixed by Opus 5.5 high), a Sol xhigh re-read
+  (one gap left: the per-board ask counter advanced on rerolls the game rejects when all
+  four slots are locked; fixed by Sol medium, `00239de`). Reports under
+  `.superpowers/sdd/2026-10-23-mod-sync/`.
+- Launcher rules as shipped: the launch file is evaluated each time the main menu is
+  shown; every step re-checks the bot profile and solo mode; a refusal keeps the file
+  and shows `Launch refused: ...`; Start, a cancellation or a stale-file discard consumes
+  it; `any` as the starting weapon leaves that pick to the owner.
+- Ask rules as shipped: never ask a dead board (no affordable option at or above
+  `min_buy`), even when a goal item is offered; pivot when an `ask_on` id is on an
+  affordable board; ask a genuine tie (best >= `ask_floor` 6 and margin < 3) or a big
+  purchase (gold >= 200 and price >= 25% of gold); at most one ask per board view and
+  `ask_per_visit` 2 per visit.
+- Synced to the hidden Workshop item with the game closed (52 files). The scene
+  extensions have never been compiled: the next launch is the compile check (read the
+  Mod Loader log for parse errors; on the owner's profile the overlay should refuse the
+  launch, and after loading profile 2 and returning to the menu the run should start).
+- Accepted debt: `collect.py` does not render the new `offer`, `crate`, `build`, `mats`
+  and `wave_end.stats` fields yet; the fit layer's duplicate pool-name helper; stale
+  launch-file cleanup at every wave start (owner: keep, `prepare` is never run mid-run).
