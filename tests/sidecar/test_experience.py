@@ -335,3 +335,14 @@ def test_join_outcomes_reads_what_the_mod_applied(tmp_path):
     ]
     assert out[0]["kept_to_end"] is True and out[1]["kept_to_end"] is None
     assert experience.join_outcomes(decisions, _summary())[1]["applied"] is None
+
+
+def test_join_outcomes_preserves_optional_decline_alongside_buy(tmp_path):
+    decisions = tmp_path / "decisions.jsonl"
+    opts = [{"index": 0, "id": "item_bag"}, {"index": 1, "id": "item_ghost"}]
+    resp = {**_resp("buy", 0), "decline": [1]}
+    experience.append(decisions, _decision(1, 1, resp, opts))
+    experience.append(decisions, _decision(2, 1, _resp("skip"), opts))
+    rows = experience.join_outcomes(decisions, _summary())
+    assert rows[0]["decline"] == [1] and rows[0]["chosen"] == "item_bag"
+    assert rows[1]["decline"] == []

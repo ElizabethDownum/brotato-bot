@@ -364,9 +364,11 @@ Common `plan` keys. This table is the full set. The header comment in
 
 `ask_on` is matched against shop offers (item and weapon ids, e.g.
 `item_bag`, `item_scar`, `weapon_smg_1`) and level-up options (upgrade ids,
-e.g. `upgrade_armor_1`). All five ids above exist in the game's resources. A
-match matters only while the sidecar heartbeat is fresh. Leave `ask_on` empty
-(`[]`) for normal runs. Use it only to force a decision during testing.
+e.g. `upgrade_armor_1`). All five ids above exist in the game's resources.
+For shop and crate items this is a review list: rules require a turn-local
+approval before acquiring them, even without a fresh sidecar heartbeat. Use it
+for items whose effects need contextual review. Level-up matches retain their
+existing ask behavior.
 
 Example for Well Rounded. The `plan` values repeat the built-in ones, except
 `stat_ranged_damage`, so the effect is small and easy to see:
@@ -578,7 +580,7 @@ All files are under `%APPDATA%\Brotato\brotato-bot\` (`user://brotato-bot`).
 
 - **Options.** `options[i].index == i`.
   - `screen: "shop"`: `{index, id, kind ("weapon" or "item"), price, score}`,
-    one per *active, unruled* shop slot, compacted.
+    one per *active, non-declined* shop slot, compacted. Approvals remain visible.
   - `screen: "levelup"`: `{index, id, stat, value, score}` (`stat` and
     `value` are the upgrade's first effect).
   - `screen: "crate"`: one `{index: 0, id, kind: "item", score}`. There is no price.
@@ -603,6 +605,7 @@ All files are under `%APPDATA%\Brotato\brotato-bot\` (`user://brotato-bot`).
   |---|---|
   | `action` | `buy`, `lock`, `pass`, `reroll`, `skip` (shop); `pick` (level-up); `take`, `recycle` (crate); `revise_plan` (shop and `checkpoint` only); `skip` (`checkpoint`) |
   | `option_index` | int >= 0, required for `buy`, `lock`, `pass` and `pick`; omitted for `take` and `recycle` |
+  | `decline` | optional array of integer Options indices on shop/pivot answers; absent means `[]`; out-of-range indices and the answer's own `buy`/`lock` target are ignored with `BOTLOG` lines |
   | `confidence` | number in 0..1, required |
   | `rationale` | string, optional |
   | `plan_patch` | object of section 3.5 plan keys, required for `revise_plan` (merged into `plan.json`; unknown or wrong-typed keys are dropped) |
@@ -614,9 +617,35 @@ All files are under `%APPDATA%\Brotato\brotato-bot\` (`user://brotato-bot`).
   may judge the item again. `skip` ends the whole visit. Prefer `pass` when only
   the option in question is wrong.
 
+  Shop and shop-pivot answers may also carry `decline: [option_index, ...]`
+  alongside any action. Each valid index is a turn-long decline of that item id,
+  handled like `pass`: unlock all its copies, release a matching saved-gold reserve,
+  and write a `shop` event with `action: "pass", source: "haiku"`. Repeated indices
+  or copies of an id produce one pass event per answer. Protection of a buy/lock
+  target applies to all copies of its id, because verdicts are keyed by item id.
+  Explicit declines apply even if the main action cannot land. A fresh veto
+  supersedes an earlier approval; reusing a decline retains its original decision id.
+
+  After a valid **applied** shop answer, every offered `ask_on` id except the
+  bought id is declined automatically, with that decision id. A `lock` target is
+  also exempt: locking records no verdict and keeps today's lock/reserve behavior.
+  A carried locked copy needs approval again next wave; its lock bonus cannot
+  bypass review. Timeout, invalid/missing answers and failed primary actions
+  create no automatic declines, so a later board may ask again.
+
+  Rules may buy, lock or save for an `ask_on` id only while the turn store holds
+  `approve`. This also gates carried locks, preferred-weapon hunting and weapon
+  savings used by reroll-keep. It holds when the sidecar is unavailable or the
+  ask budget is spent. Other unruled items may still be bought by the rules:
+  anything Haiku argues against must be listed in `decline`.
+  If a plan patch newly adds an existing saving target to `ask_on` without an
+  approval, its old lock and reserve are released before the rules continue.
+
   A crate answer applies `take` or `recycle` to the sole offered item. An unusable
-  answer or timeout falls back to the score rule (take at score >= 0). The crate
-  event records `haiku` only when that answer was applied, `timeout` when the wait
+  answer, timeout or unavailable sidecar recycles an unapproved `ask_on` id;
+  other ids fall back to the score rule (take at score >= 0). Fallback creates no
+  verdict, leaving a later review possible. Crate-ask eligibility is unchanged.
+  The crate event records `haiku` only when that answer was applied, `timeout` when the wait
   timed out, and `rule` otherwise. After the pause the bot checks that it may still
   act and the same crate choice is still displayed before touching a button.
   Copies of an id with a verdict in this player's turn store apply it without

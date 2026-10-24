@@ -8,6 +8,7 @@
       "enum": ["buy", "reroll", "lock", "pass", "skip", "pick", "take", "recycle", "revise_plan"]
     },
     "option_index": {"type": "integer", "minimum": 0},
+    "decline": {"type": "array", "items": {"type": "integer"}},
     "plan_patch": {
       "type": "object",
       "description": "Plan keys to merge into plan.json; only these keys, with these types.",

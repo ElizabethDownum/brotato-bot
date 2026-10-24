@@ -22,6 +22,22 @@ def test_valid_buy():
     decision = schema.Decision.model_validate(_buy())
     assert decision.action == "buy"
     assert decision.option_index == 2
+    assert decision.decline == []
+
+
+@pytest.mark.parametrize("action", ["buy", "lock", "pass", "reroll", "skip", "revise_plan"])
+def test_shop_decline_is_optional_integer_array_alongside_any_action(action):
+    obj = _buy(action=action, option_index=0, decline=[0, 1, -1, 99, 1])
+    if action == "revise_plan":
+        obj["plan_patch"] = {}
+    # Invalid option indices in decline are ignored by the mod, not rejected here.
+    assert schema.validate(obj, SHOP) == []
+    assert schema.Decision.model_validate(obj).decline == [0, 1, -1, 99, 1]
+
+
+@pytest.mark.parametrize("value", [None, "1", 1, {}, [True], [None], ["1"], [1.5], [[]]])
+def test_decline_rejects_non_array_or_non_integer_members(value):
+    assert any(e.startswith("decline") for e in schema.validate(_buy(decline=value)))
 
 
 def test_valid_skip_and_reroll_without_index():
@@ -102,6 +118,7 @@ def test_schema_json_matches_model():
     ]
     assert set(props) == set(schema.Decision.model_fields)
     assert props["option_index"]["minimum"] == 0
+    assert props["decline"] == {"type": "array", "items": {"type": "integer"}}
     assert props["confidence"]["minimum"] == 0
     assert props["confidence"]["maximum"] == 1
     assert props["rationale"]["maxLength"] == 300

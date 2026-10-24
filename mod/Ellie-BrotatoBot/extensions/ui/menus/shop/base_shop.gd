@@ -8,6 +8,7 @@ const ShopAdvisor = preload("res://mods-unpacked/Ellie-BrotatoBot/shopping/shop_
 const BotRuntime = preload("res://mods-unpacked/Ellie-BrotatoBot/bot_runtime.gd")
 const Coop = preload("res://mods-unpacked/Ellie-BrotatoBot/extensions/ui/menus/run/coop_mouse_select.gd")
 const DecisionClient = preload("res://mods-unpacked/Ellie-BrotatoBot/core/decision_client.gd")
+const TurnRulings = preload("res://mods-unpacked/Ellie-BrotatoBot/core/turn_rulings.gd")
 const RunRecorder = preload("res://mods-unpacked/Ellie-BrotatoBot/core/run_recorder.gd")
 
 const SETUP_WAIT = 0.35   # let _ready() finish populating the offering + UI
@@ -499,6 +500,7 @@ func _auto_shop_player(pi) -> void:
 			var why = DecisionClient.should_ask(ask.scores, ask.affordable, rt.config,
 				ask.ids, plan.get("ask_on", []), plan["min_buy"], gold, ask.prices, asks, ruled)
 			if why != "":
+				var review_ids = plan.get("ask_on", []).duplicate()
 				asks += 1
 				asked_view = offer_view
 				var r = yield(rt.decide("pivot" if why == "pivot" else "shop", ask.options, "shop"), "completed")
@@ -530,15 +532,6 @@ func _auto_shop_player(pi) -> void:
 						rt.turn_rulings.remember(turn_wave, pi, t_id, "approve", str(rt.last_decision.get("id", "")), "shop")
 						applied = "buy"
 				elif act == "pass" and target != null:
-					rt.turn_rulings.remember(turn_wave, pi, target.item_data.my_id, "decline", str(rt.last_decision.get("id", "")), "shop")
-					for node in nodes:
-						if node != null and node.active and node.item_data.my_id == target.item_data.my_id and node.locked:
-							node.change_lock_status(false)
-					if target.item_data.my_id == saved_id:
-						save_floor = gold_floor
-						saved_id = ""
-						saved_note = ""
-					_record_shop(pi, "pass", target.item_data.my_id, int(target.value), target_score, "haiku")
 					applied = "pass"
 				elif act == "lock" and target != null:
 					if not target.locked:
@@ -567,7 +560,32 @@ func _auto_shop_player(pi) -> void:
 					var cid = character.my_id if character != null else ""
 					if rt.apply_plan_patch(cid, r.plan_patch):
 						plan = ShopAdvisor.get_plan(cid)
+						# A newly reviewed saving target now needs sign-off. Do not
+						# carry its old reserve into the rules' reroll-keep calculation.
+						# Existing Haiku locks on review ids retain their behavior.
+						if saved_id != "" and not review_ids.has(saved_id) \
+								and not TurnRulings.rule_allowed(saved_id, plan.get("ask_on", []), ruled):
+							for node in container._shop_items:
+								if node != null and node.active and node.item_data.my_id == saved_id and node.locked:
+									node.change_lock_status(false)
+							save_floor = gold_floor
+							saved_id = ""
+							saved_note = ""
 						applied = "revise_plan"
+				if r != null and act in ["buy", "lock", "pass", "reroll", "skip", "revise_plan"]:
+					var declined = rt.turn_rulings.shop_declines(turn_wave, pi, ask.ids,
+						review_ids, r, str(rt.last_decision.get("id", "")), applied)
+					for di in declined:
+						var declined_id = ask.ids[di]
+						# A reroll may reuse nodes: match the original id, not the old node.
+						for node in container._shop_items:
+							if node != null and node.active and node.item_data.my_id == declined_id and node.locked:
+								node.change_lock_status(false)
+						if declined_id == saved_id:
+							save_floor = gold_floor
+							saved_id = ""
+							saved_note = ""
+						_record_shop(pi, "pass", declined_id, ask.options[di].price, ask.scores[di], "haiku")
 				_record_applied(rt, r, applied)
 				if applied == "skip":
 					break
@@ -590,7 +608,7 @@ func _auto_shop_player(pi) -> void:
 		for node in nodes:
 			if node == null or not node.active:
 				continue
-			if ruled.get(node.item_data.my_id, {}).get("verdict", "") == "decline":
+			if not TurnRulings.rule_allowed(node.item_data.my_id, plan.get("ask_on", []), ruled):
 				continue
 			if tried.has(node.get_instance_id()):
 				continue
@@ -760,7 +778,7 @@ func _offering_has_preferred(nodes, plan, ruled) -> bool:
 	for node in nodes:
 		if node == null or not node.active or not (node.item_data is WeaponData):
 			continue
-		if ruled.get(node.item_data.my_id, {}).get("verdict", "") == "decline":
+		if not TurnRulings.rule_allowed(node.item_data.my_id, plan.get("ask_on", []), ruled):
 			continue
 		for pref in prefs:
 			if pref in node.item_data.my_id:
@@ -773,7 +791,7 @@ func _weapon_to_save_for(nodes, gold, plan, pi, ruled):
 	for node in nodes:
 		if node == null or not node.active:
 			continue
-		if ruled.get(node.item_data.my_id, {}).get("verdict", "") == "decline":
+		if not TurnRulings.rule_allowed(node.item_data.my_id, plan.get("ask_on", []), ruled):
 			continue
 		if not (node.item_data is WeaponData):
 			continue

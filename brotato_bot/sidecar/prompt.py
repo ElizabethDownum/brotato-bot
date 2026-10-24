@@ -397,6 +397,8 @@ ANSWER_FORMAT = (
     "`option_index` indexes the Options list above (the request's `options[]`), never the "
     "shop slot `index` in the State section. On the crate screen, answer `take` or "
     "`recycle` without `option_index`."
+    " Shop answers may include `decline: [option_index, ...]` alongside any action; "
+    "use Options indices for every item your reasoning rejects."
 )
 
 

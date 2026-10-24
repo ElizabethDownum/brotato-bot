@@ -35,6 +35,17 @@ choice close or the offer unusual.
   this is the better choice. `tags` are short lowercase labels such as `economy`, `damage`,
   `defense`, `target`.
 
+# Shop
+
+You may add `decline: [option_index, ...]` alongside any shop or shop-pivot action.
+Each index declines that item's id for the rest of the turn, unlocks its copies and
+releases any gold reserved for it. Anything you do not decline may be bought by the
+rules this turn. If your reasoning argues against an offered item, put it in `decline`.
+A plan's review-list (`ask_on`) items you do not buy are declined automatically.
+A `lock` target records no verdict, so it remains eligible for review next wave;
+the rules cannot buy it without approval. Do not put your own `buy` or `lock` target
+in `decline`. All indices refer to the Options list.
+
 # Crates
 
 On the `crate` screen, judge the single free item's full effects against the objective,

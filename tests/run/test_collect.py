@@ -707,3 +707,38 @@ def test_reused_crates_keep_every_action_with_the_original_decision_id():
     assert RunSummary.model_validate_json(summary.model_dump_json()).crates == summary.crates
     md = render.run_report(summary)
     assert md.count("| 7 | item_weird_ghost | recycle | 2 | haiku |") == 2
+
+
+def test_collect_accepts_decline_and_reports_each_pass_without_counting_a_buy():
+    events = [
+        {
+            "kind": "decision",
+            "request_kind": "pivot",
+            "source": "haiku",
+            "response": {"action": "buy", "option_index": 0, "decline": [1, 2]},
+        },
+        {"kind": "offer", "wave": 15, "items": [{"id": "fresh"}, {"id": "ghost"}]},
+        {"kind": "shop", "wave": 15, "action": "buy", "item_id": "fresh", "source": "haiku"},
+        {"kind": "shop", "wave": 15, "action": "pass", "item_id": "ghost", "source": "haiku"},
+    ]
+    summary = collect.summarize(events)
+    assert summary.decisions[0].decline == [1, 2]
+    assert summary.offers[0].bought == ["fresh"]
+    assert summary.shop[1].action == "pass" and summary.shop[1].source == "haiku"
+    assert RunSummary.model_validate_json(summary.model_dump_json()).decisions[0].decline == [1, 2]
+    assert "| 15 | pass | ghost | - | - | haiku |" in render.run_report(summary)
+
+
+@pytest.mark.parametrize("decline", [None, "1", 1, {}, [None, True, "bad", 1.5]])
+def test_invalid_decline_response_does_not_break_collection(decline):
+    summary = collect.summarize(
+        [
+            {
+                "kind": "decision",
+                "request_kind": "shop",
+                "source": "invalid",
+                "response": {"action": "skip", "decline": decline},
+            },
+        ]
+    )
+    assert summary.decisions[0].decline == []

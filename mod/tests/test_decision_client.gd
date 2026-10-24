@@ -331,6 +331,24 @@ func test_validate_response_coerces_float_index():
 	assert_eq(c.get("confidence"), 1.0, "confidence coerced to float")
 
 
+func test_validate_decline_defaults_and_normalizes_json_integers():
+	var r = {"action": "skip", "confidence": 0.5}
+	assert_true(DecisionClient.validate_response(r), "absent decline accepted")
+	assert_eq(r.decline, [], "absent means empty")
+	r = JSON.parse('{"action":"buy","option_index":0,"decline":[0,1,-1,99,1],"confidence":0.8}').result
+	assert_true(DecisionClient.validate_response(r), "integer array survives JSON parsing")
+	assert_eq(r.decline, [0, 1, -1, 99, 1], "range and target checked when applying")
+	for index in r.decline:
+		assert_eq(typeof(index), TYPE_INT, "whole JSON float normalized")
+
+
+func test_validate_decline_rejects_wrong_container_or_member_types():
+	for value in [null, "1", 1, {}, [true], [null], ["1"], [1.5], [{}], [[]]]:
+		assert_false(DecisionClient.validate_response({"action": "skip", "confidence": 0.8, "decline": value}),
+			"invalid decline: " + str(value))
+	assert_true(DecisionClient.validate_response({"action": "reroll", "confidence": 0.8, "decline": []}), "empty array accepted")
+
+
 func test_validate_pass_requires_a_nonnegative_whole_index():
 	var r = {"action": "pass", "option_index": 1.0, "confidence": 0.8}
 	assert_true(DecisionClient.validate_response(r), "pass accepted")

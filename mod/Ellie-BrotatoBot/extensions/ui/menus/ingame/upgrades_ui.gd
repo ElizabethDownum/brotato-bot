@@ -10,6 +10,7 @@ const BotRuntime = preload("res://mods-unpacked/Ellie-BrotatoBot/bot_runtime.gd"
 const Coop = preload("res://mods-unpacked/Ellie-BrotatoBot/extensions/ui/menus/run/coop_mouse_select.gd")
 const RunRecorder = preload("res://mods-unpacked/Ellie-BrotatoBot/core/run_recorder.gd")
 const DecisionClient = preload("res://mods-unpacked/Ellie-BrotatoBot/core/decision_client.gd")
+const TurnRulings = preload("res://mods-unpacked/Ellie-BrotatoBot/core/turn_rulings.gd")
 const PickWatchdog = preload("res://mods-unpacked/Ellie-BrotatoBot/core/pick_watchdog.gd")
 
 const PICK_WAIT = 0.3    # pace between picks -- slow enough to watch each selection land
@@ -315,9 +316,7 @@ func _auto_pick_loop() -> void:
 				var idata = container._item_data
 				var crate_plan = _plan_for(pi)
 				var crate_score = ShopAdvisor.score_shop_entry([idata, 0], crate_plan, pi)
-				var crate_action = "take"
-				if crate_score < 0.0:
-					crate_action = "recycle"
+				var crate_action = TurnRulings.crate_fallback(idata.my_id, crate_plan.get("ask_on", []), crate_score)
 				var crate_source = "rule"
 				var crate_decision_id = ""
 				var crate_rt = BotRuntime.instance()

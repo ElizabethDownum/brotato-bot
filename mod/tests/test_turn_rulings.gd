@@ -4,6 +4,102 @@ const TurnRulings = preload("res://mod/Ellie-BrotatoBot/core/turn_rulings.gd")
 const DecisionClient = preload("res://mod/Ellie-BrotatoBot/core/decision_client.gd")
 
 
+func test_rule_gate_requires_review_approval_for_every_acquisition_path():
+	var review = ["item_ghost", "weapon_review"]
+	for id in review:
+		for reason in ["declined", "timeout", "invalid", "sidecar-down", "budget-spent", "lock"]:
+			var ruled = {id: {"verdict": "decline"}} if reason == "declined" else {}
+			assert_false(TurnRulings.rule_allowed(id, review, ruled), "no sign-off: " + reason)
+		assert_true(TurnRulings.rule_allowed(id, review, {id: {"verdict": "approve"}}), "sign-off permits rules")
+	assert_true(TurnRulings.rule_allowed("ordinary", review, {}), "ordinary unruled option is allowed")
+	assert_false(TurnRulings.rule_allowed("ordinary", review, {"ordinary": {"verdict": "decline"}}), "explicit veto also binds ordinary options")
+
+
+func test_shop_automatic_declines_for_each_applied_action():
+	var ids = ["item_ghost", "ordinary", "weapon_review"]
+	for act in ["buy", "reroll", "skip", "pass", "lock", "revise_plan"]:
+		var store = TurnRulings.new()
+		var r = {"action": act, "option_index": 0}
+		var declined = store.shop_declines(5, 0, ids, ["item_ghost", "weapon_review"], r, "run-001", act)
+		assert_eq(declined, [2] if act in ["buy", "lock"] else [0, 2], "automatic review declines: " + act)
+		var answer = store.answer(5, 0, "weapon_review")
+		assert_eq(answer.verdict, "decline", "recorded verdict")
+		assert_eq(answer.decision_id, "run-001", "decision provenance")
+		assert_eq(answer.screen, "shop", "screen provenance")
+		if act in ["buy", "lock"]:
+			assert_true(store.answer(5, 0, "item_ghost").empty(), "target not declined: " + act)
+		assert_true(store.answer(5, 0, "ordinary").empty(), "ordinary option needs explicit decline")
+
+
+func test_rule_gate_rechecks_plan_changes_and_new_wave_before_saving():
+	var store = TurnRulings.new()
+	var ruled = store.for_player(5, 0)
+	assert_true(TurnRulings.rule_allowed("weapon_b", [], ruled), "ordinary saving target allowed")
+	assert_false(TurnRulings.rule_allowed("weapon_b", ["weapon_b"], ruled), "new review requirement invalidates old saving eligibility")
+	store.remember(5, 0, "weapon_b", "approve", "run-001", "shop")
+	assert_true(TurnRulings.rule_allowed("weapon_b", ["weapon_b"], ruled), "approval restores saving eligibility")
+	assert_false(TurnRulings.rule_allowed("weapon_b", ["weapon_b"], store.for_player(6, 0)), "carried lock needs new-wave approval")
+
+
+func test_shop_pass_declines_ordinary_target_and_review_items():
+	var store = TurnRulings.new()
+	assert_eq(store.shop_declines(5, 0, ["ordinary", "review"], ["review"],
+		{"action": "pass", "option_index": 0}, "run-001", "pass"), [0, 1], "pass and implicit review veto")
+	assert_false(TurnRulings.rule_allowed("ordinary", [], store.for_player(5, 0)), "pass binds rules")
+
+
+func test_shop_unapplied_answer_does_not_implicitly_decline():
+	var store = TurnRulings.new()
+	for act in ["buy", "lock", "reroll", "pass", "revise_plan"]:
+		assert_eq(store.shop_declines(5, 0, ["a", "b"], ["a", "b"],
+			{"action": act, "option_index": 0}, "run-001", "rule"), [], "failed action: " + act)
+	assert_true(store.for_player(5, 0).empty(), "a later board may ask again")
+
+
+func test_shop_explicit_declines_ignore_target_and_invalid_indices():
+	for act in ["buy", "lock", "reroll", "skip", "pass", "revise_plan"]:
+		var store = TurnRulings.new()
+		var r = {"action": act, "option_index": 0, "decline": [0, 1, -1, 9, 1]}
+		var declined = store.shop_declines(5, 0, ["a", "b"], [], r, "run-001", act)
+		assert_eq(declined, [1] if act in ["buy", "lock"] else [0, 1], "explicit vetoes with " + act)
+		assert_eq(store.answer(5, 0, "b").verdict, "decline", "ordinary item explicitly vetoed")
+
+
+func test_shop_explicit_declines_apply_even_when_primary_action_cannot_land():
+	var store = TurnRulings.new()
+	assert_eq(store.shop_declines(5, 0, ["a", "b"], ["a"],
+		{"action": "buy", "option_index": 0, "decline": [1]}, "run-001", "rule"), [1], "explicit veto is independent")
+	assert_true(store.answer(5, 0, "a").empty(), "failed buy gives no implicit verdict")
+
+
+func test_shop_fresh_veto_overrides_approval_but_preserves_existing_decline():
+	var store = TurnRulings.new()
+	store.remember(5, 0, "a", "approve", "crate-001", "crate")
+	store.shop_declines(5, 0, ["a"], [], {"action": "skip", "decline": [0]}, "shop-002", "skip")
+	assert_eq(store.answer(5, 0, "a").verdict, "decline", "a fresh veto binds even after approval")
+	assert_eq(store.answer(5, 0, "a").decision_id, "shop-002", "fresh veto provenance")
+	store.shop_declines(5, 0, ["a"], [], {"action": "skip", "decline": [0]}, "shop-003", "skip")
+	assert_eq(store.answer(5, 0, "a").decision_id, "shop-002", "reuse preserves decline provenance")
+
+
+func test_shop_duplicate_ids_share_target_protection_and_one_decline():
+	for act in ["buy", "lock", "skip"]:
+		var store = TurnRulings.new()
+		var declined = store.shop_declines(5, 0, ["a", "a", "b", "b"], ["a", "b"],
+			{"action": act, "option_index": 0, "decline": [1, 2, 3]}, "run-001", act)
+		assert_eq(declined, [1, 2] if act == "skip" else [2], "one veto per id; targets protected by id")
+		if act in ["buy", "lock"]:
+			assert_true(store.answer(5, 0, "a").empty(), "cannot conflict with target's id verdict")
+
+
+func test_crate_review_fallback_recycles_without_recording_a_verdict():
+	var store = TurnRulings.new()
+	for score in [-5.0, 0.0, 50.0]:
+		assert_eq(TurnRulings.crate_fallback("review", ["review"], score), "recycle", "review requires an answer even at high score")
+		assert_eq(TurnRulings.crate_fallback("ordinary", ["review"], score), "recycle" if score < 0.0 else "take", "ordinary score fallback")
+	assert_true(store.answer(5, 0, "review").empty(), "fallback leaves later review possible")
+
+
 func test_turn_reuses_verdict_and_original_provenance_across_screens():
 	for verdict in ["approve", "decline"]:
 		for screen in ["crate", "shop"]:

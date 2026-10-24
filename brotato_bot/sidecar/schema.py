@@ -74,6 +74,7 @@ class Decision(BaseModel):
 
     action: Action
     option_index: int | None = Field(default=None, ge=0)
+    decline: list[int] = Field(default_factory=list)
     plan_patch: PlanPatch | None = None
     confidence: float = Field(ge=0, le=1)
     rationale: str = Field(max_length=300)

@@ -7,6 +7,19 @@ from brotato_bot.dataset.unlocks import Challenge
 from brotato_bot.sidecar import prompt
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def test_shop_prompt_requires_binding_vetoes_for_rejected_items():
+    text = (Path(prompt.__file__).parent / "prompts" / "decide.md").read_text("utf-8")
+    shop = text.split("# Shop\n", 1)[1].split("# Crates", 1)[0]
+    assert "decline: [option_index, ...]" in shop
+    assert "Anything you do not decline may be bought by the" in shop
+    assert "If your reasoning argues against an offered item, put it in `decline`." in shop
+    assert "(`ask_on`) items you do not buy are declined automatically." in shop
+    assert "`lock` target records no verdict" in shop
+    assert "decline: [option_index, ...]" in prompt.ANSWER_FORMAT
+
+
 RUN_ID = "20261022-201500-well_rounded-d0"
 SECTIONS = [
     "## Objective",

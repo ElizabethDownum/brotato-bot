@@ -206,6 +206,7 @@ def join_outcomes(
                 "wave": wave,
                 "options": options,
                 "action": action,
+                "decline": resp.get("decline", []) if resp else [],
                 "applied": applied,
                 "chosen": chosen,
                 "source": rec.get("source"),

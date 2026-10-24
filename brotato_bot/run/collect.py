@@ -182,6 +182,7 @@ def summarize(events: list[dict], plan: dict | None = None) -> render.ReportSumm
                     bag_peaks[w] = max(bag_peaks.get(w, bag), bag)
         elif kind == "decision":
             resp = e.get("response") if isinstance(e.get("response"), dict) else {}
+            declines = resp.get("decline")
             wave = _int(e.get("wave"))
             row = DecisionRow(
                 wave=wave if wave is not None else last_wave,
@@ -190,6 +191,9 @@ def summarize(events: list[dict], plan: dict | None = None) -> render.ReportSumm
                 source=_str(e.get("source")) or "?",
                 action=_str(resp.get("action")),
                 option_index=_int(resp.get("option_index")),
+                decline=[index for raw in declines if (index := _int(raw)) is not None]
+                if isinstance(declines, list)
+                else [],
                 confidence=_float(resp.get("confidence")),
                 rationale=_str(resp.get("rationale")),
             )
