@@ -355,3 +355,32 @@ objective text.
   "material change", so it fits the next proposal naturally.
 - Consequence: run 4 on chal_slow should be Old, not Well Rounded v3, once the step 5
   changes land; that run tests the pipeline with a character that can actually get there.
+
+## 2026-10-23 owner rulings after audits A and B
+
+- **Generalised rule for proposals:** when proposing a goal and a run, the character's
+  stats and attributes (flat bonuses, gain modifiers, banned item groups, wanted tags,
+  specials) and the starting weapon's stats and attributes (type, sets, scaling) must be
+  factored in accurately. The character-fit idea in the previous entry is one instance.
+  The starting weapon is picked by the owner at launch (the mod's `weapon_selection.gd`
+  only routes the mouse), so the proposal must name it under `## Next run` and the
+  runbook's launch steps must show it.
+- **No hard-blocked strategies.** Nothing the model could pick (a weapon set, a weapon
+  type, a melee plan) may be hard-blocked by policy. What gates the Blunt set today is
+  policy and a modelling gap, not the mod: (a) `shape.py`'s docstring ruling of
+  2026-10-22 that shaping never selects a set (it only prints the set bonuses in the
+  goal data), (b) `brotato-next` step 5.i, "do not set `weapon_set` unless the character's
+  row or the guides support it", and (c) `score_weapon` has no partial-set credit, so a
+  set can only be pursued through the all-or-nothing `weapon_set` key, under which every
+  out-of-set weapon scores -1 (`shop_advisor.gd` 76-82). The Well Rounded row's
+  `weapon_type: "ranged"` scores every melee weapon -1 (123-125), but a plan with
+  `weapon_set` set bypasses that gate (the set check returns first). Both keys are plan
+  keys that a proposal or a mid-run `plan_patch` may set. Resolution: drop (a) and (b)
+  as rules (the writer may choose a set or a type for the goal, with the goal data and
+  the fit ranking as evidence), and add a soft set term to `score_weapon` that credits a
+  weapon's sets toward the goal stat without the all-or-nothing gate (mod change,
+  small). Starting-weapon sets for the record: Well Rounded's pool has one Blunt start
+  (Spiky Shield); Old's has one (Rock).
+- **DLC stays on.** No DLC toggling for goal runs.
+- **Step 5 scope is paused** until the character-selection rule and the two points
+  above are resolved.
