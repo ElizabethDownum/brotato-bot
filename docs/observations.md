@@ -799,3 +799,28 @@ Ellie, watching runs, during run 8 (proposal 9):
    over `mod/Ellie-BrotatoBot/steering/` finds nothing, so the steering has no
    looter-specific term today. Testable: a `looter` appears as `nearest_threat` in run 7's
    wave 19 snapshots; count looter sightings against crates gained.
+
+## 2026-10-24 run 8 (proposal 9): killed by its own items at the start of wave 11
+
+- `20261024-080325-well_rounded-d1`, danger 1, `stat_speed: 4.0`. Wave 10 ended at 51 HP;
+  wave 11 started at 1 HP and the first drain tick killed it ("killed by yourself", 0 enemy
+  damage, position at the spawn point).
+- Cause, measured: Blood Donation (wave 9, rule buy, score 40: +40 harvesting, plus
+  `lose_hp_per_second` 1, the 60 one-point `?` damage events of wave 10) and Weird Ghost
+  (wave 10, rule buy, score 5: +3 max HP, plus `hp_start_next_wave` -100). Together they
+  are fatal on the next wave start with no regen tick in between.
+- The mod has no handling for either key (`grep` over `mod/Ellie-BrotatoBot/` is empty):
+  both are text-key effects capped at one unit of an unweighted stat, i.e. scored as free.
+  Drain items: Blood Donation, Bloody Hand. HP-reset items: Weird Ghost, Hourglass, Broken
+  Hourglass. This is deferred step 4 ("Weird Ghost's 1-HP downside") turning lethal.
+- Speed held (5 through wave 9, 9 at wave 10; run 7 was 3-6 by then), so the weight did
+  its job, but the run ended too early to test survival past wave 13 or arm B late.
+- Stopgap: proposal 10 gives the three HP-reset items `item_bonus` -100 (the `score` tool
+  shows -95 to -100), which keeps them under `min_buy` and makes crates recycle them.
+- `ban_items` is a no-op on this profile: `_apply_bans` (`base_shop.gd` ~761) acts only when
+  the game's ban mode is active, which needs chal_banned_items (open on profile 1). No run
+  has ever logged a `ban` action, so the four curse bans in run 6 never applied; the curse
+  weight of -14 kept those items out. Shaping and `brotato-next` should use negative
+  `item_bonus` for hard exclusions until the mod enforces `ban_items` itself. Real fix (mod, one
+  review): score the combination, never buy an HP-reset item while a drain item is held or
+  the reverse, with a hard veto rather than a weight.
