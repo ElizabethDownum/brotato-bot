@@ -432,11 +432,18 @@ const TARGET_RISK_WEIGHT = 4.0
 const TARGET_DANGER_RADIUS = 280.0   # quiet draw boundary in WorldView
 const TARGET_PULL_FLOOR = 1.5        # full approach beats the standing bonus 1.2
 const TARGET_APPROACH_CAP = 3.0     # below W_ROOM=6 and ordinary contact costs
+const TARGET_STAND_MARGIN = 0.1     # approach floor strictly exceeds standing continuity
+const SHOOT_TARGET_HOLD_SECONDS = 4.0  # cumulative time in weapon range without a kill
+const SHOOT_TARGET_COOLDOWN = 4.0      # let other collectibles win before retrying this id
 const LOOT_STANDOFF_SHARE = 0.8     # leave room inside the shortest weapon's reach
 const LOOT_STANDOFF_CAP = 240.0     # do not park at the edge of long ranged weapons
 const LOOT_CONTACT_COST = 8.0       # exceeds capped loot pull + moving continuity
 const LOOT_ESCAPE_SAMPLE = 0.1     # s: price initial penetration before a clear endpoint
 var _loot_standoff = 0.0
+var _loot_can_damage = true
+var _target_clock = 0.0
+var _shoot_hold = 0.0
+var _shoot_cooldowns = {}        # loot/tree id -> physics seconds eligible again
 var _drop_target_id = -1
 var _drop_target_pos = Vector2.ZERO
 var _target_reward = []
@@ -659,24 +666,32 @@ func _smooth_danger(distance: float, contact: float) -> float:
 	return x * x * (3.0 - 2.0 * x)
 
 
-# One route evaluation per collectible per decision, never per movement candidate.
+# Route checks only for candidates whose raw rank can improve the best, and the
+# current target. `prune=false` retains the exhaustive reference for exact tests.
 # The player endpoint is exempt from hard path rejection when the body is behind
 # the route: a nearby enemy must still allow a target that leads AWAY from it.
 func _target_route(p0: Vector2, at: Vector2, enemies: Array, threats: Array,
-		body_radius: float) -> Array:
+		body_radius: float, prune: bool = true) -> Array:
 	var near_risk = 0.0
 	var path_risk = 0.0
 	var blocked = false
 	var route = at - p0
 	for e in enemies:
 		var contact = float(e[1]) + body_radius
-		var target_distance = at.distance_to(e[0])
-		if target_distance <= max(contact, TARGET_DROP_RADIUS):
-			blocked = true
-		near_risk += pow(max(1.0 - target_distance / TARGET_ENEMY_RADIUS, 0.0), 2)
+		var target_sq = at.distance_squared_to(e[0])
+		var target_reach = max(contact, max(TARGET_DROP_RADIUS, TARGET_ENEMY_RADIUS))
+		if not prune or target_sq <= target_reach * target_reach:
+			var target_distance = at.distance_to(e[0])
+			if target_distance <= max(contact, TARGET_DROP_RADIUS):
+				blocked = true
+			near_risk += pow(max(1.0 - target_distance / TARGET_ENEMY_RADIUS, 0.0), 2)
 		if (e[0] - p0).dot(route) <= 0.0:
 			continue
 		var closest = Geometry.get_closest_point_to_segment_2d(e[0], p0, at)
+		var path_sq = closest.distance_squared_to(e[0])
+		var path_reach = max(contact, max(TARGET_DROP_PATH_RADIUS, TARGET_PATH_RADIUS))
+		if prune and path_sq > path_reach * path_reach:
+			continue
 		var distance = closest.distance_to(e[0])
 		if distance <= max(contact, TARGET_DROP_PATH_RADIUS):
 			blocked = true
@@ -686,6 +701,15 @@ func _target_route(p0: Vector2, at: Vector2, enemies: Array, threats: Array,
 		if t[T_KIND] == KIND_CONTACT or t[T_END] <= 0.0:
 			continue
 		var end = t[T_POS] + t[T_VEL] * max(min(horizon, t[T_END]) - t[T_START], 0.0)
+		if prune:
+			# Disjoint segment AABBs expanded by the full risk reach imply zero
+			# contribution. No approximation of a potentially nonzero risk.
+			var reach = TARGET_PATH_RADIUS + t[T_RADIUS] + body_radius
+			if max(p0.x, at.x) < min(t[T_POS].x, end.x) - reach \
+					or min(p0.x, at.x) > max(t[T_POS].x, end.x) + reach \
+					or max(p0.y, at.y) < min(t[T_POS].y, end.y) - reach \
+					or min(p0.y, at.y) > max(t[T_POS].y, end.y) + reach:
+				continue
 		# Crossing a moving threat's swept segment is risky even if both ends
 		# are clear. A crossed pair has zero segment distance in Godot 3.
 		var pair = Geometry.get_closest_points_between_segments_2d(p0, at, t[T_POS], end)
@@ -696,15 +720,48 @@ func _target_route(p0: Vector2, at: Vector2, enemies: Array, threats: Array,
 		blocked or path_risk > TARGET_PATH_LIMIT]
 
 
+func _closing_danger(p0: Vector2, threats: Array, body_radius: float) -> float:
+	var danger = 1.0
+	for t in threats:
+		if t[T_END] <= 0.0 or t[T_START] >= horizon:
+			continue
+		var offset = t[T_POS] - p0
+		if offset.length_squared() >= TARGET_DANGER_RADIUS * TARGET_DANGER_RADIUS \
+				or offset.dot(t[T_VEL]) >= 0.0:
+			continue    # only close threats with positive radial closing speed
+		var contact = t[T_RADIUS] + body_radius
+		if t[T_KIND] == KIND_PROJ:
+			var end = t[T_POS] + t[T_VEL] * max(min(horizon, t[T_END]) - t[T_START], 0.0)
+			var closest = Geometry.get_closest_point_to_segment_2d(p0, t[T_POS], end)
+			if closest.distance_squared_to(p0) > pow(contact * HIT_MARGIN, 2):
+				continue    # a passing bullet's path misses the player's body
+		danger = min(danger, _smooth_danger(offset.length(), contact))
+	return danger
+
+
+func _target_approach(pull: float, closed: float) -> float:
+	# Danger can soften greed, but cannot restore a stationary local minimum.
+	# Route rejection and the existing threat costs still decide where to dodge.
+	var floor_gain = max(w_pickup * TARGET_PULL_FLOOR, w_hyst + TARGET_STAND_MARGIN)
+	return min(max(pull * _target_danger, floor_gain) * closed,
+		max(w_pickup * TARGET_APPROACH_CAP, floor_gain))
+
+
 func _update_drop_target(p0: Vector2, rewards: Array, enemies: Array,
-		threats: Array, body_radius: float):
+		threats: Array, body_radius: float, prune: bool = true):
 	last_target_dist = -1.0
 	last_target_kind = "none"
 	_target_reward = []
 	if not _target_on:
 		_drop_target_id = -1
 		_drop_target_pos = Vector2.ZERO
+		_shoot_hold = 0.0
 		return
+	var elapsed = float(tick_step) / float(max(Engine.iterations_per_second, 1))
+	_target_clock += elapsed
+	for id in _shoot_cooldowns.keys():
+		if _shoot_cooldowns[id] <= _target_clock:
+			_shoot_cooldowns.erase(id)
 	var current = null
 	var candidate = null
 	var best = INF
@@ -712,33 +769,49 @@ func _update_drop_target(p0: Vector2, rewards: Array, enemies: Array,
 	var best_crate = INF
 	var material_value = Collectible.CRATE_MATERIAL_REFERENCE_VALUE
 	var threatened = false
-	_target_danger = 1.0
-	for e in enemies:
-		_target_danger = min(_target_danger,
-			_smooth_danger(p0.distance_to(e[0]), float(e[1]) + body_radius))
-	for t in threats:
-		if t[T_END] > 0.0:
-			_target_danger = min(_target_danger,
-				_smooth_danger(p0.distance_to(t[T_POS]), t[T_RADIUS] + body_radius))
+	_target_danger = _closing_danger(p0, threats, body_radius)
 	# Whole map, one selection pass. WorldView excludes attracted/collected ids.
 	for r in rewards:
 		if not Collectible.marked(r):
 			continue
 		if r[4] == "floor_drop" and r[1] > 0.0:
 			material_value = min(material_value, r[1])
+		if r[1] <= 0.0 or (r[4] == "loot" and not _loot_can_damage) \
+				or _shoot_cooldowns.has(r[5]):
+			continue
+		var is_current = r[5] == _drop_target_id
+		var distance_sq = p0.distance_squared_to(r[0])
+		var bound = best_crate if r[4] == "crate" else best
+		# A risk multiplier is >= 1, so raw rank is a lower bound. The tiny
+		# outward rounding guard makes this squared prefilter conservative;
+		# the scalar comparison below handles exact ties with original arithmetic.
+		if prune and not is_current and bound < INF:
+			var max_distance = bound * r[1] * 1.000001
+			if distance_sq > max_distance * max_distance:
+				continue
 		var distance = p0.distance_to(r[0])
 		var rim = _pickup_radius if r[2] else 0.0
-		# A living loot target is held in weapon range, never "collected".
-		if (distance <= rim and r[4] != "loot") or r[1] <= 0.0:
+		var shoot_target = r[4] in ["loot", "tree"]
+		# Living targets are held in weapon range, never "collected". A failed
+		# hold yields to other targets and cannot immediately reacquire this id.
+		if is_current and shoot_target and distance <= _loot_standoff:
+			_shoot_hold += elapsed
+			if _shoot_hold >= SHOOT_TARGET_HOLD_SECONDS:
+				_shoot_cooldowns[r[5]] = _target_clock + SHOOT_TARGET_COOLDOWN
+				continue
+		if distance <= rim and not shoot_target:
 			continue
-		var route = _target_route(p0, r[0], enemies, threats, body_radius)
+		var raw_rank = distance / r[1]
+		if prune and not is_current and raw_rank >= bound:
+			continue
+		var route = _target_route(p0, r[0], enemies, threats, body_radius, prune)
 		if route[1]:
 			if r[5] == _drop_target_id:
 				threatened = true
 			continue
 		if r[5] == _drop_target_id:
 			current = r
-		var score = distance / r[1] * route[0]
+		var score = raw_rank * route[0]
 		if r[4] == "crate":
 			if score < best_crate:
 				best_crate = score
@@ -761,9 +834,11 @@ func _update_drop_target(p0: Vector2, rewards: Array, enemies: Array,
 	if selected == null:
 		_drop_target_id = -1
 		_drop_target_pos = Vector2.ZERO
+		_shoot_hold = 0.0
 		return
 	if selected[5] != _drop_target_id:
 		target_switches += 1
+		_shoot_hold = 0.0
 	_drop_target_id = selected[5]
 	_drop_target_pos = selected[0]
 	_target_reward = selected
@@ -818,6 +893,7 @@ func choose(p0: Vector2, speed: float, body_radius: float, far: Vector2,
 	_anchor_w = w_anchor * float(profile.get("anchor_w", 1.0))
 	_pickup_radius = float(profile.get("pickup_radius", 0.0))
 	_loot_standoff = min(max(weapon_range, 0.0) * LOOT_STANDOFF_SHARE, LOOT_STANDOFF_CAP)
+	_loot_can_damage = weapon_range > 0.0 and profile.get("loot_can_damage", true)
 	_target_on = profile.get("drop_pull", "linear") == "target"
 	if _target_on:
 		_update_drop_target(p0, profile.get("target_collectibles", rewards),
@@ -1498,11 +1574,11 @@ func _cost(d: Vector2, p0: Vector2, speed: float, body_radius: float, far: Vecto
 			total += _stand_income * _stand_progress
 
 	for r in rewards:
-		if _target_on and Collectible.marked(r) and r[4] == "loot":
+		if _target_on and Collectible.marked(r) and r[4] in ["loot", "tree"]:
 			# Live position is refreshed by WorldView every decision. Do not pay
-			# pickup_taken: this is a moving enemy to shoot, not a pickup to touch.
+			# pickup_taken: loot and trees must be shot from weapon range.
 			var closest = Geometry.get_closest_point_to_segment_2d(r[0], p0, p_end)
-			var contact = body_radius + float(r[6])
+			var contact = body_radius + (float(r[6]) if r[4] == "loot" else 0.0)
 			var clearance = closest.distance_to(r[0])
 			if p0.distance_to(r[0]) <= contact:
 				# The segment minimum is already inside contact in every heading.
@@ -1510,20 +1586,21 @@ func _cost(d: Vector2, p0: Vector2, speed: float, body_radius: float, far: Vecto
 				# clear, but running through the body cannot hide behind a clear end.
 				var early = p0.linear_interpolate(p_end, min(LOOT_ESCAPE_SAMPLE / horizon, 1.0))
 				clearance = min(early.distance_to(r[0]), p_end.distance_to(r[0]))
-			total += LOOT_CONTACT_COST * _taper(clearance, contact)
+			if r[4] == "loot":
+				total += LOOT_CONTACT_COST * _taper(clearance, contact)
 			if r[5] == _drop_target_id:
 				var d0 = max(p0.distance_to(r[0]) - _loot_standoff, 0.0)
 				var d1 = max(closest.distance_to(r[0]) - _loot_standoff, 0.0)
 				var closed = max(d0 - d1, 0.0) / max(speed * horizon, 1.0)
 				var pull = max(w_pickup * r[1] / (1.0 + d0 / PICKUP_FALLOFF),
 					w_pickup * TARGET_PULL_FLOOR)
-				var gain = min(pull * closed, w_pickup * TARGET_APPROACH_CAP)
+				var gain = _target_approach(pull, closed)
 				# Reaching range earns the same capped gain as a full approach;
 				# once reached, standing earns it instead. This beats momentum's
 				# 1.2 bonus without a pickup payout or a forced movement override.
 				if (d0 > 0.0 and d1 == 0.0) or (d0 == 0.0 and d == Vector2.ZERO):
-					gain = w_pickup * TARGET_APPROACH_CAP
-				total -= gain * _target_danger
+					gain = _target_approach(w_pickup * TARGET_APPROACH_CAP, 1.0)
+				total -= gain
 			continue
 		# Attracted rewards (drops, food) are taken at the attract rim, so the
 		# distance that matters is to the rim; a felled reward (tree, r[2]
@@ -1555,7 +1632,7 @@ func _cost(d: Vector2, p0: Vector2, speed: float, body_radius: float, far: Vecto
 			# Bound the approach separately from the unchanged pass-through bonus.
 			var pull = max(w_pickup * r[1] / (1.0 + d0 / PICKUP_FALLOFF),
 				w_pickup * TARGET_PULL_FLOOR)
-			gain = min(pull * closed, w_pickup * TARGET_APPROACH_CAP) * _target_danger
+			gain = _target_approach(pull, closed)
 		if held:
 			if d1 == 0.0:
 				gain += w_pickup * r[1]                      # inside the zone: keep earning

@@ -162,7 +162,13 @@ func test_smooth_danger_is_monotonic_and_close_hit_outprices_target_gain():
 	var direction = _choose(arb, ORIGIN, [_material(Vector2(200, 0), 1)],
 		[[threat[0], threat[2]]], [threat])
 	assert_true(direction.x < 0.0)
-	assert_true(104.0 > Arbiter.TARGET_APPROACH_CAP + Collectible.LEGENDARY_CRATE_VALUE)
+	# Compare actual scored movement against an actual contact fixture. This
+	# catches changes to scoring/weights, unlike comparing constants alone.
+	arb.last_dir = Vector2.ZERO
+	var rewards = [_material(Vector2(200, 0), 1)]
+	var into = arb._cost(Vector2.RIGHT, ORIGIN, SPEED, 20.0, FAR, rewards, [], [], 300.0, false, 100.0)
+	var away = arb._cost(Vector2.LEFT, ORIGIN, SPEED, 20.0, FAR, rewards, [], [], 300.0, false, 100.0)
+	assert_true(into > away + 20.0, "measured contact cost dominates target gain")
 	print("CLOSE_COST coefficient=104 max_approach=3 max_legendary_with_taken=5 dir=%s" % str(direction))
 
 
@@ -180,7 +186,7 @@ func test_looter_700_beats_material_300_and_is_a_whole_map_target():
 	assert_eq(far.last_target_dist, 1500.0)
 	assert_true(direction.x > 0.9, "selected loot outside 900 px still pulls")
 	assert_eq(Collectible.loot(unit, 0.0), [], "Pacifist's disable gate is preserved")
-	assert_eq(Collectible.loot(unit, -4.0)[1], 8.0, "any nonzero gate enables the named target value")
+	assert_eq(Collectible.loot(unit, -4.0), [], "negative loot value disables chasing")
 	print("LOOT_CROSSOVER material=300 value=3 loot=700 value=8 crossover=800 ratio=2.666667 far_dir=%s" % str(direction))
 
 

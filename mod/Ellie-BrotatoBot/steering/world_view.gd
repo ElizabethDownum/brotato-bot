@@ -604,6 +604,7 @@ var rewards = []
 var _target_collectibles = []
 var _target_enemies = []         # all-map [position, body radius], before threat-range culling
 var _target_mode = false
+var _loot_can_damage = false
 var targets = []
 var chargers = []                # idle chargers whose cooldown may expire soon
 var mitigation = 1.0             # share of incoming damage that actually lands
@@ -935,6 +936,8 @@ func gather(main, player) -> void:
 	var character_id = RunData.get_player_character(player.player_index).my_id
 	var row = steering_row(character_id, player)
 	_target_mode = row.drop_pull == "target"
+	_loot_can_damage = _target_mode and float(row.get("dps", 1.0)) > 0.0 \
+		and Collectible.can_damage(player.current_weapons)
 	prefers_still = row.get("still", "") == "prefer"
 	_loot_value = float(row.get("loot_value", LOOT_VALUE))
 	if row.has("kill_ref"):
@@ -1039,6 +1042,10 @@ func gather(main, player) -> void:
 	for g in main._active_golds:
 		if not is_instance_valid(g):
 			continue
+		# optimize_end_waves hides materials before they leave _active_golds
+		# (main.gd:1031-1040). Keep the legacy linear reward path unchanged.
+		if _target_mode and (main._cleaning_up or not g.visible):
+			continue
 		if "attracted_by" in g and g.attracted_by != null:
 			continue
 		var r = FloorDrop.reward(g.position, gold_value, draw, g.get_instance_id())
@@ -1104,6 +1111,7 @@ func gather(main, player) -> void:
 	if _target_mode:
 		profile["target_collectibles"] = _target_collectibles
 		profile["target_enemies"] = _target_enemies
+		profile["loot_can_damage"] = _loot_can_damage
 	profile["pickup_radius"] = pickup_radius   # every row: the attract rim prices drops
 	if row.get("stand_income", false):
 		# The not-moving material tick, in the pickup unit (gold_value per
@@ -1473,7 +1481,7 @@ func _add_unit(unit, pos: Vector2, range_sq: float, target_range_sq: float, pick
 		# Loot aliens wander. Chase to weapon range: a living one at wave end
 		# loses its drops. Pacifist cannot kill one (loot_value 0).
 		if _target_mode:
-			var r = Collectible.loot(unit, _loot_value, _body_radius(unit))
+			var r = Collectible.loot(unit, _loot_value if _loot_can_damage else 0.0, _body_radius(unit))
 			if not r.empty():
 				_target_collectibles.append(r)
 				if dist_sq < pickup_sq:

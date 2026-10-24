@@ -34,11 +34,20 @@ static func marked(r: Array) -> bool:
 
 static func loot(unit, enabled_value: float, body_radius: float = 20.0) -> Array:
 	if not is_instance_valid(unit) or not unit.is_loot or unit.dead or unit._pending_die \
-			or enabled_value == 0.0:
+			or enabled_value <= 0.0:
 		return []
 	var r = reward(unit.position, LOOT_TARGET_VALUE, false, "loot", unit.get_instance_id())
 	r.append(body_radius)    # contact clearance, independent of the weapon standoff
 	return r
+
+
+static func can_damage(weapons: Array) -> bool:
+	for weapon in weapons:
+		if is_instance_valid(weapon) and weapon.stats != null \
+				and weapon.stats.damage > 0.0 and weapon.stats.cooldown > 0.0 \
+				and weapon.stats.max_range > 0.0:
+			return true
+	return false
 
 
 static func kind(r: Array) -> String:

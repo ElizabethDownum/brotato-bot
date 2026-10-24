@@ -366,7 +366,9 @@ Common `plan` keys. This table is the full set. The header comment in
 `steering.drop_pull` accepts `"linear"` (default) or `"target"`. Target mode
 chooses from the whole map: unattracted materials, normal/legendary crates
 (values 1.5/2), food with a positive resolved food value, positive-value trees,
-and live loot aliens when the resolved `loot_value` is nonzero (target value 8).
+and live loot aliens when the resolved `loot_value` is positive and the player
+has a weapon with positive damage, cooldown and range (target value 8).
+Rows with disabled weapon DPS do not chase loot.
 Crates are vacuumed at wave end (`main.gd:1049-1056`), so a material of value 3
 beats either crate at equal distance. Against a material at 300 px, a normal
 crate wins below 150 px and a legendary below 200 px. A looter wins below 800 px.
@@ -380,15 +382,20 @@ of its route, or pooled path risk exceeds 1.5. A body behind the player does not
 block a route leading away from it. Otherwise a candidate must be less than half
 the current target's distance away to replace it.
 Only the selected target earns nonnegative approach gain. Its pull has a 1.5
-floor before normalization to overcome the standing bonus at long distance, a
-3-point approach cap, and a smooth danger factor from zero at contact to one
-at 280 px. Quiet draw/sweep multipliers still resolve as before; target mode
+floor before normalization to overcome the standing bonus at long distance and
+a 3-point approach cap. Only close threats with positive closing speed soften
+the pull, smoothly from zero at contact to one at 280 px; projectiles must also
+have a path toward the player's body. The scaled pull retains a floor of 1.5
+(or moving continuity plus 0.1, whichever is larger). Receding bodies and passing
+or receding projectiles do not soften it. Quiet draw/sweep multipliers still resolve as before; target mode
 also stays active near enemies. Every positive marked collectible crossed by
 the projected segment still earns its collection bonus. The 900 px horizon
 remains for linear mode and all other reward terms, including pass-through
 bonuses for non-targets. Loot aliens wander; their position refreshes each decision.
-The bot closes to `min(weapon_range * 0.8, 240)` px, then retains the target and
-earns the capped 3-point gain for standing in range. Loot earns no pickup bonus;
+The bot closes to `min(weapon_range * 0.8, 240)` px for loot and trees, then retains
+the target and earns the capped gain for standing in range. After four cumulative
+physics seconds held in range without that unit dying, it releases the target
+and excludes that id for four seconds before retrying. Loot and trees earn no pickup bonus;
 an 8-point tapered body-clearance cost discourages touching it. When already
 overlapping, clearance is the worse of a 0.1-second travel sample and the
 endpoint, so escape beats a move through the body to a clear endpoint. The looter is
@@ -396,6 +403,10 @@ excluded from route threats to its own target. Death, pending death, freeing or
 removal ends the commitment. Other enemies and route risk still apply. Linear
 mode retains its existing two-field loot reward (value 4, inside 900 px), and
 other held rewards retain their behavior.
+Selection prunes candidates whose distance/value lower bound cannot improve the
+best rank in their category, always checking the current target's route. Exact
+distance bounds skip zero-risk geometry. Hidden or cleaning-up materials are
+excluded in target mode, including the optimized wave-end cleanup path.
 Snapshot `arb.dtg` is the current target distance in px (-1 when absent);
 `arb.tswitch` counts target acquisitions, including the first, over the arbiter's
 lifetime. Clearing alone does not increment it. `arb.tkind` is `material`,
