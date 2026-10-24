@@ -5,6 +5,8 @@ import sys
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 from brotato_bot import cli
 from brotato_bot.run import proposal
 
@@ -57,6 +59,7 @@ def test_next_run_parses_the_four_bullets(proposal_md):
     assert proposal.next_run(proposal_md()) == {
         "character_id": CHARACTER,
         "danger": 0,
+        "zone": 0,
         "target": TARGET,
         "starting_weapon": "any",
     }
@@ -73,16 +76,38 @@ def test_next_run_rejects_duplicate_bullet(proposal_md):
     assert any("needs the bullets" in e for e in errors)
 
 
+@pytest.mark.parametrize("zone", [0, 1, 2])
+def test_optional_zone_is_parsed_and_validated(proposal_md, zone):
+    text = proposal_md().replace("- danger: 0", f"- danger: 0\n- zone: {zone}")
+    assert proposal.next_run(text)["zone"] == zone
+    assert proposal.validate(text, UNLOCKED) == []
+
+
+@pytest.mark.parametrize("zone", ["-1", "3", "1.5", "true", "none"])
+def test_invalid_zone_is_rejected(proposal_md, zone):
+    text = proposal_md().replace("- danger: 0", f"- danger: 0\n- zone: {zone}")
+    assert any(e.startswith("## Next run: zone must be") for e in proposal.validate(text, UNLOCKED))
+
+
+def test_duplicate_zone_is_rejected(proposal_md):
+    text = proposal_md().replace("- danger: 0", "- danger: 0\n- zone: 0\n- zone: 1")
+    assert any("needs the bullets" in e for e in proposal.validate(text, UNLOCKED))
+
+
 def test_next_run_rejects_extra_bullet(proposal_md):
     text = proposal_md().replace(f"- target: {TARGET}", f"- target: {TARGET}\n- note: anything")
     errors = proposal.validate(text, UNLOCKED)
-    assert any("not a character, danger, target or starting_weapon bullet" in e for e in errors)
+    assert any(
+        "not a character, danger, target, starting_weapon or zone bullet" in e for e in errors
+    )
 
 
 def test_next_run_rejects_unknown_bullet_text(proposal_md):
     text = proposal_md().replace("- danger: 0", "- danger 0")
     errors = proposal.validate(text, UNLOCKED)
-    assert any("not a character, danger, target or starting_weapon bullet" in e for e in errors)
+    assert any(
+        "not a character, danger, target, starting_weapon or zone bullet" in e for e in errors
+    )
 
 
 def test_next_run_rejects_non_integer_danger_without_doubled_prefix(proposal_md):

@@ -65,6 +65,23 @@ func _bot_launch_pick() -> void:
 	var launch = rt.launch_pick_step() if rt != null else null
 	if launch == null:
 		return
+	# Base character_selection.gd:15 exposes the OptionButton; :36-59 finishes
+	# its setup before this deferred call. zone_selection_button.gd:5-7 adds
+	# zone_data.my_id as item IDs; match those, not indices (:513).
+	# :49 gives RANDOM a separate ID; :496-497 identifies its index using
+	# ZoneService.zones.size(). Exclude it even if its ID matches the request.
+	# character_selection.tscn:734 wires item_selected to the :495-514 handler,
+	# clearing zone_is_random and setting current_zone and settings.zone_selected.
+	var zone_index = -1
+	for i in range(_zone_selection_button.get_item_count()):
+		if i != ZoneService.zones.size() and _zone_selection_button.get_item_id(i) == launch.zone:
+			zone_index = i
+			break
+	if zone_index < 0:
+		rt.launch_cancel("Launch refused: zone %d not available" % launch.zone)
+		return
+	_zone_selection_button.select(zone_index)
+	_on_ZoneSelectionButton_item_selected(zone_index)
 	var element = _find_inventory_element_by_id(Keys.generate_hash(launch.character_id), 0)
 	if element == null or element.item.is_locked:
 		rt.launch_cancel("Launch refused: character %s not available" % launch.character_id)

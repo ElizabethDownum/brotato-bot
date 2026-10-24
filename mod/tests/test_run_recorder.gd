@@ -5,7 +5,7 @@ const BotPaths = preload("res://mod/Ellie-BrotatoBot/core/bot_paths.gd")
 const BotConfig = preload("res://mod/Ellie-BrotatoBot/core/bot_config.gd")
 const PlanFile = preload("res://mod/Ellie-BrotatoBot/core/plan_file.gd")
 
-const HEADER = {"character_id": "character_well_rounded", "danger": 0}
+const HEADER = {"character_id": "character_well_rounded", "danger": 0, "zone": 2}
 
 
 # A fresh, empty directory under the test project's user data dir.
@@ -120,6 +120,8 @@ func test_end_run_writes_end_and_closes():
 	var path = root.plus_file("runs").plus_file("%s.jsonl" % str(run_id))
 	var lines = _read_lines(path)
 	assert_eq(lines.size(), 2, "header and end only")
+	if lines.size() > 0 and lines[0] != null:
+		assert_eq(lines[0].get("zone"), 2.0, "header records actual zone (JSON float)")
 	if lines.size() == 2 and lines[1] != null:
 		assert_eq(lines[1].get("kind"), "end", "last kind")
 		assert_eq(lines[1].get("outcome"), "death", "outcome")
@@ -184,14 +186,17 @@ func test_continues_only_the_same_profile_and_character():
 	_remove_tree(root)
 
 
-func test_launch_event_carries_the_four_launch_fields():
+func test_launch_event_carries_the_five_launch_fields():
 	var e = RunRecorder.launch_event({"token": "t1", "character_id": "character_old",
-		"starting_weapon": "any", "danger": 4, "created_at": "x"})
-	assert_eq(e.keys().size(), 4, "only the four fields")
+		"starting_weapon": "any", "danger": 4, "zone": 2.0, "created_at": "x"})
+	assert_eq(e.keys().size(), 5, "only the five fields")
 	assert_eq(e.token, "t1", "token")
 	assert_eq(e.character_id, "character_old", "character_id")
 	assert_eq(e.starting_weapon, "any", "starting_weapon")
 	assert_eq(e.danger, 4, "danger an int")
+	assert_eq(e.zone, 2, "zone")
+	assert_eq(typeof(e.zone), TYPE_INT, "zone an int")
+	assert_eq(RunRecorder.launch_event({}).zone, 0, "legacy zone default")
 
 
 func test_offer_event_and_item_types():

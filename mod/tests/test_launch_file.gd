@@ -14,6 +14,8 @@ func test_valid_file_parses_with_int_danger():
 	assert_eq(d.character_id, "character_old", "character_id")
 	assert_eq(d.starting_weapon, "weapon_rock", "starting_weapon")
 	assert_eq(d.danger, 4, "danger is an int")
+	assert_eq(d.zone, 0, "legacy token defaults to base zone")
+	assert_eq(typeof(d.zone), TYPE_INT, "default zone is an int")
 	assert_eq(LaunchFile.DEFAULT_PATH, "user://brotato-bot/launch.json", "DEFAULT_PATH")
 
 
@@ -43,6 +45,15 @@ func test_load_from_reads_a_file():
 	var d = LaunchFile.load_from(path)
 	assert_eq(d.token if typeof(d) == TYPE_DICTIONARY else "", "t1", "read back")
 	Directory.new().remove(path)
+
+
+func test_zone_bounds_and_integer_conversion():
+	for zone in [0, 1, 2]:
+		var d = LaunchFile.parse(GOOD.replace('"danger": 4', '"danger": 4, "zone": %d.0' % zone))
+		assert_eq(d.zone, zone, "zone accepted")
+		assert_eq(typeof(d.zone), TYPE_INT, "zone converted to int")
+	for value in ['"1"', 'true', 'null', '1.5', '-1', '3']:
+		assert_eq(typeof(LaunchFile.parse(GOOD.replace('"danger": 4', '"danger": 4, "zone": ' + value))), TYPE_NIL, "reject zone " + value)
 
 
 func test_weapon_candidates_per_tier_form_first():

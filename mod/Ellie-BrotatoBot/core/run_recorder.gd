@@ -204,6 +204,7 @@ static func launch_event(launch) -> Dictionary:
 		"character_id": str(launch.get("character_id", "")),
 		"starting_weapon": str(launch.get("starting_weapon", "")),
 		"danger": int(launch.get("danger", 0)),
+		"zone": int(launch.get("zone", 0)),
 	}
 
 

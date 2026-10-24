@@ -7,17 +7,18 @@ extends Reference
 # File shape (all six keys required):
 #   {"token": str, "character_id": "character_old",
 #    "starting_weapon": "weapon_rock" | "any", "danger": 0..5,
-#    "target_challenge": str, "created_at": str}
+#    "zone": 0..2 (optional, default 0), "target_challenge": str, "created_at": str}
 
 const BotPaths = preload("bot_paths.gd")
 
 const DEFAULT_PATH = BotPaths.ROOT + "/launch.json"
 const STRING_KEYS = ["token", "character_id", "starting_weapon", "target_challenge", "created_at"]
 const MAX_DANGER = 5
+const MAX_ZONE = 2
 
 
-# The launch dictionary (danger converted to int), or null for a missing file,
-# bad JSON, a missing or ill-typed key, or danger outside 0..5.
+# The launch dictionary (danger and zone converted to int), or null for a missing
+# file, bad JSON, a missing or ill-typed key, or an out-of-range danger/zone.
 static func load_from(path):
 	var f = File.new()
 	if not f.file_exists(path) or f.open(path, File.READ) != OK:
@@ -41,6 +42,12 @@ static func parse(text):
 	if danger != floor(danger) or danger < 0 or danger > MAX_DANGER:
 		return null
 	d.danger = int(danger)
+	var zone = d.get("zone", 0)
+	if typeof(zone) != TYPE_REAL and typeof(zone) != TYPE_INT:
+		return null
+	if zone != floor(zone) or zone < 0 or zone > MAX_ZONE:
+		return null
+	d.zone = int(zone)
 	return d
 
 

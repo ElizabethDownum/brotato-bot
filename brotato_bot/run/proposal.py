@@ -6,6 +6,7 @@ exactly one fenced JSON plan file. ``## Next run`` holds the bullets character, 
 target and starting_weapon, in that order; ``starting_weapon`` is a dataset weapon id or
 ``any``. A proposal without that last bullet (written before 2026-10-23) stays valid and
 means ``any``: ``validate`` returns errors only, so there is no warning channel.
+An optional ``- zone: <n>`` bullet selects zone 0..2; absent means 0 (base zone).
 
 Given the ``runs/index.json`` rows, ``validate`` also enforces the stagnation rule: after a
 ``stagnant`` or ``escalate`` verdict on the proposal's target, the plan family or the
@@ -28,13 +29,13 @@ from typing import Any
 from brotato_bot import cli, paths
 from brotato_bot.fsutil import read_json
 from brotato_bot.run import fit, prepare, shape, stagnation
-from brotato_bot.run.prepare import MAX_DANGER
+from brotato_bot.run.prepare import MAX_DANGER, MAX_ZONE
 
 SECTIONS = ("## Target", "## Next run", "## Plan", "## Why", "## Risk", "## Stagnation check")
 _NAME = re.compile(r"\d{4}-\d{2}-\d{2}-(\d+)\.md")
 _TITLE = re.compile(r"# Proposal (\d+)")
 _FENCED_JSON = re.compile(r"```json[ \t]*\n(.*?)```", re.DOTALL)
-_RUN_BULLET = re.compile(r"- (character|danger|target|starting_weapon): (.+)")
+_RUN_BULLET = re.compile(r"- (character|danger|target|starting_weapon|zone): (.+)")
 _RUN_KEYS = ["character", "danger", "target", "starting_weapon"]
 ANY_WEAPON = "any"
 _PLACEHOLDER = re.compile(r"<[A-Za-z][^<>\n]*>")
@@ -125,8 +126,8 @@ def extract_plan(markdown: str) -> dict:
 
 
 def next_run(markdown: str) -> dict:
-    """``{character_id, danger, target, starting_weapon}`` from ``## Next run``; target is None
-    for ``none`` and a missing ``starting_weapon`` bullet is ``any``."""
+    """Run fields from ``## Next run``; target is None for ``none``, a missing
+    ``starting_weapon`` is ``any`` and a missing ``zone`` is 0."""
     body = _section(markdown, "## Next run")
     if body is None:
         raise ValueError("section missing")
@@ -137,11 +138,11 @@ def next_run(markdown: str) -> dict:
         m = _RUN_BULLET.fullmatch(line)
         if m is None:
             raise ValueError(
-                f"line is not a character, danger, target or starting_weapon bullet: {line!r}"
+                f"line is not a character, danger, target, starting_weapon or zone bullet: {line!r}"
             )
         bullets.append((m.group(1), m.group(2)))
-    keys = [key for key, _ in bullets]
-    if keys not in (_RUN_KEYS, _RUN_KEYS[:3]):
+    keys = [key for key, _ in bullets if key != "zone"]
+    if keys not in (_RUN_KEYS, _RUN_KEYS[:3]) or sum(k == "zone" for k, _ in bullets) > 1:
         raise ValueError(
             "needs the bullets character, danger, target and starting_weapon, in that order"
         )
@@ -150,10 +151,15 @@ def next_run(markdown: str) -> dict:
         danger = int(fields["danger"])
     except ValueError:
         raise ValueError(f"danger must be an integer: {fields['danger']!r}") from None
+    try:
+        zone = int(fields.get("zone", "0"))
+    except ValueError:
+        raise ValueError(f"zone must be an integer: {fields['zone']!r}") from None
     target = fields["target"]
     return {
         "character_id": fields["character"],
         "danger": danger,
+        "zone": zone,
         "target": None if target == "none" else target,
         "starting_weapon": fields.get("starting_weapon", ANY_WEAPON),
     }
@@ -262,6 +268,8 @@ def validate(
     character = run["character_id"]
     if not 0 <= run["danger"] <= MAX_DANGER:
         errors.append(f"## Next run: danger must be 0 to {MAX_DANGER}, not {run['danger']}")
+    if not 0 <= run["zone"] <= MAX_ZONE:
+        errors.append(f"## Next run: zone must be 0 to {MAX_ZONE}, not {run['zone']}")
     if plan is not None and plan["character_id"] != character:
         errors.append(
             f"## Next run: character {character} is not the plan's character {plan['character_id']}"

@@ -379,9 +379,13 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    profile (step 4).
 2. Check that `%APPDATA%\Brotato\brotato-bot\plan.json` exists and names the
    character the run will use. `prepare` also writes `launch.json` beside it
-   (token, character, starting weapon, danger, target). The proposal's
+   (token, character, starting weapon, danger, zone, target, creation time). The proposal's
    `## Next run` names the starting weapon (`- starting_weapon:`; `any` means
    you choose).
+
+   | Launch field | Contract |
+   | --- | --- |
+   | `zone` | Integer 0..2; 0 is the base zone. Optional `- zone: <n>` in the proposal's `## Next run`; absent means 0. With `prepare --plan`, `--zone N` overrides the plan's zone and requests a launch, like `--danger`; absent from the plan means 0. Older launch tokens without it also mean 0. Before picking the character, the launcher selects this zone through the game's zone handler, clearing RANDOM and updating the persisted selection. An unavailable zone cancels with `Launch refused: zone <n> not available`. |
 3. **The launcher.** With a valid `launch.json` present, the mod does the run
    start for you, on the main menu you land on after loading the profile:
    - It presses Start, picks the character, picks the starting weapon, picks
@@ -449,10 +453,10 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
 
    | Kind | Data | When |
    |---|---|---|
-   | `header` | `character_id`, `danger`, `plan_id`, `profile_id`, `game_version`, `mod_version`, `start_wave`, `run_id` | first line |
+   | `header` | `character_id`, `danger`, `zone` (actual `RunData.current_zone`), `plan_id`, `profile_id`, `game_version`, `mod_version`, `start_wave`, `run_id` | first line |
    | `steering` | `character_id` (source character), `overrides` (applied plan entries), `resolved` (`tree_value`, `sweep`, `sweep_radius`, `gold_value`, `stand_continuity`, `tree_policy`, `material_value`, `caution`) | once per run, immediately after `header`; initial values, with material value and caution evaluated at that wave's starting state; later patches are recorded in decision events |
    | `bot_state` | `state` (`acting`, `idle`, `halted`, `complete`), `reason` (`enabled`, `toggle_off`, `main_menu`, `run_start`, or the halt reason) | Shift+Space on or off, a halt, the main menu, and right after the header (the bot's state when the file opened) |
-   | `launch` | `token`, `character_id`, `starting_weapon`, `danger` | wave 1 of a launched run, before the bot is enabled |
+   | `launch` | `token`, `character_id`, `starting_weapon`, `danger`, `zone` (requested zone) | wave 1 of a launched run, before the bot is enabled |
    | `snapshot` | position, heading, threats, `mats`, ... (`mats`: `floor` = material pickup count, `floor_value` = sum of their material values, `unattached` = count not yet attracted, `bag` = `RunData.bonus_gold`, `nearest` = distance to the nearest floor pickup, -1 when none; floor/value/nearest include attracted pickups) | about 1 Hz, only while the bot is enabled |
    | `damage`, `dash`, `bullet_hell` | — | only while the bot is enabled |
    | `death` | `wave`, `position`, `killer`, `last_threats`, `build`, `dmg_w` | player 0 dies |

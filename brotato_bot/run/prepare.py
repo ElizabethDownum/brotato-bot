@@ -1,10 +1,10 @@
 """Write the mod's inputs for the next bot run: ``plan.json``, ``target_challenge`` and the
 launch token ``launch.json``.
 
-``plan.json`` also carries ``danger`` and ``starting_weapon`` (a dataset weapon id or
+``plan.json`` also carries ``danger``, ``zone`` and ``starting_weapon`` (a dataset weapon id or
 ``any``) next to ``target_challenge``. ``launch.json`` (beside ``plan.json``) is the one-shot
 launch contract the mod consumes and deletes when it starts a run: ``token``,
-``character_id``, ``starting_weapon``, ``danger``, ``target_challenge``, ``created_at``.
+``character_id``, ``starting_weapon``, ``danger``, ``zone``, ``target_challenge``, ``created_at``.
 The owner still loads the bot profile by hand; the mod refuses on any other profile.
 
 ``settings.json`` (in the save dir) holds ``current_profile_id`` at the top level and
@@ -27,6 +27,7 @@ REQUIRED_PLAN_KEYS = ("plan_id", "character_id", "plan")
 DEFAULT_BOT_PROFILE_ID = 1
 LAUNCH_NAME = "launch.json"
 MAX_DANGER = 5
+MAX_ZONE = 2
 
 
 def validate_plan(plan: Any) -> None:
@@ -62,6 +63,11 @@ def validate_plan(plan: Any) -> None:
         raise ValueError("plan danger must be an integer")  # noqa: TRY004
     if not 0 <= danger <= MAX_DANGER:
         raise ValueError(f"plan danger must be between 0 and {MAX_DANGER}")
+    zone = plan.get("zone", 0)
+    if isinstance(zone, bool) or not isinstance(zone, int):
+        raise ValueError("plan zone must be an integer")  # noqa: TRY004
+    if not 0 <= zone <= MAX_ZONE:
+        raise ValueError(f"plan zone must be between 0 and {MAX_ZONE}")
     weapon = plan.get("starting_weapon", "any")
     if not isinstance(weapon, str) or not weapon:
         raise ValueError("plan starting_weapon must be a non-empty string")
@@ -130,6 +136,7 @@ def launch_contract(plan: dict, label: str, now: datetime | None = None) -> dict
         "character_id": plan["character_id"],
         "starting_weapon": plan.get("starting_weapon", "any"),
         "danger": plan.get("danger", 0),
+        "zone": plan.get("zone", 0),
         "target_challenge": plan.get("target_challenge", ""),
         "created_at": now.isoformat(timespec="seconds"),
     }

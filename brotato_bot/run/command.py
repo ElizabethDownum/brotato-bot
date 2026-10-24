@@ -52,6 +52,7 @@ def _from_proposal(path: str, p: paths.Paths) -> int:
     target = run["target"]
     plan["target_challenge"] = target or ""  # the mod prefers the plan's target; pin it
     plan["danger"] = run["danger"]
+    plan["zone"] = run["zone"]
     plan["starting_weapon"] = run["starting_weapon"]
     return _install(plan, target, p, Path(path).stem)
 
@@ -59,8 +60,15 @@ def _from_proposal(path: str, p: paths.Paths) -> int:
 def _prepare(args: argparse.Namespace) -> int:
     p = paths.load()
     if args.from_proposal:
-        if args.target or args.danger is not None or args.starting_weapon is not None:
-            print("prepare: --target, --danger and --starting-weapon come from the proposal")
+        if (
+            args.target
+            or args.danger is not None
+            or args.zone is not None
+            or args.starting_weapon is not None
+        ):
+            print(
+                "prepare: --target, --danger, --zone and --starting-weapon come from the proposal"
+            )
             return 1
         return _from_proposal(args.from_proposal, p)
     try:
@@ -69,15 +77,18 @@ def _prepare(args: argparse.Namespace) -> int:
         print(f"prepare: cannot read {args.plan}: {exc}")
         return 1
     launch_label = None
-    if args.danger is not None or args.starting_weapon is not None:
+    if args.danger is not None or args.zone is not None or args.starting_weapon is not None:
         if not isinstance(plan, dict):
             print("prepare: plan must be a JSON object")
             return 1
         if args.danger is not None:
             plan["danger"] = args.danger
+        if args.zone is not None:
+            plan["zone"] = args.zone
         if args.starting_weapon is not None:
             plan["starting_weapon"] = args.starting_weapon
         plan.setdefault("danger", 0)
+        plan.setdefault("zone", 0)
         plan.setdefault("starting_weapon", "any")
         launch_label = str(plan.get("plan_id", "plan"))
     return _install(plan, args.target, p, launch_label)
@@ -112,6 +123,7 @@ def _register_prepare(subparsers: argparse._SubParsersAction) -> None:
     )
     parser.add_argument("--target", default=None, metavar="ID", help="target challenge id")
     parser.add_argument("--danger", type=int, default=None, metavar="N", help="with --plan")
+    parser.add_argument("--zone", type=int, default=None, metavar="N", help="with --plan")
     parser.add_argument(
         "--starting-weapon", default=None, metavar="ID", help="weapon id or any, with --plan"
     )

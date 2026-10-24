@@ -272,6 +272,7 @@ def test_prepare_from_proposal_writes_the_launch_contract(tmp_paths, tmp_path, p
         "character_id": "character_well_rounded",
         "starting_weapon": "weapon_rock",
         "danger": 2,
+        "zone": 0,
         "target_challenge": "chal_gatherer_1",
     }
     assert launch["created_at"].endswith("+00:00")
@@ -288,6 +289,27 @@ def test_prepare_overwrites_a_stale_launch_token(tmp_paths, tmp_path, proposal_m
     assert _launch(tmp_paths)["starting_weapon"] == "any"
 
 
+@pytest.mark.parametrize("zone", [0, 1, 2])
+def test_prepare_from_proposal_pins_zone(tmp_paths, tmp_path, proposal_md, zone):
+    _settings(tmp_paths, 1, False)
+    _unlock_state(tmp_paths, True)
+    text = proposal_md().replace("- danger: 0", f"- danger: 0\n- zone: {zone}")
+    assert cli.main(["prepare", "--from-proposal", _proposal_file(tmp_path, text)]) == 0
+    assert _launch(tmp_paths)["zone"] == zone
+    assert json.loads(tmp_paths.plan_json.read_text(encoding="utf-8"))["zone"] == zone
+
+
+@pytest.mark.parametrize("zone", ["-1", "3", "1.5", "true"])
+def test_prepare_rejects_invalid_proposal_zone_before_writing(
+    tmp_paths, tmp_path, proposal_md, zone
+):
+    _unlock_state(tmp_paths, True)
+    text = proposal_md().replace("- danger: 0", f"- danger: 0\n- zone: {zone}")
+    assert cli.main(["prepare", "--from-proposal", _proposal_file(tmp_path, text)]) == 1
+    assert not tmp_paths.plan_json.exists()
+    assert not prepare.launch_path(tmp_paths).exists()
+
+
 def test_prepare_plan_with_flags_writes_the_contract_and_without_removes_a_stale_one(
     tmp_paths, tmp_path, capsys
 ):
@@ -301,6 +323,7 @@ def test_prepare_plan_with_flags_writes_the_contract_and_without_removes_a_stale
     launch = _launch(tmp_paths)
     assert launch["token"].startswith("old-v1-")
     assert (launch["danger"], launch["starting_weapon"]) == (1, "weapon_rock")
+    assert launch["zone"] == 0
     assert launch["target_challenge"] == ""  # the plan file's own key, which is unset here
     assert cli.main(args) == 0
     assert not tmp_paths.plan_json.with_name("launch.json").exists()
@@ -310,6 +333,29 @@ def test_prepare_plan_with_flags_writes_the_contract_and_without_removes_a_stale
 def test_prepare_from_proposal_refuses_the_plan_only_flags(tmp_paths, tmp_path, proposal_md):
     path = _proposal_file(tmp_path, proposal_md())
     assert cli.main(["prepare", "--from-proposal", path, "--danger", "1"]) == 1
+    assert cli.main(["prepare", "--from-proposal", path, "--zone", "0"]) == 1
+
+
+@pytest.mark.parametrize("zone", [0, 1, 2])
+def test_prepare_plan_with_zone_flag_pins_zone(tmp_paths, tmp_path, zone):
+    plan_file = tmp_path / "plan_in.json"
+    plan_file.write_text(json.dumps({**PLAN, "zone": 2}), encoding="utf-8")
+    assert cli.main(["prepare", "--plan", str(plan_file), "--zone", str(zone)]) == 0
+    launch = _launch(tmp_paths)
+    assert launch["zone"] == zone
+    assert launch["danger"] == 0
+    assert launch["starting_weapon"] == "any"
+    assert json.loads(tmp_paths.plan_json.read_text(encoding="utf-8"))["zone"] == zone
+
+
+@pytest.mark.parametrize("zone", [-1, 3])
+def test_prepare_plan_rejects_zone_flag_before_writing(tmp_paths, tmp_path, zone):
+    plan_file = tmp_path / "plan_in.json"
+    plan_file.write_text(json.dumps(PLAN), encoding="utf-8")
+    assert cli.main(["prepare", "--plan", str(plan_file), "--zone", str(zone)]) == 1
+    assert not tmp_paths.plan_json.exists()
+    assert not tmp_paths.config_json.exists()
+    assert not prepare.launch_path(tmp_paths).exists()
 
 
 def test_prepare_plan_rejects_out_of_range_danger_before_writing(tmp_paths, tmp_path, capsys):
@@ -327,6 +373,17 @@ def test_validate_plan_accepts_danger_boundaries(danger):
     prepare.validate_plan({**PLAN, "danger": danger})
 
 
+@pytest.mark.parametrize("zone", [0, 1, 2])
+def test_validate_plan_accepts_zone_and_contract_carries_it(zone):
+    plan = {**PLAN, "zone": zone}
+    prepare.validate_plan(plan)
+    assert prepare.launch_contract(plan, "test")["zone"] == zone
+
+
+def test_launch_contract_defaults_to_base_zone():
+    assert prepare.launch_contract(PLAN, "test")["zone"] == 0
+
+
 @pytest.mark.parametrize(
     "extra",
     [
@@ -335,6 +392,12 @@ def test_validate_plan_accepts_danger_boundaries(danger):
         {"danger": -1},
         {"danger": 6},
         {"danger": 9},
+        {"zone": "1"},
+        {"zone": True},
+        {"zone": None},
+        {"zone": 1.0},
+        {"zone": -1},
+        {"zone": 3},
         {"starting_weapon": ""},
         {"plan": {"prefer_sets": {"set_blunt": "x"}}},
         {"plan": {"prefer_sets": []}},

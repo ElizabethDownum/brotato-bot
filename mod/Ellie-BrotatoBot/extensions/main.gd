@@ -77,6 +77,7 @@ func _bot_start_recording():
 	rt.run_id = rt.recorder.start_run({
 		"character_id": character_id,
 		"danger": RunData.current_difficulty,
+		"zone": RunData.current_zone,
 		"plan_id": plan_id,
 		"profile_id": ProgressData.current_profile_id,
 		"game_version": ProgressData.VERSION,
