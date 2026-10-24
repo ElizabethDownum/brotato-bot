@@ -235,6 +235,10 @@ def fit_lines(
     if not known:
         header += "; unlock state lacks weapons_unlocked, treating all as unlocked"
     lines.append(header + ":")
+    lines.append(
+        "type match is against the unshaped row; "
+        "shaping sets weapon_type to any when it adds prefer_sets"
+    )
     lines.extend(f"  {_weapon_line(r, row is not None)}" for r in weapons)
     lines.append(f"Top weapon: {weapons[0]['id']}" if weapons else "Top weapon: none unlocked")
     return lines

@@ -243,6 +243,18 @@ def test_locked_weapons_are_skipped_and_missing_lists_are_said_so():
     assert any("lacks weapons_unlocked, treating all as unlocked" in ln for ln in lines)
 
 
+def test_weapon_type_header_explains_the_unshaped_row_once():
+    lines = fit.fit_lines("chal_slow", DATASET, _state(), BUILD_PLANS)
+    note = (
+        "type match is against the unshaped row; "
+        "shaping sets weapon_type to any when it adds prefer_sets"
+    )
+    assert lines.count(note) == 1
+    rock = next(line for line in lines if line.startswith("  weapon_rock:"))
+    assert lines.index(note) < lines.index(rock)
+    assert "type melee (match no)" in rock
+
+
 def test_plan_row_parses_type_and_stats():
     assert fit.plan_row(BUILD_PLANS, "character_old") == {
         "weapon_type": "ranged",
