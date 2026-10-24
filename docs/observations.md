@@ -547,3 +547,15 @@ the headless tests cover the pure logic and the scene extensions are read-checke
 - Follow-ups: `collect.py` still renders none of the new events (offers, crates, build,
   mats, wave_end stats were read by hand); the run-4 report's Outcome line does not
   mention the fired target.
+
+## 2026-10-23 owner ruling: the bar is "goal achieved"
+
+- A run is judged on whether its target fired, not on surviving to wave 20, unless
+  survival is part of the goal (a difficulty target, a "win with" challenge, a stat goal
+  that needs late-wave items). Run 4 is a success by this bar: chal_slow fired at wave 10
+  and the death at wave 18 is irrelevant to it.
+- Consequences: the stagnation rule already keys on the target (it reads run 4 as
+  "progressing"); the fit ranking needs a survival term only for goals that need late
+  waves (to add when such a goal comes up, not before); the post-target checkpoint's
+  "shift to survival" patch is a bonus, not a requirement; reports should lead with the
+  target outcome (item 1 of the 2026-10-24 harness dispatch puts it in the Outcome line).
