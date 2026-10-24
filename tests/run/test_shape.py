@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from brotato_bot import cli
 from brotato_bot.run import proposal, shape
 
@@ -172,10 +174,63 @@ def test_shape_markdown_rewrites_the_plan_block_and_reports_changes():
     assert plan["plan_id"] == "well-rounded-slow-v1"
     assert changes == [
         "stat_speed weight -14 (goal -20), 2 item bonuses",
+        "ask_on 3 goal items",
         "min_buy 6",
         "plan_id well-rounded-slow-v1",
     ]
     assert proposal.validate(text, SLOW, "2026-10-22-003.md") == []
+
+
+def test_shape_fills_ask_on_preserving_existing_ids_and_is_idempotent():
+    goal = shape.goal_for("chal_slow", SLOW)
+    plan = _plan(ask_on=["weapon_smg_1", "item_statue"])
+    shaped = shape.shape_plan(plan, goal, ITEMS)
+    assert shaped["plan"]["ask_on"] == [
+        "weapon_smg_1",
+        "item_statue",
+        "item_estys_couch",
+        "item_bag",
+    ]
+    assert shape.shape_plan(shaped, goal, ITEMS) == shaped
+    assert plan["plan"]["ask_on"] == ["weapon_smg_1", "item_statue"]
+    assert shape.goal_errors(shaped, {"target": "chal_slow", "danger": 0}, SLOW) == []
+
+
+def test_locked_items_removed_from_existing_bonuses_asks_and_goal_data():
+    state = {
+        **SLOW,
+        "items_unlocked": ["item_estys_couch"],
+        "items_locked": ["item_statue", "item_bag", "item_plain"],
+    }
+    goal = shape.goal_for("chal_slow", state)
+    plan = _plan(
+        ask_on=["weapon_smg_1", "item_statue", "item_plain"],
+        item_bonus={"item_bag": 1.0, "item_statue": 99.0, "item_plain": 5.0},
+    )
+    text, changes = shape.shape_markdown(_proposal("chal_slow", plan=plan), goal, ITEMS)
+    shaped = proposal.extract_plan(text)
+    assert shaped["plan"]["item_bonus"] == {"item_estys_couch": 30.0}
+    assert shaped["plan"]["ask_on"] == ["weapon_smg_1", "item_estys_couch"]
+    assert "ask_on 1 goal items" in changes
+    assert [i["id"] for i in shape.goal_data(goal, {"items": ITEMS})["items"]] == [
+        "item_estys_couch"
+    ]
+    assert shape.shape_markdown(text, goal, ITEMS) == (text, [])
+    assert shape.goal_errors(shaped, {"target": "chal_slow", "danger": 0}, state) == []
+
+
+def test_without_unlock_lists_item_eligibility_and_existing_values_are_unchanged():
+    goal = shape.goal_for("chal_slow", SLOW)
+    plan = _plan(ask_on=["item_plain"], item_bonus={"item_plain": 5.0, "item_statue": 99.0})
+    shaped = shape.shape_plan(plan, goal, ITEMS)["plan"]
+    assert shaped["item_bonus"] == {
+        "item_plain": 5.0,
+        "item_statue": 99.0,
+        "item_estys_couch": 30.0,
+        "item_bag": 1.5,
+    }
+    assert shaped["ask_on"] == ["item_plain", "item_statue", "item_estys_couch", "item_bag"]
+    assert len(shape.goal_data(goal, {"items": ITEMS})["items"]) == 3
 
 
 def test_shape_plan_raises_a_low_min_buy_under_a_stat_goal():
@@ -397,12 +452,18 @@ def test_objective_includes_the_goal_data_only_with_a_dataset():
     assert checkpoint == prompt._objective(state, {}, SLOW, "checkpoint")
 
 
-def test_cli_shape_prints_the_goal_data_after_the_shaped_line(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize("locked", [None, ["item_couch"]])
+def test_cli_shape_prints_the_goal_data_after_the_shaped_line(
+    tmp_path, monkeypatch, capsys, locked
+):
     from brotato_bot import paths
 
     data = tmp_path / "data"
     data.mkdir()
-    (data / "unlock_state.json").write_text(json.dumps({"profile": 1, **SLOW}), encoding="utf-8")
+    state = {"profile": 1, **SLOW}
+    if locked is not None:
+        state.update(items_locked=locked, items_unlocked=["item_slug"])
+    (data / "unlock_state.json").write_text(json.dumps(state), encoding="utf-8")
     (data / "brotato.json").write_text(json.dumps(GOAL_DATASET), encoding="utf-8")
     real = paths.load()
     monkeypatch.setattr(
@@ -415,9 +476,21 @@ def test_cli_shape_prints_the_goal_data_after_the_shaped_line(tmp_path, monkeypa
     assert lines[0].startswith(f"shaped {file} for chal_slow")
     assert lines[1:] == [
         "Goal data for chal_slow: lower stat_speed to -20.",
-        "item_couch -20 (tier 3, price 90), item_slug -5 (tier 1, price 20)",
+        ("item_couch -20 (tier 3, price 90), " if locked is None else "")
+        + "item_slug -5 (tier 1, price 20)",
         "set_blunt (melee): 2 weapons -2, 6 weapons -10",
     ]
+
+
+def test_prompt_goal_data_excludes_locked_items():
+    from brotato_bot.sidecar import prompt
+
+    unlocks = {**SLOW, "items_locked": ["item_couch"], "items_unlocked": ["item_slug"]}
+    lines = prompt._objective(
+        {"target_challenge": "chal_slow"}, {}, unlocks, "shop", dataset=GOAL_DATASET
+    )
+    assert lines[-3] == "item_slug -5 (tier 1, price 20)"
+    assert "item_couch" not in "\n".join(lines)
 
 
 def _blunt_dataset(six=-10.0, character=None):

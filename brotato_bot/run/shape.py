@@ -21,7 +21,8 @@ would replace the row's own bans.
   item that lowers the stat and penalises every item that raises it, in the shop and at
   level-ups;
 - every item in ``data/brotato.json`` whose effect moves the stat the right way gets an
-  ``item_bonus`` of ``ITEM_BONUS_PER_POINT`` per point, capped at ``ITEM_BONUS_CAP``;
+  ``item_bonus`` of ``ITEM_BONUS_PER_POINT`` per point, capped at ``ITEM_BONUS_CAP``,
+  and joins ``ask_on``; known locked items are removed from both and from goal data;
 - for a goal of exactly 0 (keep the stat at zero) items that move it the other way are
   banned;
 - ``min_buy`` is raised to ``MIN_BUY_UNDER_GOAL`` (never lowered), so low-scoring junk is
@@ -72,6 +73,7 @@ class Goal:
     stat: str = ""  # a stat id, or "" for a non-stat challenge
     value: int | float = 0  # the threshold for a stat goal
     danger: int | None = None  # the danger a difficulty challenge requires
+    items_locked: frozenset[str] = frozenset()  # empty for older unlock states
 
     @property
     def sign(self) -> int:
@@ -93,7 +95,16 @@ def goal_for(target: str | None, unlock_state: dict) -> Goal | None:
     danger = int(m.group(1)) if m else None
     if not stat and danger is None:
         return None
-    return Goal(target=target, stat=stat, value=value if stat else 0, danger=danger)
+    locked = unlock_state.get("items_locked")
+    return Goal(
+        target=target,
+        stat=stat,
+        value=value if stat else 0,
+        danger=danger,
+        items_locked=frozenset(i for i in locked if isinstance(i, str))
+        if isinstance(locked, list)
+        else frozenset(),
+    )
 
 
 def _family(plan_id: str) -> tuple[str, str]:
@@ -139,9 +150,13 @@ def shape_plan(plan: dict, goal: Goal, items: list[dict], dataset: dict | None =
     others = [abs(float(w)) for k, w in stats.items() if k != goal.stat]
     stats[goal.stat] = goal.sign * (max(others, default=0.0) + DOMINANT_MARGIN)
     bonus = body.setdefault("item_bonus", {})
+    for item_id in goal.items_locked:
+        bonus.pop(item_id, None)
+    if "ask_on" in body:
+        body["ask_on"] = [i for i in body["ask_on"] if i not in goal.items_locked]
     for item in items:
         item_id = item.get("id")
-        if not isinstance(item_id, str):
+        if not isinstance(item_id, str) or item_id in goal.items_locked:
             continue
         v = _sum_on(item.get("effects"), goal.stat)  # summed, as goal_data does
         if v == 0:
@@ -149,6 +164,9 @@ def shape_plan(plan: dict, goal: Goal, items: list[dict], dataset: dict | None =
         if v * goal.sign > 0:
             b = min(ITEM_BONUS_CAP, round(ITEM_BONUS_PER_POINT * abs(v), 1))
             bonus[item_id] = max(float(bonus.get(item_id, 0.0)), b)
+            ask_on = body.setdefault("ask_on", [])
+            if item_id not in ask_on:
+                ask_on.append(item_id)
         elif goal.value == 0:
             bans = body.setdefault("ban_items", [])
             if item_id not in bans:
@@ -200,6 +218,9 @@ def shape_markdown(
             1 for k in shaped["plan"]["item_bonus"] if k not in plan["plan"].get("item_bonus", {})
         )
         changes.append(f"{goal.stat} weight {w:g} (goal {goal.value:+g}), {n} item bonuses")
+        if shaped["plan"].get("ask_on") != plan["plan"].get("ask_on"):
+            n = len(goal_data(goal, {"items": items})["items"])
+            changes.append(f"ask_on {n} goal items")
         if shaped["plan"].get("ban_items") != plan["plan"].get("ban_items"):
             changes.append(f"{len(shaped['plan'].get('ban_items', []))} banned items")
         if shaped["plan"]["min_buy"] != plan["plan"].get("min_buy"):
@@ -330,6 +351,8 @@ def goal_data(goal: Goal, dataset: dict) -> dict:
     items = []
     for item in dataset.get("items") or []:
         if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+            continue
+        if item["id"] in goal.items_locked:
             continue
         total = _sum_on(item.get("effects"), goal.stat)
         if total * goal.sign > 0:
