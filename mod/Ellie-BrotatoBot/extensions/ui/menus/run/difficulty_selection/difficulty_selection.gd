@@ -22,6 +22,14 @@ func _ready() -> void:
 	call_deferred("_bot_launch_pick")
 
 
+# Back out of the launch with the screen: the previous screen would press again.
+func _go_back() -> void:
+	var rt = BotRuntime.instance()
+	if rt != null and rt.pending_launch != null:
+		rt.launch_cancel("Launch cancelled: back pressed")
+	._go_back()
+
+
 # Launcher: press the launch's danger; a danger above the character's maximum is
 # a locked element and cancels the launch. The press starts the run.
 func _bot_launch_pick() -> void:

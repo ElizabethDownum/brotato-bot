@@ -41,6 +41,14 @@ func _process(delta: float) -> void:
 		CoopService.listening_for_inputs = true
 
 
+# Back out of the launch with the screen: the previous screen would press again.
+func _go_back() -> void:
+	var rt = BotRuntime.instance()
+	if rt != null and rt.pending_launch != null:
+		rt.launch_cancel("Launch cancelled: back pressed")
+	._go_back()
+
+
 # Launcher: press the first existing starting-weapon element among the launch's
 # candidates (the tier-1 my_id form first). "any" leaves the pick to the owner and
 # the launch continues from the next screen.
