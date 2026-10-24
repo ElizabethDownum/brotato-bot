@@ -8,9 +8,10 @@ extends Reference
 # missing, unreadable or invalid file yields the defaults alone.
 #
 # Types after load:
-#   int:    bot_profile_id (at least 1), request_timeout_ms, checkpoint_timeout_ms
+#   int:    bot_profile_id (at least 1), request_timeout_ms, checkpoint_timeout_ms,
+#           ask_gold_floor, ask_per_visit
 #           (JSON numbers parse as floats; these are converted with int())
-#   float:  ask_tie_margin, ask_floor
+#   float:  ask_tie_margin, ask_floor, ask_big_share
 #   String: target_challenge, export_hotkey
 
 # Relative preload: resolves in the game (res://mods-unpacked/...) and in the
@@ -24,13 +25,17 @@ const DEFAULTS = {
 	"request_timeout_ms": 45000,
 	"checkpoint_timeout_ms": 120000,
 	"ask_tie_margin": 3.0,
-	"ask_floor": 4.0,
+	"ask_floor": 6.0,
+	"ask_gold_floor": 200,
+	"ask_big_share": 0.25,
+	"ask_per_visit": 2,
 	"target_challenge": "",
 	"export_hotkey": "F9",
 }
 
-const INT_KEYS = ["bot_profile_id", "request_timeout_ms", "checkpoint_timeout_ms"]
-const FLOAT_KEYS = ["ask_tie_margin", "ask_floor"]
+const INT_KEYS = ["bot_profile_id", "request_timeout_ms", "checkpoint_timeout_ms", "ask_gold_floor",
+		"ask_per_visit"]
+const FLOAT_KEYS = ["ask_tie_margin", "ask_floor", "ask_big_share"]
 
 
 static func load_from(path):

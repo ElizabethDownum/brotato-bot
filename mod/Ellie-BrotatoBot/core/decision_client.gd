@@ -32,7 +32,10 @@ const BotPaths = preload("bot_paths.gd")
 const ACTIONS = ["buy", "reroll", "lock", "skip", "pick", "revise_plan"]
 const INDEX_ACTIONS = ["buy", "lock", "pick"]
 const DEFAULT_TIE_MARGIN = 3.0
-const DEFAULT_FLOOR = 4.0
+const DEFAULT_FLOOR = 6.0
+const DEFAULT_GOLD_FLOOR = 200
+const DEFAULT_BIG_SHARE = 0.25
+const DEFAULT_PER_VISIT = 2
 const ALIVE_FILE = "sidecar.alive"
 const ALIVE_MAX_AGE_S = 10
 const SCREENS = ["shop", "levelup", "checkpoint"]
@@ -76,31 +79,58 @@ func discard_response(id: String) -> void:
 		d.remove(path)
 
 
-# Whether to ask the sidecar, and why:
-#   "pivot"  some offered id is in the plan's ask_on list (always asks)
-#   "ask"    at least two affordable options and the best affordable score is
-#            within ask_tie_margin of the second, or below ask_floor
+# Whether to ask the sidecar, and why. scores: one number per option, parallel to
+# offered_ids. affordable: indices into scores the player can pay for (all of
+# them for level-ups). Missing cfg keys use the defaults.
+#
+# Level-up (min_buy null):
+#   "pivot"  an offered id is in the plan's ask_on list (always asks)
+#   "ask"    at least two options and the best is within ask_tie_margin of the
+#            second, or below ask_floor
+# Shop (min_buy given; gold, prices parallel to scores, asked_this_visit asks so
+# far this visit), checked in this order:
+#   ""       asked_this_visit has reached ask_per_visit
+#   "pivot"  an offered id is in ask_on (on every board of the visit)
+#   ""       a dead board: no affordable option scores at or above min_buy
+#   "ask"    a tie: best >= ask_floor and best - second < ask_tie_margin
+#   "ask"    a big purchase: gold >= ask_gold_floor and the best affordable
+#            option costs at least ask_big_share of gold (it cannot be an ask_on
+#            id: any ask_on id on the board already pivoted)
 #   ""       let the rules decide
-# scores: one number per option. affordable: indices into scores the player
-# can pay for (all of them for level-ups). Missing cfg keys use the defaults.
 static func should_ask(scores: Array, affordable: Array, cfg: Dictionary,
-		offered_ids: Array = [], ask_on: Array = []) -> String:
+		offered_ids: Array = [], ask_on: Array = [], min_buy = null, gold: int = 0,
+		prices: Array = [], asked_this_visit: int = 0) -> String:
+	var shop = min_buy != null
+	if shop and asked_this_visit >= int(cfg.get("ask_per_visit", DEFAULT_PER_VISIT)):
+		return ""
 	for id in offered_ids:
 		if ask_on.has(id):
 			return "pivot"
 	var vals = []
+	var best_i = -1
 	for i in affordable:
 		var k = int(i)
-		if k >= 0 and k < scores.size():
-			vals.append(float(scores[k]))
-	if vals.size() < 2:
-		return ""
-	vals.sort()
-	var best = vals[vals.size() - 1]
-	var second = vals[vals.size() - 2]
+		if k < 0 or k >= scores.size():
+			continue
+		vals.append(float(scores[k]))
+		if best_i < 0 or float(scores[k]) > float(scores[best_i]):
+			best_i = k
 	var margin = float(cfg.get("ask_tie_margin", DEFAULT_TIE_MARGIN))
 	var floor_v = float(cfg.get("ask_floor", DEFAULT_FLOOR))
-	if best - second < margin or best < floor_v:
+	vals.sort()
+	if not shop:
+		if vals.size() < 2:
+			return ""
+		var top = vals[vals.size() - 1]
+		if top - vals[vals.size() - 2] < margin or top < floor_v:
+			return "ask"
+		return ""
+	if best_i < 0 or float(scores[best_i]) < float(min_buy):
+		return ""
+	var best = vals[vals.size() - 1]
+	if vals.size() >= 2 and best >= floor_v and best - vals[vals.size() - 2] < margin:
+		return "ask"
+	if best_i < prices.size() and gold >= int(cfg.get("ask_gold_floor", DEFAULT_GOLD_FLOOR)) 			and float(prices[best_i]) >= float(cfg.get("ask_big_share", DEFAULT_BIG_SHARE)) * float(gold):
 		return "ask"
 	return ""
 

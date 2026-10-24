@@ -447,7 +447,7 @@ func _auto_shop_player(pi) -> void:
 	# this shop and all future ones (added to banned_items). Done once up front so the
 	# buy loop and every later reroll are already clean.
 	_apply_bans(pi, plan)
-	var asked = false   # the sidecar is consulted at most once per shop visit
+	var asks = 0   # sidecar decisions asked this visit (should_ask caps them at ask_per_visit)
 	var actions = 0
 	var abandoned = false
 	while actions < MAX_ACTIONS:
@@ -460,23 +460,22 @@ func _auto_shop_player(pi) -> void:
 		var gold = RunData.get_player_gold(pi)
 		var container = _get_shop_items_container(pi)
 		var nodes = container._shop_items
-		# Sidecar decision, once per visit before the first buy, and only while a
-		# sidecar is alive (fresh sidecar.alive; otherwise no request, no pause,
-		# no decision events -- the rules decide): when the scored
-		# offering is a near-tie, weak, or holds an ask_on id, BotRuntime.decide
-		# pauses the game and waits for responses/<id>.json. The applied result
+		# Sidecar decision on any board of the visit (first view, after a reroll or a
+		# buy), up to ask_per_visit times, and only while a sidecar is alive (fresh
+		# sidecar.alive; otherwise no request, no pause, no decision events -- the
+		# rules decide): when DecisionClient.should_ask finds an ask_on id, a genuine
+		# tie or a big purchase, BotRuntime.decide pauses the game and waits for
+		# responses/<id>.json. The applied result
 		# is recorded as a decision_applied event; "rule" means BOTato's own
 		# choice below runs this iteration (timeout, invalid response, or an
 		# answer that cannot be carried out).
-		if not asked:
-			asked = true
+		var rt = BotRuntime.instance()
+		if asks < int(rt.config.get("ask_per_visit", DecisionClient.DEFAULT_PER_VISIT)) and rt.sidecar_ready():
 			var ask = _decision_options(nodes, gold, plan, pi)
-			var rt = BotRuntime.instance()
-			var why = ""
-			if rt.sidecar_ready():
-				why = DecisionClient.should_ask(ask.scores, ask.affordable, rt.config,
-					ask.ids, plan.get("ask_on", []))
+			var why = DecisionClient.should_ask(ask.scores, ask.affordable, rt.config,
+				ask.ids, plan.get("ask_on", []), plan["min_buy"], gold, ask.prices, asks)
 			if why != "":
+				asks += 1
 				var r = yield(rt.decide("pivot" if why == "pivot" else "shop", ask.options, "shop"), "completed")
 				if not _bot_continue(pi):
 					abandoned = true
@@ -637,10 +636,11 @@ func _auto_shop_player(pi) -> void:
 #   options     [{index, id, kind: "weapon"|"item", price, score}]
 #   nodes       the ShopItem node behind each option
 #   scores      each option's ShopAdvisor.score_shop_entry
+#   prices      each option's price
 #   affordable  indices of the options whose price is <= gold
 #   ids         every offered item id (matched against the plan's ask_on)
 func _decision_options(nodes, gold, plan, pi) -> Dictionary:
-	var out = {"options": [], "nodes": [], "scores": [], "affordable": [], "ids": []}
+	var out = {"options": [], "nodes": [], "scores": [], "affordable": [], "ids": [], "prices": []}
 	for node in nodes:
 		if node == null or not is_instance_valid(node) or not node.active:
 			continue
@@ -656,6 +656,7 @@ func _decision_options(nodes, gold, plan, pi) -> Dictionary:
 		out.nodes.append(node)
 		out.scores.append(sc)
 		out.ids.append(node.item_data.my_id)
+		out.prices.append(int(node.value))
 		if int(node.value) <= gold:
 			out.affordable.append(i)
 	return out

@@ -73,6 +73,43 @@ func test_should_ask_on_tie_and_floor():
 	assert_eq(DecisionClient.should_ask([10.0, 8.5], [0, 1], {}), "ask", "defaults when keys missing")
 
 
+# Shop mode: min_buy given. Args after cfg: ids, ask_on, min_buy, gold, prices, asked.
+const SHOP = {"ask_tie_margin": 3.0, "ask_floor": 6.0, "ask_gold_floor": 200,
+	"ask_big_share": 0.25, "ask_per_visit": 2}
+
+
+func _shop(scores, affordable, ids, ask_on, gold, prices, asked = 0, cfg = SHOP):
+	return DecisionClient.should_ask(scores, affordable, cfg, ids, ask_on, 6.0, gold, prices, asked)
+
+
+func test_shop_dead_board_never_asks():
+	assert_eq(_shop([5.0, 5.5], [0, 1], ["a", "b"], [], 50, [10, 10]), "", "all below min_buy")
+	assert_eq(_shop([30.0, 29.0], [], ["a", "b"], [], 50, [90, 90]), "", "nothing affordable")
+	assert_eq(_shop([30.0, 29.0], [0, 1], ["a", "b"], [], 50, [10, 10]), "ask", "same board with scores up is a tie")
+
+
+func test_shop_tie_needs_floor_and_margin():
+	assert_eq(_shop([10.0, 8.5], [0, 1], ["a", "b"], [], 50, [10, 10]), "ask", "tie above floor")
+	assert_eq(_shop([10.0, 5.0], [0, 1], ["a", "b"], [], 50, [10, 10]), "", "clear winner")
+	assert_eq(_shop([10.0, 5.0, 30.0], [0, 1], ["a", "b", "c"], [], 50, [10, 10, 99]), "", "unaffordable ignored")
+	assert_eq(_shop([6.0, 4.0], [0, 1], ["a", "b"], [], 50, [10, 10]), "ask", "best at the floor and within the margin")
+	assert_eq(_shop([7.0], [0], ["a"], [], 50, [10]), "", "one affordable, small purchase")
+
+
+func test_shop_pivot_on_every_board_but_capped():
+	assert_eq(_shop([20.0, 5.0], [0, 1], ["a", "goal"], ["goal"], 50, [10, 10], 1), "pivot", "second board still pivots")
+	assert_eq(_shop([20.0, 5.0], [0, 1], ["a", "goal"], ["goal"], 50, [10, 10], 2), "", "ask_per_visit reached")
+	assert_eq(_shop([20.0, 5.0], [0, 1], ["a", "b"], [], 50, [10, 10], 0, {}), "", "defaults when keys missing")
+
+
+func test_shop_big_purchase():
+	assert_eq(_shop([20.0, 5.0], [0, 1], ["a", "b"], [], 400, [100, 10]), "ask", "100 of 400 gold is a quarter")
+	assert_eq(_shop([20.0, 5.0], [0, 1], ["a", "b"], [], 400, [99, 10]), "", "just under a quarter")
+	assert_eq(_shop([20.0, 5.0], [0, 1], ["a", "b"], [], 199, [60, 10]), "", "below the gold floor")
+	assert_eq(_shop([20.0, 5.0], [0, 1], ["a", "goal"], ["goal"], 400, [100, 10]), "pivot", "goal on board pivots first")
+	assert_eq(_shop([20.0, 5.0], [0, 1], ["a", "b"], [], 400, [10, 100]), "", "the big one is not the best option")
+
+
 func test_should_ask_on_plan_ask_list():
 	assert_eq(DecisionClient.should_ask([20.0, 5.0], [0, 1], CFG, ["anvil", "coupon"], ["anvil"]),
 		"pivot", "ask_on hit wins over a clear winner")
