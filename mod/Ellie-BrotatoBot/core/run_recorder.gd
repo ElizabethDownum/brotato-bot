@@ -141,8 +141,10 @@ static func offer_item(id, tier, price, score, locked) -> Dictionary:
 
 
 # A crate item the level-up screen took or recycled (action "take" | "recycle").
-static func crate_event(wave, item_id, action, score) -> Dictionary:
-	return {"wave": int(wave), "item_id": str(item_id), "action": str(action), "score": float(score)}
+# source: haiku/rule/timeout; id links the decision, or is empty when not asked.
+static func crate_event(wave, item_id, action, score, source = "rule", decision_id = "") -> Dictionary:
+	return {"wave": int(wave), "item_id": str(item_id), "action": str(action), "score": float(score),
+		"source": str(source), "id": str(decision_id)}
 
 
 # The run's final build: weapon and item ids.

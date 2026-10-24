@@ -5,8 +5,8 @@ Two JSONL files, one JSON object per line, appended (never rewritten):
 ``decisions/<run_id>.jsonl`` -- written by the sidecar loop (Task 9), one line per
 decision request it handled::
 
-    {"id": "<run_id>-<seq:03>", "run_id": str, "kind": "shop"|"levelup"|"pivot"|"checkpoint",
-     "screen": "shop"|"levelup"|"checkpoint", "character_id": str, "wave": int | null,
+    {"id": "<run_id>-<seq:03>", "run_id": str, "kind": "shop"|"levelup"|"crate"|"pivot"|"checkpoint",
+     "screen": "shop"|"levelup"|"crate"|"checkpoint", "character_id": str, "wave": int | null,
      "options": [request.options[] as the mod wrote them],
      "response": {validated Decision dict} | null,
      "source": "haiku" | "repair" | "fallback", "ts": ISO-8601 str}
@@ -24,12 +24,14 @@ A line carrying ``decision`` instead of ``response`` is read the same way.
 
 ``action`` is the response's action (null without one). ``applied`` is whether the mod
 applied it, read from the run recording's ``decision_applied`` (shop), ``levelup``
-(``source`` ``haiku``) and ``checkpoint`` (``applied`` with no ``reason``) lines for the
+(``source`` ``haiku``), ``crate`` (its action when source is ``haiku``) and ``checkpoint``
+(``applied`` with no ``reason``) lines for the
 decision id; null when the recording has none. ``chosen`` is the option id for an indexed
-action (buy/lock/pass/pick), the action word otherwise, null without a response or when
+action (buy/lock/pass/pick) or the sole crate item's id, the action word otherwise,
+null without a response or when
 ``applied`` is false (``kept_to_end`` is then null too).
 ``hp_next_wave`` is the HP at the end of the wave after the decision's wave (0 when the
-player died in it; null when the run never got there). ``kept_to_end`` is set for buys
+player died in it; null when the run never got there). ``kept_to_end`` is set for buys and takes
 only: whether the bought id is in the final build -- the ``death`` line's build, or the
 last run-file line carrying a ``build`` (mod snapshots carry none today, so a won or
 abandoned run gives null). A bought weapon counts as kept when any weapon of its family
@@ -137,6 +139,8 @@ def _applied_actions(run_jsonl: Path | None) -> dict[str, str]:
             out[did] = str(e.get("applied"))
         elif kind == "levelup":
             out[did] = "pick" if e.get("source") == "haiku" else str(e.get("source"))
+        elif kind == "crate":
+            out[did] = str(e.get("action")) if e.get("source") == "haiku" else str(e.get("source"))
         elif kind == "checkpoint":
             out[did] = str(e.get("reason") or e.get("applied"))
     return out
@@ -181,9 +185,12 @@ def join_outcomes(
         elif action in INDEXED_ACTIONS:
             opt = _chosen_option(options, resp.get("option_index"))
             chosen = str(opt.get("id")) if opt and opt.get("id") else None
+        elif action in ("take", "recycle"):
+            opt = options[0] if len(options) == 1 and isinstance(options[0], dict) else None
+            chosen = str(opt.get("id")) if opt and opt.get("id") else None
         elif isinstance(action, str):
             chosen = action
-        if action == "buy" and chosen:
+        if action in ("buy", "take") and chosen:
             if not build_loaded:
                 build = _final_build(run_summary, run_jsonl)
                 build_loaded = True

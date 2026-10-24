@@ -277,7 +277,7 @@ func test_build_request_carries_screen_and_kind():
 
 
 func test_screen_for_kind():
-	assert_eq(DecisionClient.SCREENS, ["shop", "levelup", "checkpoint"], "screens")
+	assert_eq(DecisionClient.SCREENS, ["shop", "levelup", "crate", "checkpoint"], "screens")
 	var r = DecisionClient.build_request("checkpoint", "checkpoint", "r", 1, "p", [], 0)
 	assert_eq(r.get("screen"), "checkpoint", "checkpoint screen")
 
@@ -291,3 +291,29 @@ func test_write_request_honours_an_explicit_id():
 	assert_eq(id, "norun-20261022-101500-007", "explicit id kept")
 	assert_eq(_list(root.plus_file("requests")), ["norun-20261022-101500-007.json"], "file named by it")
 	_remove_tree(root)
+
+
+class DescriptionEffect:
+	extends Resource
+	var text_key = ""
+
+
+func test_has_description_effect_on_resources_and_dictionaries():
+	assert_false(DecisionClient.has_description_effect([]), "no effects")
+	assert_false(DecisionClient.has_description_effect([null, {"key": "stat_max_hp", "value": 3}, {"text_key": ""}]), "plain stats")
+	assert_true(DecisionClient.has_description_effect([{"key": "lose_hp_per_second", "value": 1, "text_key": "effect_lose_hp_per_second"}]), "unweighted description")
+	assert_true(DecisionClient.has_description_effect([{"key": "stat_attack_speed", "value": 40, "text_key": "effect_stat_while_not_moving"}]), "weighted conditional still asks")
+	var effect = DescriptionEffect.new()
+	assert_false(DecisionClient.has_description_effect([effect]), "plain resource")
+	effect.text_key = "effect_hp_start_next_wave"
+	assert_true(DecisionClient.has_description_effect([null, effect]), "Resource property, like in-game Effect")
+
+
+func test_crate_actions_need_no_option_index():
+	for action in ["take", "recycle"]:
+		assert_true(DecisionClient.validate_response({"action": action, "confidence": 0.8}), "crate action")
+		assert_false(DecisionClient.validate_response({"action": action, "option_index": 0, "confidence": 0.8}), "no crate index")
+	var options = [{"index": 0, "id": "item_weird_ghost", "kind": "item", "score": 1.0}]
+	var r = DecisionClient.build_request("crate", "crate", "run-a", 5, "user://s.json", options, 99)
+	assert_eq(r.screen, "crate", "crate screen")
+	assert_eq(r.options, options, "one item, with score")

@@ -220,6 +220,12 @@ func test_crate_and_build_events():
 	assert_eq(c.item_id, "item_bag", "item_id")
 	assert_eq(c.action, "recycle", "action")
 	assert_eq(c.score, 3.0, "score is a float")
+	assert_eq(c.source, "rule", "old callers default to rule")
+	assert_eq(c.id, "", "not asked")
+	for source in ["haiku", "rule", "timeout"]:
+		var asked = RunRecorder.crate_event(5, "item_bag", "take", 3, source, "run-005")
+		assert_eq(asked.source, source, "crate source")
+		assert_eq(asked.id, "run-005", "decision id link")
 	var b = RunRecorder.build_event(["weapon_rock_1"], ["item_bag"])
 	assert_eq(b.weapons, ["weapon_rock_1"], "weapons")
 	assert_eq(b.items, ["item_bag"], "items")

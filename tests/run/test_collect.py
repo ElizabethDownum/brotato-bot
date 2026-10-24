@@ -666,3 +666,26 @@ def test_collect_records_no_experience_for_a_run_in_progress(tmp_paths):
         "incomplete"
     )
     assert not (tmp_paths.decisions_dir / "experience.jsonl").exists()
+
+
+def test_crates_report_sources_and_legacy_events_round_trip():
+    events = [{"kind": "header", "run_id": "crate-test"}]
+    for source in ("rule", "haiku", "timeout", None):
+        event = {
+            "kind": "crate",
+            "wave": 7,
+            "item_id": "item_weird_ghost",
+            "action": "recycle",
+            "score": 2.0,
+        }
+        if source is not None:
+            event["source"] = source
+        events.append(event)
+    summary = collect.summarize(events)
+    assert [r.source for r in summary.crates] == ["rule", "haiku", "timeout", None]
+    assert RunSummary.model_validate_json(summary.model_dump_json()).crates == summary.crates
+    md = render.run_report(summary)
+    crates = md.split("## Crates")[1].split("\n## ")[0]
+    assert "| wave | item | action | score | source |" in crates
+    for source in ("rule", "haiku", "timeout"):
+        assert f"| 7 | item_weird_ghost | recycle | 2 | {source} |" in crates

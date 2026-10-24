@@ -122,6 +122,22 @@ def test_poll_handles_request_and_writes_response(p, capsys):
     assert sidecar.poll_once() == 0
 
 
+@pytest.mark.parametrize("action", ["take", "recycle"])
+def test_poll_routes_crate_and_records_sole_item(p, action):
+    options = [{"index": 0, "id": "item_weird_ghost", "kind": "item", "score": 2.0}]
+    rid = _request(p, 1, kind="crate", options=options)
+    response = {"action": action, "confidence": 0.8, "rationale": "survival", "tags": []}
+    fake = FakeDecide(decide.Outcome(response, "haiku", []))
+    assert loop.Sidecar(p, {}, decide_fn=fake).poll_once() == 1
+    assert fake.calls[0]["request"]["kind"] == "crate"
+    assert fake.calls[0]["request"]["screen"] == "crate"
+    assert "free crate; answer take or recycle" in fake.calls[0]["user"]
+    assert json.loads((p.responses_dir / f"{rid}.json").read_text()) == response
+    (record,) = _records(p)
+    assert record["kind"] == "crate" and record["screen"] == "crate"
+    assert record["options"] == options and record["response"] == response
+
+
 def test_requests_processed_in_order(p):
     _request(p, 2)
     _request(p, 1)

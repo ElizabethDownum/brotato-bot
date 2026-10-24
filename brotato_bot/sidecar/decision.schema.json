@@ -5,7 +5,7 @@
   "properties": {
     "action": {
       "type": "string",
-      "enum": ["buy", "reroll", "lock", "pass", "skip", "pick", "revise_plan"]
+      "enum": ["buy", "reroll", "lock", "pass", "skip", "pick", "take", "recycle", "revise_plan"]
     },
     "option_index": {"type": "integer", "minimum": 0},
     "plan_patch": {
@@ -60,6 +60,13 @@
   "required": ["action", "confidence", "rationale", "tags"],
   "additionalProperties": false,
   "allOf": [
+    {
+      "if": {
+        "properties": {"action": {"enum": ["take", "recycle"]}},
+        "required": ["action"]
+      },
+      "then": {"not": {"required": ["option_index"]}}
+    },
     {
       "if": {
         "properties": {"action": {"enum": ["buy", "lock", "pass", "pick"]}},

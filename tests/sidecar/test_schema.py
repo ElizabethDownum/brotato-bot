@@ -96,6 +96,8 @@ def test_schema_json_matches_model():
         "pass",
         "skip",
         "pick",
+        "take",
+        "recycle",
         "revise_plan",
     ]
     assert set(props) == set(schema.Decision.model_fields)
@@ -108,6 +110,9 @@ def test_schema_json_matches_model():
     conditionals = {}
     for rule in data["allOf"]:
         actions = rule["if"]["properties"]["action"]["enum"]
+        if actions == ["take", "recycle"]:
+            assert rule["then"] == {"not": {"required": ["option_index"]}}
+            continue
         for action in actions:
             conditionals[action] = rule["then"]["required"]
         assert rule["if"]["required"] == ["action"]
@@ -287,3 +292,15 @@ def test_validate_accepts_actions_legal_for_the_screen(request_, obj):
 def test_validate_rejects_illegal_action_or_index_for_the_request(request_, obj, field):
     errors = schema.validate(obj, request_)
     assert errors and all(e.startswith(field) for e in errors), errors
+
+
+@pytest.mark.parametrize("action", ["take", "recycle"])
+def test_crate_action_has_no_index_and_is_only_legal_on_crates(action):
+    obj = {"action": action, "confidence": 0.8, "rationale": "survival", "tags": []}
+    assert schema.validate(obj, {"screen": "crate", "options": [{"index": 0}]}) == []
+    assert schema.validate(dict(obj, option_index=0))
+    for request_ in (SHOP, LEVELUP, CHECKPOINT):
+        assert "not allowed" in schema.validate(obj, request_)[0]
+    for illegal in ("buy", "pick", "skip", "pass", "lock", "reroll", "revise_plan"):
+        wrong = dict(_buy(action=illegal), plan_patch={})
+        assert schema.validate(wrong, {"screen": "crate", "options": [{"index": 0}]})

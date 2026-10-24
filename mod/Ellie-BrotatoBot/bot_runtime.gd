@@ -595,7 +595,7 @@ func export_state(kind: String) -> String:
 #      A leftover responses/<id>.json is deleted before the request is written.
 #   3. Writes requests/<id>.json {kind, screen, run_id, seq, state_path,
 #      options, deadline_ms (epoch ms)} via DecisionClient.build_request;
-#      screen is "shop" | "levelup" | "checkpoint" (default: kind).
+#      screen is "shop" | "levelup" | "crate" | "checkpoint" (default: kind).
 #   4. bot_state "deciding", status "DECIDING: <kind>", tree paused; polls
 #      responses/ every POLL_S (timers process while paused) until a response
 #      or the timeout (config checkpoint_timeout_ms for "checkpoint", else

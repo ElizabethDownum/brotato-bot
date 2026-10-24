@@ -11,7 +11,8 @@ Inputs as the mod and the harness write them:
   ``build_request``): ``{id, kind, screen, run_id, seq, state_path, options,
   deadline_ms}``. Shop options are ``{index, id, kind, price, score}``
   (``base_shop.gd`` ``_decision_options``), level-up options ``{index, id, stat, value,
-  score}`` (``upgrades_ui.gd``); a checkpoint has none. A response's ``option_index``
+  score}`` (``upgrades_ui.gd``); crates have one ``{index: 0, id, kind: "item", score}``
+  and take/recycle answers have no index; a checkpoint has none. A response's ``option_index``
   is ``options[i].index``, never the state file's ``shop[].index`` (a shop slot).
 - ``state``: the state file, ``schema_version`` 1 (``core/state_export.gd``).
 - ``plan``: ``plan.json`` (``{plan_id, character_id, target_challenge, plan}``).
@@ -43,6 +44,8 @@ NO_TARGET = "no unlock target: optimise this character's run"
 KNOWLEDGE_MAX_CHARS = 6000
 PLAN_MAX_CHARS = 4000
 PLAN_TRUNCATED = "... [plan truncated: {n} more chars]"
+EQUIPMENT_MAX_CHARS = 8000
+EQUIPMENT_TRUNCATED = "... [held equipment truncated; remaining details omitted]"
 RECENT_SHOWN = 3
 _WEAPON_TIER_ID = re.compile(r"^(weapon_.+)_(\d+)$")
 _SLUG_JUNK = re.compile(r"[^a-z0-9]+")
@@ -172,6 +175,13 @@ def _objective(
         goal = shape.goal_for(target, unlock_state)
         if goal is not None and goal.stat and dataset:
             lines.extend(shape.brief_lines(goal, shape.goal_data(goal, dataset)))
+            current = (state.get("stats") or {}).get(goal.stat)
+            if isinstance(current, (int, float)) and not isinstance(current, bool):
+                distance = goal.value - current if goal.value > 0 else current - goal.value
+                lines.append(
+                    f"Goal distance: {goal.stat} is {_num(current)}, target {_num(goal.value)}; "
+                    f"{_num(max(0, distance))} left to {'raise' if goal.value > 0 else 'lower'}."
+                )
         lines.append("Play this run to complete the target; survive while doing so.")
     return lines
 
@@ -202,20 +212,7 @@ def _state_lines(state: dict, look: _Lookup) -> list[str]:
     stats = state.get("stats") or {}
     nonzero = ", ".join(f"{k} {_num(v)}" for k, v in sorted(stats.items()) if v)
     lines.append(f"- stats: {nonzero or 'all zero'}")
-    weapons = [
-        f"{w.get('id')} ({w.get('type')}"
-        + (f", sets {', '.join(w.get('set_ids') or [])}" if w.get("set_ids") else "")
-        + ")"
-        for w in state.get("weapons") or []
-        if isinstance(w, dict)
-    ]
-    lines.append(f"- weapons: {'; '.join(weapons) or 'none'}")
-    items = [
-        f"{i.get('id')} x{i.get('count', 1)}"
-        for i in state.get("items") or []
-        if isinstance(i, dict)
-    ]
-    lines.append(f"- items: {', '.join(items) or 'none'}")
+    lines.extend(_equipment_lines(state, look))
     shop = [s for s in state.get("shop") or [] if isinstance(s, dict)]
     if shop:
         lines.append("- shop slots (slot numbers are the shop's, not option_index):")
@@ -234,6 +231,66 @@ def _state_lines(state: dict, look: _Lookup) -> list[str]:
     return lines
 
 
+def _equipment_lines(state: dict, look: _Lookup) -> list[str]:
+    """Bound held-equipment context on every screen, retaining conditional effects."""
+    weapons = []
+    for w in state.get("weapons") or []:
+        if not isinstance(w, dict):
+            continue
+        wid = str(w.get("id") or "?")
+        rec = look.record(wid) or {}
+        tier = rec.get("tier", w.get("tier", "?"))
+        sets = w.get("set_ids") or rec.get("sets") or []
+        stats = {
+            key: rec[key]
+            for key in (
+                "base_damage",
+                "cooldown",
+                "crit_chance",
+                "crit_damage",
+                "min_range",
+                "max_range",
+                "knockback",
+                "lifesteal",
+                "scaling_stats",
+                "effects",
+            )
+            if key in rec and rec[key] not in (None, "", [], {})
+        }
+        details = json.dumps(stats, ensure_ascii=False, separators=(",", ":"))
+        weapons.append(
+            f"  - {wid} (tier {tier}, {w.get('type') or rec.get('weapon_type') or '?'}, "
+            f"sets {', '.join(sets) or 'none'}): {details if rec else 'record unavailable'}"
+        )
+    counts: dict[str, int] = {}
+    for item in state.get("items") or []:
+        if isinstance(item, dict):
+            iid = str(item.get("id") or "?")
+            counts[iid] = counts.get(iid, 0) + int(item.get("count", 1))
+    items = []
+    for iid, count in counts.items():
+        rec = look.record(iid)
+        effects = [
+            {k: e[k] for k in ("key", "value", "text_key", "text") if k in e and e[k] != ""}
+            for e in (rec or {}).get("effects") or []
+            if isinstance(e, dict)
+        ]
+        details = json.dumps(effects, ensure_ascii=False, separators=(",", ":"))
+        items.append(f"  - {iid} x{count}: effects {details if rec else 'record unavailable'}")
+    text = "\n".join(
+        [
+            "- weapons:",
+            *(weapons or ["  none"]),
+            "- items:",
+            *(items or ["  none"]),
+        ]
+    )
+    if len(text) > EQUIPMENT_MAX_CHARS:
+        keep = EQUIPMENT_MAX_CHARS - len(EQUIPMENT_TRUNCATED) - 1
+        text = text[:keep] + "\n" + EQUIPMENT_TRUNCATED
+    return text.splitlines()
+
+
 def _option_lines(request: dict, state: dict, look: _Lookup) -> list[str]:
     options = [o for o in request.get("options") or [] if isinstance(o, dict)]
     if not options:
@@ -245,6 +302,9 @@ def _option_lines(request: dict, state: dict, look: _Lookup) -> list[str]:
     for o in options:
         oid = str(o.get("id") or "")
         head = f"- option_index {o.get('index')}: {oid}"
+        crate = (request.get("screen") or request.get("kind")) == "crate"
+        if crate:
+            head = f"- crate item: {oid}"
         if "stat" in o and "price" not in o:  # a level-up upgrade
             lines.append(
                 f"{head}: {o.get('stat')} {_signed(o.get('value'))}, "
@@ -256,8 +316,9 @@ def _option_lines(request: dict, state: dict, look: _Lookup) -> list[str]:
         afford = ""
         if isinstance(price, int) and isinstance(gold, int) and price > gold:
             afford = f" (unaffordable with gold {gold})"
+        price_text = ", free crate; answer take or recycle" if crate else f", price {price}{afford}"
         lines.append(
-            f"{head} ({o.get('kind')}) {_display(rec, oid)}, price {price}{afford}, "
+            f"{head} ({o.get('kind')}) {_display(rec, oid)}{price_text}, "
             f"advisor score {_num(o.get('score'))}"
         )
         if rec is None:
@@ -334,7 +395,8 @@ def _past_lines(experience: list[dict]) -> list[str]:
 ANSWER_FORMAT = (
     "Answer with only one JSON object matching the Decision schema in the system prompt; "
     "`option_index` indexes the Options list above (the request's `options[]`), never the "
-    "shop slot `index` in the State section."
+    "shop slot `index` in the State section. On the crate screen, answer `take` or "
+    "`recycle` without `option_index`."
 )
 
 

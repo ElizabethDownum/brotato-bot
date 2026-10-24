@@ -11,12 +11,13 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 SCHEMA_PATH = Path(__file__).with_name("decision.schema.json")
 
-Action = Literal["buy", "reroll", "lock", "pass", "skip", "pick", "revise_plan"]
+Action = Literal["buy", "reroll", "lock", "pass", "skip", "pick", "take", "recycle", "revise_plan"]
 NEEDS_OPTION_INDEX = frozenset({"buy", "lock", "pass", "pick"})
 # The actions each screen applies (base_shop.gd, upgrades_ui.gd, Checkpoint.wanted).
 SCREEN_ACTIONS = {
     "shop": ("buy", "lock", "pass", "reroll", "skip", "revise_plan"),
     "levelup": ("pick",),
+    "crate": ("take", "recycle"),
     "checkpoint": ("revise_plan", "skip"),
 }
 
@@ -86,6 +87,8 @@ class Decision(BaseModel):
                 raise ValueError(f"{name} must not be null")
         if self.action in NEEDS_OPTION_INDEX and self.option_index is None:
             raise ValueError(f"option_index is required for action '{self.action}'")
+        if self.action in ("take", "recycle") and "option_index" in self.model_fields_set:
+            raise ValueError(f"option_index must be omitted for action '{self.action}'")
         if self.action == "revise_plan" and self.plan_patch is None:
             raise ValueError("plan_patch is required for action 'revise_plan'")
         return self

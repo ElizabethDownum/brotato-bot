@@ -8,8 +8,8 @@ extends Reference
 # Files under root (BotPaths.ROOT in the game):
 #   requests/<id>.json   {id, kind, screen, run_id, seq, state_path, options,
 #                        deadline_ms} (build_request plus id)
-#                        kind: "shop" | "levelup" | "pivot" | "checkpoint";
-#                        screen: "shop" | "levelup" | "checkpoint" (which
+#                        kind: "shop" | "levelup" | "crate" | "pivot" | "checkpoint";
+#                        screen: "shop" | "levelup" | "crate" | "checkpoint" (which
 #                        screen asks: a pivot comes from the shop or a level-up);
 #                        id = "<run_id>-<seq:03>" (seq is the state export's,
 #                        so state/<id>.json is the matching state file);
@@ -29,7 +29,7 @@ extends Reference
 # headless test project (res://mod/...) alike.
 const BotPaths = preload("bot_paths.gd")
 
-const ACTIONS = ["buy", "reroll", "lock", "pass", "skip", "pick", "revise_plan"]
+const ACTIONS = ["buy", "reroll", "lock", "pass", "skip", "pick", "take", "recycle", "revise_plan"]
 const INDEX_ACTIONS = ["buy", "lock", "pass", "pick"]
 const DEFAULT_TIE_MARGIN = 3.0
 const DEFAULT_FLOOR = 6.0
@@ -38,9 +38,19 @@ const DEFAULT_BIG_SHARE = 0.25
 const DEFAULT_PER_VISIT = 2
 const ALIVE_FILE = "sidecar.alive"
 const ALIVE_MAX_AGE_S = 10
-const SCREENS = ["shop", "levelup", "checkpoint"]
+const SCREENS = ["shop", "levelup", "crate", "checkpoint"]
 
 var root_dir = BotPaths.ROOT
+
+
+# ItemData inherits ItemParentData.effects (Array of Effect resources); Effect
+# exports text_key. Also accepts dictionaries for headless tests. This detects
+# description effects, independently of the plan's weights or the score.
+static func has_description_effect(effects) -> bool:
+	for effect in effects:
+		if effect != null and "text_key" in effect and str(effect.text_key) != "":
+			return true
+	return false
 
 
 func _init(root = BotPaths.ROOT):
@@ -246,6 +256,8 @@ static func validate_response(r) -> bool:
 	if typeof(r) != TYPE_DICTIONARY:
 		return false
 	if typeof(r.get("action")) != TYPE_STRING or not ACTIONS.has(r.action):
+		return false
+	if r.action in ["take", "recycle"] and r.has("option_index"):
 		return false
 	if INDEX_ACTIONS.has(r.action):
 		var idx = r.get("option_index")

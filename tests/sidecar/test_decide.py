@@ -48,6 +48,16 @@ def test_first_valid_answer_is_haiku():
     assert kwargs["input"] == "PROMPT"
 
 
+def test_crate_retries_wrong_screen_action_and_accepts_recycle():
+    response = {"action": "recycle", "confidence": 0.9, "rationale": "HP drain", "tags": []}
+    runner = _scripted(VALID, response)  # skip is legal JSON, but wrong on a crate
+    request = {**REQUEST, "kind": "crate", "screen": "crate"}
+    out = decide.decide(request, "CRATE", CFG, run=_run_with(runner))
+    assert out.source == "haiku-retry" and out.decision == response
+    assert "not allowed on the crate screen" in out.attempts[0].errors[0]
+    assert all(_model(cmd) == "claude-haiku-5-5" for cmd, _ in runner.calls)
+
+
 def test_ladder_retries_then_repairs_then_falls_back():
     runner = _scripted(INVALID, INVALID, INVALID)
     out = decide.decide(REQUEST, "PROMPT", CFG, run=_run_with(runner))

@@ -156,6 +156,7 @@ def summarize(events: list[dict], plan: dict | None = None) -> render.ReportSumm
                     item=_str(e.get("item_id")),
                     action=_str(e.get("action")) or "?",
                     score=_float(e.get("score")),
+                    source=_str(e.get("source")),
                 )
             )
         elif kind == "build":

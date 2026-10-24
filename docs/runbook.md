@@ -251,7 +251,7 @@ it while idle (`BOT idle` plus the plan line), turn on AI visuals. This also dra
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `bot_profile_id` | int | `1` | The only profile the bot may act on. |
-| `request_timeout_ms` | int | `45000` | How long a `shop`, `levelup` or `pivot` decision waits for a response. |
+| `request_timeout_ms` | int | `45000` | How long a `shop`, `levelup`, `crate` or `pivot` decision waits for a response. |
 | `checkpoint_timeout_ms` | int | `120000` | How long a `checkpoint` decision waits. |
 | `ask_tie_margin` | float | `3.0` | A shop tie: the bot asks when the best two affordable scores are closer than this (and the best is at least `ask_floor`). Level-ups ask on a tie or a best below `ask_floor`. |
 | `ask_floor` | float | `6.0` | The lowest best score a shop tie is worth asking about (the magnitude scale's `min_buy`). |
@@ -462,7 +462,7 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    | `death` | `wave`, `position`, `killer`, `last_threats`, `build`, `dmg_w` | player 0 dies |
    | `wave_end` | `wave`, `hp`, `gold`, `damage_taken`, `kills`, `stats` (the state export's `stat_*` map), `materials: {floor_count, floor_value, bag_before, bag_after, collected_value}` (`collected_value`: wallet at wave end minus wallet at wave start, before harvesting), `trees: {spawned, felled, alive}` (initial living trees plus subsequent spawns, combat deaths, living at wave end; cleanup deaths excluded) | every completed wave; emitted when `bag_after` is observed (see below) |
    | `offer` | `wave`, `view` (1-based per shop visit; a reroll starts the next), `gold`, `items` (`id`, `tier`, `price`, `score`, `locked`) | every shop board the bot sees: the first view and after each reroll |
-   | `crate` | `wave`, `item_id`, `action` (`take`, `recycle`), `score` | accepted bot crate action: take when score >= 0, recycle below 0; items use stat score plus plan item bonus, weapons use weapon score |
+   | `crate` | `wave`, `item_id`, `action` (`take`, `recycle`), `score`, `source` (`haiku`, `rule`, `timeout`), `id` (decision id, `""` when not asked) | accepted bot crate action; description effects ask the sidecar, otherwise take when score >= 0 and recycle below 0; items use stat score plus plan item bonus, weapons use weapon score |
    | `build` | `weapons` (ids), `items` (ids) | the run ends, win or death, just before `end` |
    | `warning` | `reason`, or `message` | `reason`: refused enable; `pause_on_focus_lost is true`. `message`: `sidecar timeouts; asking disabled for this run` |
    | `halt` | `reason` (`human input`, `wrong profile`) | the bot halts |
@@ -555,8 +555,8 @@ All files are under `%APPDATA%\Brotato\brotato-bot\` (`user://brotato-bot`).
   | Field | Meaning |
   |---|---|
   | `id` | the state file's base name: `<run_id>-<NNN>`, or `norun-<YYYYMMDD-HHMMSS>-<NNN>` with no open run |
-  | `kind` | `shop`, `levelup`, `pivot` (an offered id is in the plan's `ask_on`) or `checkpoint` |
-  | `screen` | `shop`, `levelup` or `checkpoint`: which screen is asking. A `pivot` comes from the shop or a level-up; answer by `screen` |
+  | `kind` | `shop`, `levelup`, `crate`, `pivot` (an offered id is in the plan's `ask_on`) or `checkpoint` |
+  | `screen` | `shop`, `levelup`, `crate` or `checkpoint`: which screen is asking. A `pivot` comes from the shop or a level-up; answer by `screen` |
   | `run_id`, `seq` | the run (`norun` when none) and the export counter |
   | `state_path` | the matching `state\<id>.json` (written before the request) |
   | `options` | the choices, see below (empty for `checkpoint`) |
@@ -567,6 +567,14 @@ All files are under `%APPDATA%\Brotato\brotato-bot\` (`user://brotato-bot`).
     one per *active* shop slot, compacted.
   - `screen: "levelup"`: `{index, id, stat, value, score}` (`stat` and
     `value` are the upgrade's first effect).
+  - `screen: "crate"`: one `{index: 0, id, kind: "item", score}`. There is no price.
+    An effect with a non-empty `text_key` triggers the ask whenever the sidecar is
+    ready; pure stat blocks use the existing score rule without asking. The prompt
+    includes the offered item's full dataset record, objective, goal distance when
+    available, and plan weights. Every screen includes held item effects (key, value,
+    `text_key`/text), grouped once per id with `xN`, and held weapon tiers and key stats.
+    Held equipment text is capped at 8000 characters with an explicit truncation note;
+    the offered item's record is outside that cap. Missing records retain their ids.
 - **`option_index` indexes `request.options[]` only.** It is not the state
   file's `shop[].index`, which is the raw slot index with gaps. The two
   differ as soon as a slot is inactive (e.g. after a ban). Always answer from
@@ -577,8 +585,8 @@ All files are under `%APPDATA%\Brotato\brotato-bot\` (`user://brotato-bot`).
 
   | Field | Rule |
   |---|---|
-  | `action` | `buy`, `lock`, `pass`, `reroll`, `skip` (shop); `pick` (level-up); `revise_plan` (shop and `checkpoint` only); `skip` (`checkpoint`) |
-  | `option_index` | int >= 0, required for `buy`, `lock`, `pass` and `pick` |
+  | `action` | `buy`, `lock`, `pass`, `reroll`, `skip` (shop); `pick` (level-up); `take`, `recycle` (crate); `revise_plan` (shop and `checkpoint` only); `skip` (`checkpoint`) |
+  | `option_index` | int >= 0, required for `buy`, `lock`, `pass` and `pick`; omitted for `take` and `recycle` |
   | `confidence` | number in 0..1, required |
   | `rationale` | string, optional |
   | `plan_patch` | object of section 3.5 plan keys, required for `revise_plan` (merged into `plan.json`; unknown or wrong-typed keys are dropped) |
@@ -589,6 +597,12 @@ All files are under `%APPDATA%\Brotato\brotato-bot\` (`user://brotato-bot`).
   Its saved gold is released if that node was the saving target. The next visit
   may judge the item again. `skip` ends the whole visit. Prefer `pass` when only
   the option in question is wrong.
+
+  A crate answer applies `take` or `recycle` to the sole offered item. An unusable
+  answer or timeout falls back to the score rule (take at score >= 0). The crate
+  event records `haiku` only when that answer was applied, `timeout` when the wait
+  timed out, and `rule` otherwise. After the pause the bot checks that it may still
+  act and the same crate choice is still displayed before touching a button.
 
   A response that fails these rules counts as `invalid` and the rules decide.
   An action that does not fit the screen (e.g. `pick` in the shop) is applied
@@ -1229,10 +1243,13 @@ Each attempt has `model`, `source_label`, `elapsed_ms`, `returncode`, `raw`,
 Joined experience adds `action`, `applied`, `chosen`, `confidence`,
 `outcome`, `death_wave`, `hp_next_wave` and `kept_to_end` to the
 identifying/context fields. `applied` comes from the run file's
-`decision_applied`, `levelup` and `checkpoint` lines for the decision id
+`decision_applied`, `levelup`, `crate` and `checkpoint` lines for the decision id
 (null when there is none); when the mod did not apply the answer, `chosen`
 and `kept_to_end` are null and the prompt shows the row as not applied. The live loop feeds the latest 20 same-character, same-kind rows
 from `decisions/experience.jsonl` to the prompt's "Past decisions" section.
+For crate decisions, `chosen` is the sole item's id; `take` can set `kept_to_end`,
+while `recycle` leaves it null. Rule or timeout crate actions do not count as an
+applied sidecar answer, even if they happen to match it.
 
 ### 7. Smoke without the game
 

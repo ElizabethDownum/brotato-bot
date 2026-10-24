@@ -1,8 +1,9 @@
 extends "res://ui/menus/ingame/upgrades_ui.gd"
 # Automatic level-up choices for the AutoBattler bot. When the bot is enabled,
 # whenever the level-up UI shows a player their options we pick the upgrade that
-# best fits the character's build plan (ShopAdvisor.pick_upgrade), and auto-take
-# any consumable/crate item. Gated by AutobattlerOptions.enable_autobattler.
+# best fits the character's build plan (ShopAdvisor.pick_upgrade), and take or
+# recycle crate items, asking about description effects when the sidecar is ready.
+# Gated by AutobattlerOptions.enable_autobattler.
 
 const ShopAdvisor = preload("res://mods-unpacked/Ellie-BrotatoBot/shopping/shop_advisor.gd")
 const BotRuntime = preload("res://mods-unpacked/Ellie-BrotatoBot/bot_runtime.gd")
@@ -306,6 +307,8 @@ func _auto_pick_loop() -> void:
 					if landed:
 						_record_levelup(rt, ups[idx], ask.options, source, decision_id)
 			elif container._items_container.visible:
+				if container._button_pressed:
+					continue   # wait for the button delay before asking or acting
 				# Free items still need a non-negative score: stat_score plus
 				# item_bonus. score_shop_entry delegates weapons to score_weapon,
 				# preserving their existing take/recycle rule too.
@@ -315,6 +318,31 @@ func _auto_pick_loop() -> void:
 				var crate_action = "take"
 				if crate_score < 0.0:
 					crate_action = "recycle"
+				var crate_source = "rule"
+				var crate_decision_id = ""
+				var crate_rt = BotRuntime.instance()
+				if DecisionClient.has_description_effect(idata.effects) and crate_rt.sidecar_ready():
+					# Keep the queue entry too: different crates can share resources.
+					var crate_choice = _showing_option[pi]
+					var crate_options = [{"index": 0, "id": idata.my_id, "kind": "item", "score": crate_score}]
+					_auto_deciding = true
+					var crate_r = yield(crate_rt.decide("crate", crate_options, "crate"), "completed")
+					_auto_deciding = false
+					_auto_heartbeat += 1
+					crate_decision_id = str(crate_rt.last_decision.get("id", ""))
+					if not _bot_may_continue():
+						_auto_busy = false
+						return
+					var crate_still_up = _should_autopick(pi) and _player_is_choosing[pi] \
+						and container._items_container.visible and container._item_data == idata \
+						and _showing_option[pi] == crate_choice
+					if not crate_still_up:
+						continue
+					if crate_r != null and crate_r.action in ["take", "recycle"]:
+						crate_action = crate_r.action
+						crate_source = "haiku"
+					elif crate_r == null and crate_rt.last_decision.get("source", "") == "timeout":
+						crate_source = "timeout"
 				# Both handlers no-op while the button delay runs (decompiled
 				# upgrades_ui_player_container.gd:212-224); idata and the score are
 				# taken above, before an accepted take advances the queue.
@@ -324,7 +352,7 @@ func _auto_pick_loop() -> void:
 				else:
 					container._on_TakeButton_pressed()
 				if crate_landed:
-					_record_crate(idata, crate_action, crate_score)
+					_record_crate(idata, crate_action, crate_score, crate_source, crate_decision_id)
 				acted = true
 		if not acted:
 			break
@@ -358,11 +386,11 @@ func _levelup_options(ups, plan, pi) -> Dictionary:
 	return out
 
 # One crate event per crate item taken or recycled (telemetry only).
-func _record_crate(idata, action, score) -> void:
+func _record_crate(idata, action, score, source, decision_id) -> void:
 	var rt = BotRuntime.instance()
 	if rt == null or rt.recorder == null or not rt.recorder.is_open():
 		return
-	rt.recorder.event("crate", RunRecorder.crate_event(RunData.current_wave, idata.my_id, action, score))
+	rt.recorder.event("crate", RunRecorder.crate_event(RunData.current_wave, idata.my_id, action, score, source, decision_id))
 
 # One levelup event per bot pick: {wave, id (the decision's id, "" when not
 # asked), picked (upgrade id), alternatives (every option offered, with

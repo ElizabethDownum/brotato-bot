@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from brotato_bot.dataset.unlocks import Challenge
 from brotato_bot.sidecar import prompt
 
@@ -367,3 +369,117 @@ def test_past_decisions_mark_unapplied_answers():
     lines = [line for line in past if line.startswith("- run")]
     assert "answered buy (not applied: rule)" in lines[0] and "chose" not in lines[0]
     assert "chose weapon_smg_1" in lines[1]
+
+
+DESCRIPTION_ITEMS = [
+    {
+        "id": "item_blood_donation",
+        "effects": [
+            {"key": "stat_harvesting", "value": 40, "text_key": "", "text": ""},
+            {
+                "key": "lose_hp_per_second",
+                "value": 1,
+                "text_key": "effect_lose_hp_per_second",
+                "text": "Lose 1 HP per second",
+            },
+        ],
+    },
+    {
+        "id": "item_weird_ghost",
+        "effects": [
+            {"key": "stat_max_hp", "value": 3},
+            {
+                "key": "hp_start_next_wave",
+                "value": -100,
+                "text_key": "effect_hp_start_next_wave",
+                "text": "Start next wave at 1 HP",
+            },
+        ],
+    },
+]
+
+
+@pytest.mark.parametrize("screen", ["shop", "levelup", "crate", "checkpoint", "advise"])
+def test_every_screen_has_held_effects_weapon_tier_and_stats(screen):
+    dataset = dict(DATASET, items=DESCRIPTION_ITEMS)
+    state = dict(
+        _state(),
+        items=[
+            {"id": "item_blood_donation", "count": 2},
+            {"id": "item_blood_donation", "count": 1},
+            {"id": "item_unknown", "count": 1},
+        ],
+        weapons=[{"id": "weapon_smg_2", "type": "ranged"}, {"id": "weapon_unknown_1"}],
+    )
+    text = prompt.build(_request(kind=screen, screen=screen), state, PLAN, dataset, {}, {}, [])
+    section = text.split("## State\n\n")[1].split("\n\n## Options")[0]
+    assert section.count("item_blood_donation") == 1
+    assert "item_blood_donation x3" in section
+    assert '"key":"stat_harvesting","value":40' in section
+    assert '"key":"lose_hp_per_second","value":1' in section
+    assert '"text_key":"effect_lose_hp_per_second"' in section
+    assert "Lose 1 HP per second" in section
+    assert "weapon_smg_2 (tier 2, ranged, sets Gun)" in section
+    assert '"base_damage":4.0' in section and '"scaling_stats":' in section
+    assert "item_unknown x1: effects record unavailable" in section
+    assert "weapon_unknown_1" in section and "record unavailable" in section
+
+
+def test_equipment_cap_leaves_rest_of_state_and_offered_effects_intact():
+    dataset = dict(
+        DATASET,
+        items=[
+            {"id": f"item_{i}", "effects": [{"key": "drain", "value": i, "text": "x" * 1000}]}
+            for i in range(25)
+        ]
+        + DESCRIPTION_ITEMS,
+    )
+    state = dict(_state(), items=[{"id": f"item_{i}", "count": 1} for i in range(25)])
+    look = prompt._Lookup(dataset)
+    equipment = "\n".join(prompt._equipment_lines(state, look))
+    assert len(equipment) == prompt.EQUIPMENT_MAX_CHARS
+    assert equipment.endswith(prompt.EQUIPMENT_TRUNCATED)
+    req = _request(
+        kind="crate",
+        screen="crate",
+        options=[
+            {"index": 0, "id": "item_weird_ghost", "kind": "item", "score": 2.0},
+        ],
+    )
+    text = prompt.build(req, state, PLAN, dataset, {}, {}, [])
+    assert "- plan in effect:" in text and "## Plan" in text
+    options = text.split("## Options")[1].split("## Plan")[0]
+    assert "Start next wave at 1 HP" in options
+    assert "effect_hp_start_next_wave" in options
+
+
+def test_crate_includes_full_effects_objective_distance_and_plan():
+    dataset = dict(DATASET, items=DESCRIPTION_ITEMS)
+    state = dict(
+        _state(),
+        target_challenge="chal_slow",
+        stats={"stat_speed": -5},
+        items=[{"id": "item_blood_donation", "count": 1}],
+    )
+    unlock = {"progress": {"chal_slow": {"stat": "stat_speed", "value": -20}}}
+    request = _request(
+        kind="crate",
+        screen="crate",
+        options=[
+            {"index": 0, "id": "item_weird_ghost", "kind": "item", "score": 2.0},
+        ],
+    )
+    text = prompt.build(request, state, PLAN, dataset, unlock, {}, [])
+    assert "Decision: crate (screen crate)" in text
+    assert "Goal distance: stat_speed is -5, target -20; 15 left to lower" in text
+    assert "Play this run to complete the target" in text
+    assert "lose_hp_per_second" in text and "weapon_smg" in text
+    options = text.split("## Options")[1].split("## Plan")[0]
+    assert "free crate; answer take or recycle" in options
+    assert "price None" not in options
+    assert "hp_start_next_wave" in options and "effect_hp_start_next_wave" in options
+    assert "Start next wave at 1 HP" in options and '"value": 3' in options
+    assert '"stats":{"stat_ranged_damage":9.0}' in text
+    system = prompt.system_prompt("crate")
+    assert "starting the next wave at 1 HP can be fatal" in system
+    assert "without\n`option_index`" in system

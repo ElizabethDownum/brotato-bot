@@ -212,6 +212,46 @@ def _resp(action, index=None):
     return r if index is None else {**r, "option_index": index}
 
 
+@pytest.mark.parametrize("action", ["take", "recycle"])
+@pytest.mark.parametrize("source", ["haiku", "rule", "timeout", None])
+def test_crate_experience_joins_applied_action_to_sole_item(tmp_path, action, source):
+    decisions = tmp_path / "decisions.jsonl"
+    opts = [{"index": 0, "id": "item_bag", "kind": "item", "score": 2.0}]
+    rec = {**_decision(1, 1, _resp(action), opts), "kind": "crate", "screen": "crate"}
+    experience.append(decisions, rec)
+    run = tmp_path / "run.jsonl"
+    if source is not None:
+        experience.append(
+            run,
+            {
+                "kind": "crate",
+                "id": rec["id"],
+                "item_id": "item_bag",
+                "action": action,
+                "source": source,
+            },
+        )
+    row = experience.join_outcomes(decisions, _summary(), run_jsonl=run)[0]
+    expected = None if source is None else source == "haiku"
+    assert row["applied"] is expected
+    assert row["chosen"] == ("item_bag" if expected is not False else None)
+    assert row["kept_to_end"] is (True if expected is not False and action == "take" else None)
+    assert row["hp_next_wave"] == 5
+    experience.append(tmp_path / "experience.jsonl", row)
+    assert experience.query(tmp_path / "experience.jsonl", rec["character_id"], "crate") == [row]
+
+
+def test_crate_experience_rejects_an_action_mismatch(tmp_path):
+    decisions, run = tmp_path / "decisions.jsonl", tmp_path / "run.jsonl"
+    rec = {**_decision(1, 1, _resp("take"), [{"id": "item_bag"}]), "kind": "crate"}
+    experience.append(decisions, rec)
+    experience.append(
+        run, {"kind": "crate", "id": rec["id"], "action": "recycle", "source": "haiku"}
+    )
+    row = experience.join_outcomes(decisions, _summary(), run_jsonl=run)[0]
+    assert row["applied"] is False and row["chosen"] is None and row["kept_to_end"] is None
+
+
 @pytest.mark.parametrize("applied", ["pass", "rule", None])
 def test_join_outcomes_pass_names_declined_item_without_claiming_ownership(tmp_path, applied):
     decisions = tmp_path / "decisions.jsonl"

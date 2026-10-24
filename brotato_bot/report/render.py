@@ -171,8 +171,8 @@ def run_report(summary: RunSummary, outcomes: dict[str, str] | None = None) -> s
         telemetry.append(
             "## Crates\n\n"
             + _table(
-                ["wave", "item", "action", "score"],
-                [(r.wave, r.item, r.action, r.score) for r in s.crates],
+                ["wave", "item", "action", "score", "source"],
+                [(r.wave, r.item, r.action, r.score, r.source) for r in s.crates],
             )
         )
     if s.build is not None:
