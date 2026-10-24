@@ -855,3 +855,17 @@ Ellie, watching runs, during run 8 (proposal 9):
   keys such as `effect_knockback` (14 items); 101 have a text key on a non-stat key. Crates
   arrive about 6-8 per run, so this is a few asks per run, not per wave. Measure in run 9
   before narrowing.
+
+## 2026-10-24 owner ruling: a Haiku ruling is a permission gate; shipped as mod sync 5
+
+- Owner: "the gate should be 'item is allowed to be taken/bought', which is what Haiku signs
+  off on." An approve (crate `take`, shop `buy`) means the item is allowed for the rest of the
+  turn (end-of-wave crates + the full shop visit, until the next wave); the rules still decide
+  whether to buy a copy on score and gold. A decline (`recycle`, `pass`) bars it for the turn.
+  Earlier the same day the owner defined the turn and asked that rulings not be re-asked within it.
+- Commits: `df87673` (per-visit and per-wave reuse, review follow-ups 2-5), `dc4f73c` (one turn
+  store per player in `core/turn_rulings.gd`, owned by BotRuntime, reset at run and wave start),
+  `c775020` (review fix: approved ids stay visible to the ask logic and an approved best option
+  is bought by the rules without an ask; crate-declined locks released at shop entry). Opus 5.5
+  review `.superpowers/sdd/2026-10-24-ruling-cache/review-opus.md`; controller checked the fix
+  against it. 157 mod tests, 783 harness tests.
