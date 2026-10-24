@@ -63,5 +63,18 @@
     "proposal_n": null,
     "profile_id": 1,
     "target_fired": true
+  },
+  {
+    "run_id": "20261024-005035-well_rounded-d0",
+    "character_id": "character_well_rounded",
+    "danger": 0,
+    "plan_id": "well-rounded-uncorrupted-v1",
+    "target_challenge": "chal_uncorrupted",
+    "outcome": "win",
+    "death_wave": null,
+    "hp_end_last_wave": 50,
+    "proposal_n": null,
+    "profile_id": 1,
+    "target_fired": true
   }
 ]
