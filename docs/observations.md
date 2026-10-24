@@ -933,3 +933,21 @@ Ellie, watching runs, during run 8 (proposal 9):
   - `LOOT_CHASE_MULT` (player_movement_behavior.gd:139) is declared but unused.
   - Snapshots record no loot aliens, so how often one was in reach and escaped cannot be
     measured yet. Next: add loot-alien telemetry (spawn, nearest distance, killed or escaped).
+
+## 2026-10-24 run 10 (`runs/20261024-132254-well_rounded-d1`, proposal 11, mod sync 6): WON, chal_difficulty_1 fired
+
+- The first win on this target. It also fired chal_smelly_feet and chal_medicine. HP 154 at the end.
+- Wave 19 peaked at 103 enemies again, as in run 9, while only one Gentle Alien was bought
+  this time, at wave 9. So the wave-19 crowd is the game's own spike, not the enemy-count
+  items. The run survived it, taking 297 damage on 144 max HP; run 9 died with 78 max HP.
+- Survival weights held the stats up. Armor stayed at 5-9 from wave 10 (run 9 had -1 to -3).
+  HP regen rose from 6 to 13 (run 9: 0 to -3). Max HP went 73 → 154 (run 9: 44 → 78). Damage
+  still scaled, with percent damage at 89. Speed sat at 8-17, lower than run 9's 22.
+- Vetoes held:
+  - 30 decisions, all from Haiku (no timeouts); the 15 shop and pivot answers had 0 missing
+    rulings;
+  - 52 buys and 38 Haiku passes; no declined id was bought in the same wave;
+  - Weird Ghost was declined at each pivot (two `skip`s with 4 declines each);
+  - 10 crates, 6 of which asked Haiku: 5 `take`, 1 `recycle` (Sharp Bullet).
+- Attribution is split. The plan weights and the binding vetoes shipped together, as
+  proposal 11 warned. The stat trend points at the weights as the bigger factor.
