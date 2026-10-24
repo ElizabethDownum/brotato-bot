@@ -26,6 +26,62 @@ from brotato_bot.run import proposal, shape
 BUILD_PLANS = Path("mod") / "Ellie-BrotatoBot" / "shopping" / "build_plans.gd"
 _STAT_WEIGHT = re.compile(r'"(\w+)":\s*(-?\d+(?:\.\d+)?)')
 
+# Brotato 1.1.15.4, .decompiled/singletons/item_service.gd:71-84 (item_groups).
+ITEM_GROUPS = {
+    "harvesting": [
+        "item_blood_donation",
+        "item_crown",
+        "item_fertilizer",
+        "item_tractor",
+        "item_wheelbarrow",
+    ],
+    "melee_damage": ["item_mastery", "item_goat_skull", "item_riposte"],
+    "ranged_damage": ["item_lens"],
+    "melee_and_ranged_damage": ["item_big_arms", "item_hedgehog"],
+    "lifesteal": [
+        "item_butterfly",
+        "item_bat",
+        "item_whetstone",
+        "item_decomposing_flesh",
+        "item_bloody_hand",
+        "item_fresh_meat",
+    ],
+    "lifesteal_and_hp_regeneration": ["item_blood_leech"],
+    "hp_regeneration": [
+        "item_mushroom",
+        "item_plant",
+        "item_sad_tomato",
+        "item_medikit",
+        "item_fairy",
+        "item_potion",
+        "item_fried_rice",
+        "item_baby_squid",
+        "item_coral",
+        "item_penguin",
+    ],
+    "consumable_heal": ["item_jerky", "item_weird_food", "item_lemonade", "item_fruit_basket"],
+    "speed": ["item_terrified_onion", "item_beanie", "item_power_generator"],
+    "engineering": [
+        "item_lighthouse",
+        "item_cog",
+        "item_nail",
+        "item_toolbox",
+        "item_book",
+        "item_pencil",
+    ],
+    "elemental_damage": [
+        "item_strange_book",
+        "item_frozen_heart",
+        "item_boiling_water",
+        "item_snowball",
+        "item_toxic_sludge",
+        "item_fuel_tank",
+        "item_will_o_the_wisp",
+    ],
+    "armor": ["item_stone_skin", "item_helmet", "item_metal_plate"],
+    "dodge": ["item_adrenaline", "item_chameleon", "item_gambling_token", "item_ghost_outfit"],
+}
+
 
 def load_rows(build_plans: Path) -> str:
     """The text of ``build_plans.gd``; empty when the file is absent."""
@@ -51,20 +107,11 @@ def plan_row(source: str, character_id: str) -> dict | None:
     return {"weapon_type": wt.group(1) if wt else "", "stats": stats}
 
 
-def _goal_tags(goal: shape.Goal, dataset: dict) -> set[str]:
-    wanted = {i["id"] for i in shape.goal_data(goal, dataset)["items"]}
-    tags: set[str] = set()
-    for item in dataset.get("items") or []:
-        if isinstance(item, dict) and item.get("id") in wanted:
-            tags.update(t for t in item.get("tags") or [] if isinstance(t, str))
-    return tags
-
-
 def rank_characters(
     goal: shape.Goal, dataset: dict, unlock_state: dict, source: str, required: str | None
 ) -> list[dict]:
     """One row per candidate character, best first."""
-    tags = _goal_tags(goal, dataset)
+    goal_items = {i["id"] for i in shape.goal_data(goal, dataset)["items"]}
     state = unlock_state.get("characters")
     state = state if isinstance(state, dict) else {}
     rows = []
@@ -80,7 +127,13 @@ def rank_characters(
             {
                 "id": cid,
                 **shape.character_goal_fit(c, goal),
-                "banned": sorted(set(c.get("banned_item_groups") or []) & tags),
+                "banned": sorted(
+                    goal_items.intersection(
+                        item_id
+                        for group in c.get("banned_item_groups") or []
+                        for item_id in ITEM_GROUPS.get(group, [])
+                    )
+                ),
                 "row": plan_row(source, cid) is not None,
                 "economy": shape.bonus_on(c.get("flat_bonuses"), "stat_harvesting", "value") or 0,
                 "dlc": c.get("dlc"),

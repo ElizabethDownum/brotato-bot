@@ -144,9 +144,32 @@ def test_ranking_orders_by_need_then_row_and_puts_vetoes_last():
     ]
     assert "character_locked" not in ids
     chunky = rows[-1]
-    assert chunky["veto"] and chunky["banned"] == ["speed"]  # only groups the goal items carry
+    assert chunky["veto"] and chunky["banned"] == []  # the speed group holds +speed items
     assert rows[0]["row"] and not rows[2]["row"]
     assert rows[0]["economy"] == 10
+
+
+def test_banned_groups_list_goal_item_ids_instead_of_tags():
+    dataset = {
+        **DATASET,
+        "items": [
+            {
+                "id": "item_beanie",
+                "tags": ["stat_speed"],
+                "effects": [{"key": "stat_speed", "value": 4}],
+            },
+            {
+                "id": "item_other",
+                "tags": ["stat_speed"],
+                "effects": [{"key": "stat_speed", "value": 2}],
+            },
+        ],
+    }
+    goal = shape.Goal("chal_fast", "stat_speed", 50)
+    rows = fit.rank_characters(goal, dataset, _state(), BUILD_PLANS, None)
+    chunky = next(r for r in rows if r["id"] == "character_chunky")
+    assert chunky["banned"] == ["item_beanie"]
+    assert "banned item_beanie" in fit._character_line(chunky)
 
 
 def test_gain_modifier_reports_raw_base_and_need_without_a_veto():
