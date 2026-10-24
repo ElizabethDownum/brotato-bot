@@ -167,6 +167,8 @@ def shape_plan(plan: dict, goal: Goal, items: list[dict], dataset: dict | None =
         if prefer:
             body["prefer_sets"] = prefer
             body["weapon_type"] = "any"
+        else:
+            body.pop("prefer_sets", None)
     out["plan_id"] = f"{family}-v{version}"
     return out
 
@@ -203,8 +205,8 @@ def shape_markdown(
         if shaped["plan"]["min_buy"] != plan["plan"].get("min_buy"):
             changes.append(f"min_buy {shaped['plan']['min_buy']:g}")
         if shaped["plan"].get("prefer_sets") != plan["plan"].get("prefer_sets"):
-            sets = ", ".join(f"{k} {v:g}" for k, v in shaped["plan"]["prefer_sets"].items())
-            changes.append(f"prefer_sets {sets}")
+            sets = ", ".join(f"{k} {v:g}" for k, v in shaped["plan"].get("prefer_sets", {}).items())
+            changes.append(f"prefer_sets {sets}" if sets else "prefer_sets removed")
         if shaped["plan"].get("weapon_type") != plan["plan"].get("weapon_type"):
             changes.append(f"weapon_type {shaped['plan']['weapon_type']}")
         if shaped["plan_id"] != plan["plan_id"]:

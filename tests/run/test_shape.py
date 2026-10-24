@@ -501,6 +501,27 @@ def test_shape_markdown_reports_the_set_and_is_idempotent():
     assert changes == [] and again == text
 
 
+def test_reshape_removes_olds_preference_after_changing_to_well_rounded():
+    goal = shape.goal_for("chal_slow", SLOW)
+    old = {"id": "character_old", "flat_bonuses": [{"stat": "stat_speed", "value": -10}]}
+    rounded = {"id": "character_well_rounded", "flat_bonuses": [{"stat": "stat_speed", "value": 5}]}
+    dataset = _blunt_dataset(six=-4.0)
+    dataset["characters"] = [old, rounded]
+    text = _proposal("chal_slow").replace(CHARACTER, old["id"])
+    text, _ = shape.shape_markdown(text, goal, ITEMS, dataset)
+    assert proposal.extract_plan(text)["plan"]["prefer_sets"] == {"set_blunt": 6.0}
+    text = text.replace(old["id"], rounded["id"])
+    before = proposal.extract_plan(text)
+    reshaped, changes = shape.shape_markdown(text, goal, ITEMS, dataset)
+    expected = json.loads(json.dumps(before))
+    expected["plan"].pop("prefer_sets")
+    assert proposal.extract_plan(reshaped) == expected  # no unrelated values are restored
+    assert expected["plan"]["weapon_type"] == "any"
+    assert changes[-1] == "prefer_sets removed"
+    again, changes = shape.shape_markdown(reshaped, goal, ITEMS, dataset)
+    assert again == reshaped and changes == []
+
+
 def test_goal_errors_accepts_prefer_sets_and_rejects_a_bad_one():
     goal = shape.goal_for("chal_slow", SLOW)
     run = {"target": "chal_slow", "danger": 0}
