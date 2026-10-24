@@ -449,6 +449,7 @@ func _auto_shop_player(pi) -> void:
 	_apply_bans(pi, plan)
 	var offer_view = 0   # the last board an offer event was recorded for (1 + rerolls)
 	var asks = 0   # sidecar decisions asked this visit (should_ask caps them at ask_per_visit)
+	var asked_view = 0   # the last board (offer_view) a decision was asked on: one ask per board
 	var actions = 0
 	var abandoned = false
 	while actions < MAX_ACTIONS:
@@ -464,8 +465,10 @@ func _auto_shop_player(pi) -> void:
 		if rerolls + 1 != offer_view:
 			offer_view = rerolls + 1
 			_record_offer(offer_view, gold, nodes, plan, pi)
-		# Sidecar decision on any board of the visit (first view, after a reroll or a
-		# buy), up to ask_per_visit times, and only while a sidecar is alive (fresh
+		# Sidecar decision at most once per board of the visit (the first view and
+		# each post-reroll board: a lock or a buy leaves the same board, so a locked
+		# goal item does not ask twice), up to ask_per_visit times across the visit,
+		# and only while a sidecar is alive (fresh
 		# sidecar.alive; otherwise no request, no pause, no decision events -- the
 		# rules decide): when DecisionClient.should_ask finds an ask_on id, a genuine
 		# tie or a big purchase, BotRuntime.decide pauses the game and waits for
@@ -474,12 +477,13 @@ func _auto_shop_player(pi) -> void:
 		# choice below runs this iteration (timeout, invalid response, or an
 		# answer that cannot be carried out).
 		var rt = BotRuntime.instance()
-		if asks < int(rt.config.get("ask_per_visit", DecisionClient.DEFAULT_PER_VISIT)) and rt.sidecar_ready():
+		if asked_view != offer_view and asks < int(rt.config.get("ask_per_visit", DecisionClient.DEFAULT_PER_VISIT)) and rt.sidecar_ready():
 			var ask = _decision_options(nodes, gold, plan, pi)
 			var why = DecisionClient.should_ask(ask.scores, ask.affordable, rt.config,
 				ask.ids, plan.get("ask_on", []), plan["min_buy"], gold, ask.prices, asks)
 			if why != "":
 				asks += 1
+				asked_view = offer_view
 				var r = yield(rt.decide("pivot" if why == "pivot" else "shop", ask.options, "shop"), "completed")
 				if not _bot_continue(pi):
 					abandoned = true
