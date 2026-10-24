@@ -761,3 +761,16 @@ Report: `.superpowers/sdd/2026-10-24-steering-audit/sol-report.md` (brief beside
   Haiku; not needed while runs stay in zone 1. The curse stat also rises from cursed
   items (banned by shaping) and from a level-up option (`main.gd` 920), which the
   level-up scorer already weights at -14 under the shaped plan.
+
+## 2026-10-24 finding: rows without a speed weight buy speed losses for free (run 7)
+
+- Run 7 (`20261024-011838-well_rounded-d1`, danger 1) died at wave 19 pinned at the
+  walls; speed fell 6 -> 2 through Helmet x2, Campfire, Honey and Shackles (Shackles also
+  caps speed). The Well Rounded row has no `stat_speed` weight, so each item's negative
+  speed effect scored 0 and the rules and Haiku treated it as free.
+- It is general: 42 of the 50 rows in `shopping/build_plans.gd` carry no `stat_speed`
+  weight (the rows that do use 1.4-9). Any of them can walk its speed into the floor.
+- Proposal 9 (`well-rounded-difficulty-1-v2`) adds `stat_speed: 4.0` as the only change,
+  with arm B steering held, so it is both the fix test and arm B's second reading. If it
+  holds, the follow-up is a default speed weight for rows without one (a mod change via
+  the usual brief and review), not per-proposal patches.
