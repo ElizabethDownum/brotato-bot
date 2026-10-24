@@ -15,6 +15,18 @@
         "weapon_type": {"type": "string", "enum": ["ranged", "melee", "any"]},
         "stats": {"type": "object", "additionalProperties": {"type": "number"}},
         "item_bonus": {"type": "object", "additionalProperties": {"type": "number"}},
+        "steering": {
+          "type": "object",
+          "properties": {
+            "tree_value": {"type": "number"},
+            "sweep": {"type": "number"},
+            "sweep_radius": {"type": "number"},
+            "gold_value": {"type": "number"},
+            "stand_continuity": {"type": "number"},
+            "tree_policy": {"type": "string", "enum": ["auto", "seek", "preserve"]}
+          },
+          "additionalProperties": false
+        },
         "phase_boost": {
           "type": "object",
           "properties": {

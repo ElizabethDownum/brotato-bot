@@ -42,6 +42,18 @@ def validate_plan(plan: Any) -> None:
             raise ValueError(f"plan {k} must be a non-empty string")
     if not isinstance(plan["plan"], dict):
         raise ValueError("plan.plan must be an object")  # noqa: TRY004
+    steering = plan["plan"].get("steering", {})
+    if not isinstance(steering, dict):
+        raise ValueError("plan steering must be an object")  # noqa: TRY004
+    for key, value in steering.items():
+        if key == "tree_policy":
+            if not isinstance(value, str) or value not in ("auto", "seek", "preserve"):
+                raise ValueError("plan steering tree_policy must be auto, seek or preserve")
+        elif key in ("tree_value", "sweep", "sweep_radius", "gold_value", "stand_continuity"):
+            if isinstance(value, bool) or not isinstance(value, int | float):
+                raise ValueError(f"plan steering {key} must be a number")
+        else:
+            raise ValueError(f"unknown plan steering key: {key}")
     tc = plan.get("target_challenge", "")
     if not isinstance(tc, str):
         raise ValueError("plan target_challenge must be a string")  # noqa: TRY004

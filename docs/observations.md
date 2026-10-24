@@ -701,3 +701,31 @@ Report: `.superpowers/sdd/2026-10-24-steering-audit/sol-report.md` (brief beside
 - Telemetry bug: `wave_end.materials.collected_value` is null on every wave (the wallet
   gain was never recorded); fix with the next mod sync. `collect.py` still renders
   neither `materials` nor `trees`.
+
+## 2026-10-24 implemented: mod sync 3 (steering switches, collected_value)
+
+- Mod 0.1.4 places the wave-start to wave-end wallet delta inside
+  `wave_end.materials.collected_value`. The old hook put it at the event's top
+  level; the builder now receives both wallet observations and keeps the delta
+  through delayed cleanup. The hook fires before harvesting and room cleanup.
+- Plan `steering` accepts `tree_value`, `sweep`, `sweep_radius`, `gold_value`,
+  `stand_continuity` (numbers), and `tree_policy` (`auto`, `seek`, `preserve`).
+  Entries merge one level deep and are available in sidecar patches. The live
+  resolver refreshes through `PlanFile.load_cached`; same-second sidecar writes
+  invalidate the cache. Character gates/phases remain active. `seek` defaults
+  to tree reward 4 unless explicitly given; `preserve` forces reward 0 only,
+  with spacing against incidental fire still out of scope.
+- Explicit Well Rounded baseline row: material value 0.8, caution 1.0,
+  `tree_value` 0, `sweep` 1.0; inherited `sweep_radius` 420 px and
+  `stand_continuity` -1.2. The moving-continuity term is unchanged. A `steering`
+  event immediately after each run header records the source character,
+  applied plan overrides, all six resolved keys, initial material value and
+  caution. It records initial settings once, rather than a time series.
+- First experiment: Well Rounded on a target that allows trees, arm A with
+  `steering: {"tree_policy": "seek", "sweep": 1.5}` versus the empty-object
+  baseline. Judge `wave_end.materials` (`bag_before`, `bag_after`,
+  `collected_value`) and `trees.felled`, alongside damage and target success.
+  Run this arm against baseline before trying another arm; this combined arm
+  measures the package, with separate tree/sweep arms needed for attribution.
+- Pure logic and harness contracts have automated coverage. Scene extensions
+  and steering remain inspection-only here; no game launch or installed-mod sync.

@@ -128,6 +128,53 @@ def _revise(patch):
     }
 
 
+@pytest.mark.parametrize("policy", ["auto", "seek", "preserve"])
+def test_plan_patch_accepts_steering(policy):
+    steering = {
+        "tree_policy": policy,
+        "tree_value": 4,
+        "sweep": 1.5,
+        "sweep_radius": 420,
+        "gold_value": 0.8,
+        "stand_continuity": -0.2,
+    }
+    assert schema.validate(_revise({"steering": steering})) == []
+    assert schema.validate(_revise({"steering": {}})) == []
+
+
+@pytest.mark.parametrize(
+    "key", ["tree_value", "sweep", "sweep_radius", "gold_value", "stand_continuity"]
+)
+@pytest.mark.parametrize("value", [True, "1.5", None, [], {}])
+def test_plan_patch_rejects_wrong_steering_number(key, value):
+    assert schema.validate(_revise({"steering": {key: value}}))
+
+
+@pytest.mark.parametrize(
+    "steering",
+    [None, [], "seek", {"unknown": 1}, {"tree_policy": "avoid"}, {"tree_policy": True}],
+)
+def test_plan_patch_rejects_bad_steering(steering):
+    assert schema.validate(_revise({"steering": steering}))
+
+
+def test_json_schema_steering_matches_model():
+    data = json.loads(schema.SCHEMA_PATH.read_text(encoding="utf-8"))
+    steering = data["properties"]["plan_patch"]["properties"]["steering"]
+    assert steering["type"] == "object"
+    assert steering["additionalProperties"] is False
+    assert set(steering["properties"]) == set(schema.Steering.__annotations__)
+    assert steering["properties"]["tree_policy"] == {
+        "type": "string",
+        "enum": ["auto", "seek", "preserve"],
+    }
+    assert all(
+        value == {"type": "number"}
+        for key, value in steering["properties"].items()
+        if key != "tree_policy"
+    )
+
+
 def test_plan_patch_accepts_the_plan_keys_the_mod_reads():
     patch = {
         "weapon_type": "melee",

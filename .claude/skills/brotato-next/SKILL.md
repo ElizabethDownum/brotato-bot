@@ -66,6 +66,7 @@ Do not start the game. Do not run the `claude` command.
       - `- target: <challenge id>`, or `- target: none` when there is no target
       - `- starting_weapon: <weapon id>` from step 4g (for example `weapon_rock`), or `any` when step 4g printed `no stat goal` or `Top weapon: none unlocked`
    e. `## Plan`: the plan starts from the skeleton below, and the character's curated values replace the skeleton's values.
+      Leave `steering` empty unless the owner's `targets.md` or the guides call for a tree policy.
       - Open `mod/Ellie-BrotatoBot/shopping/build_plans.gd` and find the row for the character: search for `"<character_id>": {`.
       - If there is a row, copy every key it sets over the skeleton's value. For `stats`, use the row's whole `stats` map. For every other key, copy the row's value, including `item_bonus` and `phase_boost`. Keys the row does not set keep the skeleton's value. If there is no row, the skeleton stands.
       - Why: the mod overlays the plan file on the built-in plan key by key (`stats` and `item_bonus` merge one level deep; every other key is replaced). A skeleton value left in place would override the curated row for that character.
@@ -99,6 +100,7 @@ Every key below is a key the mod reads. The values are the built-in defaults. St
     "weapon_type": "any",
     "weapon_set": "",
     "prefer_sets": {},
+    "steering": {},
     "stats": {
       "stat_percent_damage": 6.0,
       "stat_attack_speed": 5.0,

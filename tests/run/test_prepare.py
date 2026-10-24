@@ -13,6 +13,40 @@ PLAN = {
 }
 
 
+@pytest.mark.parametrize("policy", ["auto", "seek", "preserve"])
+def test_validate_plan_accepts_steering(policy):
+    steering = {
+        "tree_policy": policy,
+        "tree_value": 4,
+        "sweep": 1.5,
+        "sweep_radius": 420,
+        "gold_value": 0.8,
+        "stand_continuity": -0.2,
+    }
+    prepare.validate_plan({**PLAN, "plan": {"steering": steering}})
+    prepare.validate_plan({**PLAN, "plan": {"steering": {}}})
+
+
+@pytest.mark.parametrize(
+    "key", ["tree_value", "sweep", "sweep_radius", "gold_value", "stand_continuity"]
+)
+@pytest.mark.parametrize("value", [True, "1.5", None, [], {}])
+def test_validate_plan_rejects_wrong_steering_number(key, value):
+    with pytest.raises(ValueError, match="steering"):
+        prepare.validate_plan({**PLAN, "plan": {"steering": {key: value}}})
+
+
+@pytest.mark.parametrize(
+    "steering",
+    [None, [], "seek", {"unknown": 1}, {"tree_policy": "avoid"}, {"tree_policy": True}],
+)
+def test_prepare_rejects_bad_steering_before_writing(tmp_paths, steering):
+    with pytest.raises(ValueError, match="steering"):
+        prepare.prepare({**PLAN, "plan": {"steering": steering}}, None, tmp_paths)
+    assert not tmp_paths.plan_json.exists()
+    assert not tmp_paths.config_json.exists()
+
+
 def _settings(p, profile_id, pause):
     p.settings_json.parent.mkdir(parents=True, exist_ok=True)
     p.settings_json.write_text(

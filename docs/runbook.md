@@ -345,6 +345,7 @@ Common `plan` keys. This table is the full set. The header comment in
 | `ask_on` | ids that always trigger a `pivot` decision when offered |
 | `phase_boost` | `{"until_wave": N, "stats": {stat key → multiplier}}`; before wave N the named stats' weights are multiplied (`build_plans.gd:40-42`); `{}` disables |
 | `prefer_sets` | `{set id → per-weapon score value}`, written by `proposal shape` when a set's full bonus covers at least a quarter of the character's remaining goal need. Value = full goal-stat bonus / 6 / tier-1 stat unit × absolute shaped goal weight × `SET_WEAPON_FACTOR` 3, capped at 30. The mod adds it as is for each of a weapon's sets, to a new weapon and a combine alike (since 0.1.3). Merged one level deep like `item_bonus`; accepted in a sidecar `plan_patch`. Shaping then sets `weapon_type` to `"any"`. It is not the hard `weapon_set` gate |
+| `steering` | Optional object, default `{}`; merged one level deep and accepted in `plan_patch`. Numeric keys: `tree_value` (default 0; Pacifist 5, Explorer 6; living trees within 900 px), `sweep` (1.0) and `sweep_radius` (420 px), `gold_value` (baseline material reward 0.8; Old 1.8), `stand_continuity` (standing-after-standing cost -1.2; moving continuity unchanged). `tree_policy`: `"auto"` (default, keep the row/reward), `"seek"` (use explicit `tree_value`, else 4), `"preserve"` (force tree reward 0). Preservation only removes deliberate attraction; spacing against incidental fire is out of scope. Character material gates/phases still apply. Overrides apply after character/loadout and command-line defaults and refresh on the next steering decision after a cached plan change; hand edits use the existing one-second mtime resolution. Unknown or wrong-typed entries warn and are ignored on load; invalid patches are rejected. |
 | `weapon_set` (string), `deprioritize_weapons` (list of ids), `unique_weapons`, `stack_combine`, `hitrate_pref`, `spend_surplus` (booleans) | per-character shop tweaks read by `shop_advisor.gd` and `base_shop.gd` |
 
 `ask_on` is matched against shop offers (item and weapon ids, e.g.
@@ -449,12 +450,13 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    | Kind | Data | When |
    |---|---|---|
    | `header` | `character_id`, `danger`, `plan_id`, `profile_id`, `game_version`, `mod_version`, `start_wave`, `run_id` | first line |
+   | `steering` | `character_id` (source character), `overrides` (applied plan entries), `resolved` (`tree_value`, `sweep`, `sweep_radius`, `gold_value`, `stand_continuity`, `tree_policy`, `material_value`, `caution`) | once per run, immediately after `header`; initial values, with material value and caution evaluated at that wave's starting state; later patches are recorded in decision events |
    | `bot_state` | `state` (`acting`, `idle`, `halted`, `complete`), `reason` (`enabled`, `toggle_off`, `main_menu`, `run_start`, or the halt reason) | Shift+Space on or off, a halt, the main menu, and right after the header (the bot's state when the file opened) |
    | `launch` | `token`, `character_id`, `starting_weapon`, `danger` | wave 1 of a launched run, before the bot is enabled |
    | `snapshot` | position, heading, threats, `mats`, ... (`mats`: `floor` = material pickup count, `floor_value` = sum of their material values, `unattached` = count not yet attracted, `bag` = `RunData.bonus_gold`, `nearest` = distance to the nearest floor pickup, -1 when none; floor/value/nearest include attracted pickups) | about 1 Hz, only while the bot is enabled |
    | `damage`, `dash`, `bullet_hell` | — | only while the bot is enabled |
    | `death` | `wave`, `position`, `killer`, `last_threats`, `build`, `dmg_w` | player 0 dies |
-   | `wave_end` | `wave`, `hp`, `gold`, `damage_taken`, `kills`, `stats` (the state export's `stat_*` map), `materials: {floor_count, floor_value, bag_before, bag_after}`, `collected_value` (wallet at wave end minus wallet at wave start, before harvesting), `trees: {spawned, felled, alive}` (initial living trees plus subsequent spawns, combat deaths, living at wave end; cleanup deaths excluded) | every completed wave; emitted when `bag_after` is observed (see below) |
+   | `wave_end` | `wave`, `hp`, `gold`, `damage_taken`, `kills`, `stats` (the state export's `stat_*` map), `materials: {floor_count, floor_value, bag_before, bag_after, collected_value}` (`collected_value`: wallet at wave end minus wallet at wave start, before harvesting), `trees: {spawned, felled, alive}` (initial living trees plus subsequent spawns, combat deaths, living at wave end; cleanup deaths excluded) | every completed wave; emitted when `bag_after` is observed (see below) |
    | `offer` | `wave`, `view` (1-based per shop visit; a reroll starts the next), `gold`, `items` (`id`, `tier`, `price`, `score`, `locked`) | every shop board the bot sees: the first view and after each reroll |
    | `crate` | `wave`, `item_id`, `action` (`take`, `recycle`), `score` | accepted bot crate action: take when score >= 0, recycle below 0; items use stat score plus plan item bonus, weapons use weapon score |
    | `build` | `weapons` (ids), `items` (ids) | the run ends, win or death, just before `end` |
@@ -480,6 +482,9 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    are observed balances, including the game's pickup effects and conversions;
    they need not equal `bag_before + floor_value`. `collected_value` is net wallet
    gain, including in-wave income/spending, rather than a pickup counter.
+   Run 5 measured the bag accumulating to about 600 unspent material value by
+   wave 20 under the game's 50-pickup floor cap, which suppresses new pickups
+   that would carry the bag into the wallet.
    The arbiter exposes total candidate scores only, so `arb.pick`/`arb.threat`
    are omitted. Rendering these new fields and handling delayed wave-end lines
    in `collect.py` are follow-ups.

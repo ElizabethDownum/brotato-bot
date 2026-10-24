@@ -32,6 +32,16 @@ class PhaseBoost(TypedDict, total=False):
 
 
 @with_config(_PATCH_CONFIG)
+class Steering(TypedDict, total=False):
+    tree_value: float
+    sweep: float
+    sweep_radius: float
+    gold_value: float
+    stand_continuity: float
+    tree_policy: Literal["auto", "seek", "preserve"]
+
+
+@with_config(_PATCH_CONFIG)
 class PlanPatch(TypedDict, total=False):
     """The plan keys the mod reads (shopping/build_plans.gd, shop_advisor.gd, base_shop.gd),
     with the types it reads them as. The mod's PlanFile.KEY_TYPES is the same table."""
@@ -40,6 +50,7 @@ class PlanPatch(TypedDict, total=False):
     stats: dict[str, float]
     item_bonus: dict[str, float]
     phase_boost: PhaseBoost
+    steering: Steering
     harvest_cap: int
     max_weapons: int
     reroll_keep: int

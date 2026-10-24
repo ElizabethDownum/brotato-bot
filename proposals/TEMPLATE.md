@@ -15,6 +15,7 @@
   "plan_id": "<plan_id, for example well-rounded-v1>",
   "character_id": "<character_id>",
   "plan": {
+    "steering": {},
     "weapon_type": "any",
     "weapon_set": "",
     "stats": {
