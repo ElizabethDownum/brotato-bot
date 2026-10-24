@@ -50,5 +50,18 @@
     "proposal_n": null,
     "profile_id": 1,
     "target_fired": true
+  },
+  {
+    "run_id": "20261023-233317-apprentice-d0",
+    "character_id": "character_apprentice",
+    "danger": 0,
+    "plan_id": "apprentice-dying-v1",
+    "target_challenge": "chal_dying",
+    "outcome": "win",
+    "death_wave": null,
+    "hp_end_last_wave": 32,
+    "proposal_n": null,
+    "profile_id": 1,
+    "target_fired": true
   }
 ]

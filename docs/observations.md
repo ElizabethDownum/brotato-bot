@@ -675,3 +675,29 @@ Report: `.superpowers/sdd/2026-10-24-steering-audit/sol-report.md` (brief beside
 - Synced to the hidden Workshop item with the game closed (52 files). Mod tests 129,
   harness 630, ruff clean. `collect.py` does not render the new `materials` and `trees`
   fields yet (follow-up).
+
+## 2026-10-24 run 5 (20261023-233317-apprentice-d0): chal_dying FIRED at wave 10; won wave 20
+
+- Apprentice, double barrel shotgun, danger 0, plan `apprentice-dying-v1`, mod 0.1.3,
+  launched by the mod from `launch.json`. HP regeneration went 0 to -1 (wave 7), -2
+  (wave 8), -5 at wave 10 (chal_dying fired; Sick unlocked), -9 by wave 19. Won at wave
+  20 with 32 HP. Side unlocks: chal_survivor_5, chal_fruit_basket, chal_apprentice.
+  Haiku cost $0.083 over 19 calls.
+- Goal items: 10 sightings on 75 boards, 5 bought (Broken Mouth x2, Poisonous Tonic
+  x3), all through `pivot` asks, plus a Broken Mouth taken from a crate at score 25.2;
+  Goblet at wave 10 and two tonics went unbought (affordability or the per-visit cap;
+  check the report's Offers table). The crate rule recycled Little Frog at -7.
+- **Materials: the bag is not delayed income, it accumulates and is lost.** The new
+  `wave_end.materials` shows the floor pinned at the game's 50-pickup cap from wave 5
+  on (floor value 100-280 per wave), and `bag_before` growing from wave 11: 141, 227,
+  288, 327, 322, 327, 379, 348, 312, 502, with `bag_after` 598 at the end of wave 20.
+  The bag pays out only through newly spawned pickups, and with the floor saturated at
+  50 almost nothing new spawns to carry it, so about 600 material value sat unspent at
+  the end of a won run (and run 4's death-wave floor was lost outright). This is the
+  owner's "bag of uncollected materials" from runs 1 and 2, now measured: the
+  collection problem costs real gold, not just timing. It moves the Well Rounded
+  steering comparison (audit C) from "after the next run" to "next".
+- Trees: 31 felled over the run by incidental fire (shotgun); the per-wave counts work.
+- Telemetry bug: `wave_end.materials.collected_value` is null on every wave (the wallet
+  gain was never recorded); fix with the next mod sync. `collect.py` still renders
+  neither `materials` nor `trees`.
