@@ -384,3 +384,30 @@ objective text.
 - **DLC stays on.** No DLC toggling for goal runs.
 - **Step 5 scope is paused** until the character-selection rule and the two points
   above are resolved.
+
+## 2026-10-23 owner refinement: sets are allowed once set scoring is granular; auto-start from the menus
+
+- Refinement of the rulings above: the 2026-10-22 "shaping never selects a set" was a
+  complexity hold, not a principle. Once `score_weapon` credits sets granularly (a
+  weapon's sets count toward the goal stat without the all-or-nothing `weapon_set`
+  gate), shaping and the proposal writer may select a set to pursue. The `brotato-next`
+  5.i clause is to be adjusted accordingly.
+- Owner question: could the bot start at character and starting-weapon selection, so
+  the pipeline selects every option from the beginning? Feasible, from the restored
+  source and the mod's existing extensions:
+  - The game's flow is `main_menu._on_StartButton_pressed` -> character selection ->
+    weapon selection -> difficulty selection -> run. Every selection screen extends
+    `base_selection.gd`, which has `_find_inventory_element_by_id(my_id_hash, player)`
+    and `_on_element_pressed(element, player)`; the difficulty screen's handler sets
+    `RunData.current_difficulty = element.item.value`. Selecting is one call per screen.
+  - The mod already extends `main_menu.gd`, `character_selection.gd`,
+    `weapon_selection.gd` and `difficulty_selection.gd` (mouse routing for co-op), so a
+    launcher is additive: on the main menu with the bot profile loaded and a one-shot
+    launch token present, press Start, pick `character_id`, `starting_weapon` and
+    `danger` from the installed plan/config, and switch the bot on (today's manual
+    Shift+Space) when the run starts.
+  - Guards: the profile stays a manual choice (a wrong profile would play the owner's
+    save); the token is written by `prepare` and consumed on launch so a stale plan never
+    starts a run on its own; the end-of-run return to the main menu does not relaunch.
+    Size: about 100-150 mod lines plus `starting_weapon` in the plan file, `- starting_
+    weapon:` in proposals, and `prepare` writing the token.
