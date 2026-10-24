@@ -81,3 +81,12 @@ def test_decide_skill_prints_only_json_or_not_valid():
     assert "print only the final JSON object" in report
     assert "`decision not valid`" in report
     assert "Do not print the JSON object." in report
+
+
+def test_next_skill_uses_the_fit_ranking_and_names_the_starting_weapon():
+    text = NEXT.read_text(encoding="utf-8")
+    assert "uv run python -m brotato_bot proposal fit --target <target>" in text
+    assert "`## Next run` has exactly four bullets" in text
+    assert "- starting_weapon: <weapon id>" in text
+    assert "the writer does not set `weapon_set` by hand" in text
+    assert "do not set `weapon_set` unless" not in text

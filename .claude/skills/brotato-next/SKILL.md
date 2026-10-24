@@ -44,25 +44,27 @@ Do not start the game. Do not run the `claude` command.
    a. The excluded ids are the paused ids (step 1, plus ESCALATED from step 3).
    b. Method A: if the first line of `targets.md` is a challenge id that is not excluded and is listed in `open` in `unlock_state.json`, that id is the target. A named id that is in `done` or `blocked`, or is unknown, cannot be run: use Method B and say so in `## Target`.
       - The character is `progress[<target>].requires_character` from `unlock_state.json`, if that value is not `null`.
-      - If that value is `null`, choose an unlocked character (one with `"unlocked": true` in `characters`) that the guides support.
+      - If that value is `null`, the character comes from the fit ranking (step 4g).
    c. Method B: use this when Method A does not apply. This includes `any locked character`, a missing `targets.md`, and a named target that is excluded or not in `open`.
       - Candidates: the ids in `open` that are the `unlocked_by` of a character whose `unlocked` is `false` in `characters`. Remove the excluded ids.
       - The target is the candidate with the smallest `value` in `progress`. `value` is the completion target, not a cost. It is the only ordering the file gives.
-      - The character follows the same rule as Method A: `requires_character` if not `null`; otherwise an unlocked character that the guides support.
+      - The character follows the same rule as Method A: `requires_character` if not `null`; otherwise the fit ranking (step 4g).
       - Never choose a character whose `unlocked` is `false`, including the locked character that the target unlocks.
       - If there are no candidates, stop and do not write a proposal. Report `all open targets paused` when paused ids removed the last candidates, otherwise report that no open target is left. Include the line from step 2 and any pause from step 3.
    d. Danger: the `danger` of the newest bot row in `runs/index.json` (step 1), or the number a `chal_difficulty_<n>` target requires if that is higher. If there is no bot row, use 0 (or that number).
    e. The material change. Find the newest finished bot row on the chosen target: the last bot row whose `target_challenge` is the target and whose `outcome` is `win` or `death`. If the line from step 2 starts with `stagnant (` or `escalate (` and names this target, the new plan family (the `plan_id` without its `-vN` suffix) or the character must differ from that row's. A new `-vN` alone does not count. `proposal validate` checks this.
    f. Read `knowledge/cache/character-<slug>.md` if that file exists. `<slug>` is the character id without its `character_` prefix, with every `_` replaced by `-`: `character_well_rounded` gives `knowledge/cache/character-well-rounded.md`.
+   g. Rank the character and the starting weapon for the target: run `uv run python -m brotato_bot proposal fit --target <target>`. It prints one line per unlocked character (`need` is what items, sets and level-ups must still supply toward the goal after the character's flat start; a veto means the character's gain modifier nullifies the stat), `Top character: <id>`, then the unlocked starting weapons of that character, then `Top weapon: <id>`. The character is `requires_character` when it is not `null`; otherwise it is the fit's top character. A lower choice needs one sentence in `## Why` giving the reason. The starting weapon is the fit's top weapon for the chosen character (when the character is not the top one, run it again with `--character <id>`). If the output is `no stat goal for <target>`, choose an unlocked character (`"unlocked": true` in `characters`) that the guides support and use the starting weapon `any`.
 
 5. Write the proposal.
    a. If step 3 gave you a path, write the proposal to that path. Otherwise run `uv run python -m brotato_bot proposal next-path`; its output is the path of the new file. Write the proposal to that path.
    b. Start from `proposals/TEMPLATE.md` and copy the whole file. Set the title to `# Proposal N`, where N is the number in the file name without leading zeros (`2026-10-22-003.md` gives `# Proposal 3`).
    c. `## Target`: one or two sentences. If step 3 paused ESCALATED, say that it is paused and why.
-   d. `## Next run` has exactly three bullets, in this order:
+   d. `## Next run` has exactly four bullets, in this order:
       - `- character: <character id>`
       - `- danger: <number>`
       - `- target: <challenge id>`, or `- target: none` when there is no target
+      - `- starting_weapon: <weapon id>` from step 4g (for example `weapon_rock`), or `any` when the owner picks it
    e. `## Plan`: the plan starts from the skeleton below, and the character's curated values replace the skeleton's values.
       - Open `mod/Ellie-BrotatoBot/shopping/build_plans.gd` and find the row for the character: search for `"<character_id>": {`.
       - If there is a row, copy every key it sets over the skeleton's value. For `stats`, use the row's whole `stats` map. For every other key, copy the row's value, including `item_bonus` and `phase_boost`. Keys the row does not set keep the skeleton's value. If there is no row, the skeleton stands.
@@ -75,7 +77,7 @@ Do not start the game. Do not run the `claude` command.
    g. `## Risk`: one to three sentences.
    h. `## Stagnation check`: the line from step 2, copied exactly (see below).
    Do not add any other `##` heading. Do not leave any `<...>` placeholder in the file.
-   i. Shape the plan for the target. After the file is written, run `uv run python -m brotato_bot proposal shape <path>`. It rewrites `## Plan` from the target's goal in `unlock_state.json` (`progress[<target>].stat` and `.value`): the goal stat gets the plan's largest weight with the goal's sign (negative for a goal below zero), every item in `data/brotato.json` that moves the stat the right way gets an `item_bonus`, items that break a keep-at-zero goal are banned, `min_buy` is raised to 6 if lower, and the goal joins the plan family (`well-rounded-slow-v1`). It also raises `- danger:` to what a `chal_difficulty_<n>` target needs. It prints `shaped <path> for <target>: ...`, or says there is nothing to shape when the target has no stat or difficulty goal. The proposal's `stats` must be the character's full row (copy it before shaping): the mod merges the plan file over the built-in row (`stats` and `item_bonus` key by key, everything else, `ban_items` included, replaced), so dominance is only meaningful over the full map, and `proposal validate` rejects fewer than 4 weights besides the goal stat. Do not edit `## Plan` by hand after it runs; `proposal validate` rejects a plan that is not shaped for its target. Mention the shaping in `## Why` in one sentence when it changed the file. The command also prints the goal data (the items and weapon-set bonuses that move the stat); read it and weigh it in `## Why`, including whether a weapon set is worth choosing, but do not set `weapon_set` unless the character's row or the guides support it.
+   i. Shape the plan for the target. After the file is written, run `uv run python -m brotato_bot proposal shape <path>`. It rewrites `## Plan` from the target's goal in `unlock_state.json` (`progress[<target>].stat` and `.value`): the goal stat gets the plan's largest weight with the goal's sign (negative for a goal below zero), every item in `data/brotato.json` that moves the stat the right way gets an `item_bonus`, items that break a keep-at-zero goal are banned, `min_buy` is raised to 6 if lower, and the goal joins the plan family (`well-rounded-slow-v1`). It also raises `- danger:` to what a `chal_difficulty_<n>` target needs. It prints `shaped <path> for <target>: ...`, or says there is nothing to shape when the target has no stat or difficulty goal. The proposal's `stats` must be the character's full row (copy it before shaping): the mod merges the plan file over the built-in row (`stats` and `item_bonus` key by key, everything else, `ban_items` included, replaced), so dominance is only meaningful over the full map, and `proposal validate` rejects fewer than 4 weights besides the goal stat. Do not edit `## Plan` by hand after it runs; `proposal validate` rejects a plan that is not shaped for its target. Mention the shaping in `## Why` in one sentence when it changed the file. The command also prints the goal data (the items and weapon-set bonuses that move the stat); read it and weigh it in `## Why`, including whether a weapon set is worth choosing. Shaping may add `prefer_sets` for the goal (a soft preference for a weapon set whose full bonus covers at least a quarter of what the character still needs) and then sets `weapon_type` to `any`; the writer does not set `weapon_set` by hand.
 
 6. Validate the proposal: run `uv run python -m brotato_bot proposal validate <path>`.
    If it prints lines, fix each line in the file and run it again. A line `stagnation is <state> on <target>: ...` means the plan family or the character must change (step 4e). Stop after three attempts. When it prints `ok`, continue.
@@ -96,6 +98,7 @@ Every key below is a key the mod reads. The values are the built-in defaults. St
   "plan": {
     "weapon_type": "any",
     "weapon_set": "",
+    "prefer_sets": {},
     "stats": {
       "stat_percent_damage": 6.0,
       "stat_attack_speed": 5.0,

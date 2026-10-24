@@ -411,3 +411,43 @@ objective text.
     starts a run on its own; the end-of-run return to the main menu does not relaunch.
     Size: about 100-150 mod lines plus `starting_weapon` in the plan file, `- starting_
     weapon:` in proposals, and `prepare` writing the token.
+
+## 2026-10-23 implemented: fit layer
+
+The harness side of the owner's rulings above is in. The mod side (consuming
+`launch.json`, scoring `prefer_sets`, checking the profile) is the next dispatch.
+
+- **Unlock state carries items and weapons.** `unlock-state` adds
+  `items_unlocked`/`items_locked` and `weapons_unlocked`/`weapons_locked`: dataset
+  ids whose `Keys.generate_hash` is in the save's `items_unlocked` and
+  `weapons_unlocked`. The save hashes the base weapon id (`weapon_rock`), not the
+  per-tier `weapon_rock_1`; on the bot profile all 197 item hashes and all 56 weapon
+  hashes matched (0 of 56 matched a `_<tier>` form): 197/247 items and 56/78 weapons
+  unlocked.
+- **`proposal fit --target ID [--character ID]`.** For a stat goal only (else
+  `no stat goal for <target>`). Characters: every unlocked one, or only
+  `requires_character` when the target names one. `need` = (goal - start) in the
+  goal's direction, where start is the character's flat bonus on the goal stat,
+  scaled by its gain modifier on that stat; a gain of -100% or lower is a veto
+  (Chunky's speed: changes are nullified) and sorts last. Rank by `need` ascending,
+  vetoes last, then a plan row in `build_plans.gd` first. Each line also shows `base`
+  (start with the goal's sign: Old's -10 speed is +10 toward -20, Well Rounded's +5 is
+  -5), the banned item groups that touch the goal items' tags, row, economy (flat
+  harvesting) and DLC. Starting weapons (the top or chosen character's pool, unlocked
+  only): set goal bonus at 6 weapons descending, then a type match with the row's
+  `weapon_type`, then the row's weights on the weapon's scaling stats. On chal_slow
+  the ranking puts Old first (need 10) with Rock first (Blunt, -10 speed at 6
+  weapons); Well Rounded is second to last (need 25).
+- **Proposal `- starting_weapon:`.** A fourth `## Next run` bullet: a dataset weapon id
+  in the character's pool and unlocked, or `any`. A proposal without it stays valid
+  and means `any` (`validate` returns errors only, so there is no warning line).
+- **Launch contract.** `prepare` writes `danger` and `starting_weapon` into `plan.json`
+  and `launch.json` beside it: `token` (`<proposal stem or plan_id>-<UTC stamp>`),
+  `character_id`, `starting_weapon`, `danger`, `target_challenge`, `created_at`. It
+  overwrites a stale token, and `prepare --plan` without `--danger`/`--starting-weapon`
+  deletes one. The mod will consume and delete it on launch. The owner still loads the
+  bot profile by hand and the mod must check it.
+- **Shaping may pick a set.** When a set's bonus at 6 weapons covers at least 25% of the
+  character's `need`, `proposal shape` writes `prefer_sets: {set_id: goal units x 1.5,
+  at most 30}` and sets `weapon_type` to `any`; it never sets `weapon_set`. The mod
+  ignores `prefer_sets` until its `score_weapon` change.

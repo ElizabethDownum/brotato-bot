@@ -284,6 +284,11 @@ Copy-pasteable, all defaults:
   an object.
 - **Optional key:** `target_challenge` (string, default `""`). When it is
   non-empty it wins over `config.json`'s.
+- **Launch keys written by `prepare`** (top level, next to `target_challenge`;
+  the mod's `plan_file.gd` reads only the required keys and `target_challenge`
+  and ignores the rest until the launcher lands): `danger` (int, the danger
+  to start at) and `starting_weapon` (a dataset weapon id such as
+  `weapon_rock`, or `any` when the owner picks it).
 - **Wrong character:** a plan written for another character never applies.
   The bot then uses its built-in plan for the character you picked, and
   `plan_id` reads `builtin` in the run header, state exports and overlay.
@@ -318,6 +323,7 @@ Common `plan` keys. This table is the full set. The header comment in
 | `prefer_weapons`, `ban_items` | lists of weapon / item ids |
 | `ask_on` | ids that always trigger a `pivot` decision when offered |
 | `phase_boost` | `{"until_wave": N, "stats": {stat key → multiplier}}`; before wave N the named stats' weights are multiplied (`build_plans.gd:40-42`); `{}` disables |
+| `prefer_sets` | `{set id → bonus}`, written by `proposal shape` when a weapon set's full bonus covers at least a quarter of what the character still needs toward the goal stat (bonus = goal units × 1.5, at most 30); a soft score term the mod does not read yet (a later mod change adds it to `score_weapon`). Shaping then sets `weapon_type` to `"any"`. It is not the hard `weapon_set` gate |
 | `weapon_set` (string), `deprioritize_weapons` (list of ids), `unique_weapons`, `stack_combine`, `hitrate_pref`, `spend_surplus` (booleans) | per-character shop tweaks read by `shop_advisor.gd` and `base_shop.gd` |
 
 `ask_on` is matched against shop offers (item and weapon ids, e.g.
@@ -346,10 +352,17 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
 
 ### 4. Running a bot run
 
-1. Launch Brotato. Select the bot profile (section 3.1).
+1. Launch Brotato. Select the bot profile (section 3.1). You still load the
+   bot profile by hand: `prepare` cannot, and the mod refuses on any other
+   profile (step 4).
 2. Check that `%APPDATA%\Brotato\brotato-bot\plan.json` exists and names the
-   character you will pick.
-3. Start a run as usual: pick the character, weapon and danger. To navigate
+   character you will pick. `prepare` also writes `launch.json` beside it
+   (token, character, starting weapon, danger, target); the launcher in a later
+   mod change consumes and deletes it, and until then it is only a record. The
+   proposal's `## Next run` names the starting weapon (`- starting_weapon:`;
+   `any` means you choose).
+3. Start a run as usual: pick the character, the weapon the proposal names
+   and the danger. To navigate
    the menus, use the mouse rather than WASD or the arrows. Navigating with
    keys while the bot is on halts it.
 4. When wave 1 has started, take your hands off the move keys and the

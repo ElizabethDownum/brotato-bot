@@ -183,7 +183,9 @@ def test_skill_skeleton_lists_every_plan_key_the_mod_reads():
     skeleton = json.loads(re.search(r"```json\n(.*?)```", skill, re.DOTALL).group(1))
     gd = (REPO / "mod" / "Ellie-BrotatoBot" / "core" / "plan_file.gd").read_text(encoding="utf-8")
     table = re.search(r"const KEY_TYPES = \{(.*?)\n\}", gd, re.DOTALL).group(1)
-    assert set(skeleton["plan"]) == set(re.findall(r'"(\w+)":', table))
+    # prefer_sets is a plan key the harness writes (2026-10-23) and the mod does not read yet;
+    # drop it from this set once the mod's KEY_TYPES carries it.
+    assert set(skeleton["plan"]) - {"prefer_sets"} == set(re.findall(r'"(\w+)":', table))
 
 
 def flat_rows(plans, character=CHARACTER, target=TARGET, profile=1):
