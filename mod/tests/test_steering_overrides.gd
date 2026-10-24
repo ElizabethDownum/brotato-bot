@@ -15,6 +15,8 @@ func test_baseline_and_overrides_do_not_mutate_character_row():
 	assert_eq(defaults.sweep_radius, 420.0, "quiet radius")
 	assert_eq(defaults.stand_continuity, -1.2, "standing cost")
 	assert_eq(defaults.tree_policy, "auto", "baseline policy")
+	assert_eq(defaults.drop_pull, "linear", "default preserves floor scoring")
+	assert_eq(Steering.resolve(base, {"drop_pull": "target"}).drop_pull, "target", "opt in")
 	var out = Steering.resolve(base, {"gold_value": 1.8, "tree_value": 5,
 		"sweep": 1.5, "sweep_radius": 360, "stand_continuity": -0.2})
 	assert_eq(out.gold, 1.8, "public gold_value maps to existing row gold")
@@ -78,6 +80,10 @@ func test_validation_and_unknown_keys_are_ignored_with_warning():
 		assert_true(PlanFile.value_ok("steering", {"tree_policy": p}), "policy " + p)
 	for bad in ["avoid", 1, true, null]:
 		assert_false(PlanFile.value_ok("steering", {"tree_policy": bad}), "bad policy")
+	for mode in ["linear", "target"]:
+		assert_true(PlanFile.value_ok("steering", {"drop_pull": mode}), "valid drop mode")
+	for bad in ["auto", 1, true, null, [], {}]:
+		assert_false(PlanFile.value_ok("steering", {"drop_pull": bad}), "bad drop mode")
 	assert_false(PlanFile.value_ok("steering", []), "object required")
 	assert_false(PlanFile.value_ok("steering", {"unknown": 2}), "unknown rejected in patch")
 	var out = Steering.resolve({}, {"unknown": 99, "tree_value": "bad", "sweep": 1.5})
@@ -90,7 +96,8 @@ func test_plan_patch_merges_and_refreshes_cached_steering():
 	var dir = "user://test-steering-%d" % OS.get_ticks_usec()
 	var path = dir.plus_file("plan.json")
 	var ch = "character_well_rounded"
-	assert_eq(PlanFile.apply_patch(path, ch, {"steering": {"tree_policy": "seek", "sweep": 1.5}}, "s"),
+	assert_eq(PlanFile.apply_patch(path, ch, {"steering": {"tree_policy": "seek", "sweep": 1.5,
+		"drop_pull": "target"}}, "s"),
 		OK, "initial plan")
 	var first = PlanFile.load_cached(path)
 	assert_eq(Steering.resolve({}, Steering.from_plan(first, ch)).tree_value, 4.0, "first resolution")
@@ -100,6 +107,7 @@ func test_plan_patch_merges_and_refreshes_cached_steering():
 	var overrides = Steering.from_plan(PlanFile.load_cached(path), ch)
 	assert_eq(overrides.tree_policy, "seek", "one-level merge retains policy")
 	assert_eq(overrides.sweep, 2.5, "same-second update visible")
+	assert_eq(overrides.drop_pull, "target", "drop mode survives plan load and merge")
 	assert_eq(PlanFile.apply_patch(path, ch, {"steering": {"sweep": true}}, "s"), OK, "bad patch dropped")
 	assert_eq(Steering.from_plan(PlanFile.load_cached(path), ch).sweep, 2.5, "invalid patch preserves value")
 	Directory.new().remove(path)
@@ -126,13 +134,14 @@ func test_steering_event_follows_header_and_copies_applied_values():
 	var rec = Recorder.new(root)
 	var ch = "character_well_rounded"
 	var rid = rec.start_run({"character_id": ch, "danger": 0})
-	var overrides = {"tree_policy": "seek", "sweep": 1.5}
+	var overrides = {"tree_policy": "seek", "sweep": 1.5, "drop_pull": "target"}
 	var row = Steering.resolve({"gold": 0.8, "caution": 1.0}, overrides)
 	var event = Steering.event(ch, overrides, row, 0.8, 1.0)
 	rec.event("steering", event)
 	overrides.sweep = 9
 	assert_eq(event.overrides.sweep, 1.5, "applied overrides copied")
-	assert_eq(event.resolved.keys().size(), 8, "all six keys plus material value and caution")
+	assert_eq(event.resolved.keys().size(), 9, "all seven keys plus material value and caution")
+	assert_eq(event.resolved.drop_pull, "target", "drop mode in steering event")
 	assert_eq(event.resolved.tree_value, 4.0, "effective policy reward")
 	assert_eq(event.resolved.material_value, 0.8, "material value")
 	rec.end_run({"outcome": "test"})

@@ -17,6 +17,8 @@ extends Node
 # fields the BOTLOG lines carried.
 
 const RunRecorder = preload("res://mods-unpacked/Ellie-BrotatoBot/core/run_recorder.gd")
+const LootTracker = preload("res://mods-unpacked/Ellie-BrotatoBot/core/loot_tracker.gd")
+const WorldView = preload("res://mods-unpacked/Ellie-BrotatoBot/steering/world_view.gd")
 
 const INTERVAL = 1.0
 
@@ -28,6 +30,78 @@ var _last_threats = []
 var _last_damage_src = ""
 var _last_killer = ""
 var _boss_state_cache = {}
+var _loot = LootTracker.new()
+
+
+func _loot_time() -> float:
+	var timer = get_parent()._wave_timer
+	return float(timer.wait_time - timer.time_left)
+
+
+func record_loot_spawn(enemy):
+	var player = get_parent()._bot_player0()
+	if _recorder() == null or player == null or not enemy.is_loot:
+		return
+	_loot.spawn(enemy.get_instance_id(), RunData.current_wave, _loot_time(),
+		player.position.distance_to(enemy.position))
+
+
+func record_loot_end(enemy, args):
+	var rec = _recorder()
+	if rec == null or not enemy.is_loot:
+		return
+	var player = get_parent()._bot_player0()
+	if player != null:
+		_loot.observe(enemy.get_instance_id(), player.position.distance_to(enemy.position))
+	var result = LootTracker.outcome(args.cleaning_up or get_parent()._cleaning_up,
+		args.enemy_killed_by_player, enemy.can_drop_loot)
+	var event = _loot.finish(enemy.get_instance_id(), _loot_time(), result)
+	if event != null:
+		rec.event("loot_alien", event)
+
+
+func finish_loot_wave():
+	var rec = _recorder()
+	if rec == null:
+		return
+	# Include the final player position before base cleanup removes enemies.
+	_track_loot()
+	for event in _loot.finish_wave(_loot_time()):
+		rec.event("loot_alien", event)
+
+
+func _physics_process(_delta):
+	_track_loot()
+
+
+func seed_loot():
+	_track_loot()
+
+
+func _track_loot():
+	var rec = _recorder()
+	var main = get_parent()
+	var player = main._bot_player0()
+	if rec == null or player == null or main._cleaning_up:
+		return
+	var ids = []
+	for enemy in main._entity_spawner.enemies:
+		if not is_instance_valid(enemy) or not enemy.is_loot or enemy.dead:
+			continue
+		ids.append(enemy.get_instance_id())
+		# Also seeds already-live aliens if main's base _ready spawned them
+		# before this telemetry child existed. Normal spawn times use the hook.
+		record_loot_spawn(enemy)
+	for event in _loot.missing(ids, _loot_time()):
+		rec.event("loot_alien", event)
+
+
+func loot_snapshot(origin: Vector2) -> Dictionary:
+	var positions = []
+	for enemy in get_parent()._entity_spawner.enemies:
+		if is_instance_valid(enemy) and enemy.is_loot and not enemy.dead and not enemy._pending_die:
+			positions.append(enemy.position)
+	return LootTracker.snapshot(positions, origin, WorldView.PICKUP_RANGE)
 
 
 func _recorder():
@@ -264,6 +338,11 @@ func _tick():
 		var anc = -1
 		if arb and arb.get("last_anchor_dist") != null:
 			anc = int(arb.last_anchor_dist)   # px to the profile anchor (-1 = none)
+		var dtg = -1
+		var tswitch = 0
+		if arb and arb.get("last_target_dist") != null:
+			dtg = int(arb.last_target_dist)    # px to committed floor drop (-1 = none)
+			tswitch = int(arb.target_switches)
 		var us = -1
 		if move_behavior.get("last_arb_us") != null:
 			us = int(move_behavior.last_arb_us)   # steering cost this tick, microseconds
@@ -282,10 +361,11 @@ func _tick():
 		snap.arb = {
 			"eff": hs[0], "turn": hs[1], "flips": hs[2], "frames": hs[3], "still": hs[4],
 			"pesc": pesc, "pfire": pfire, "sok": sok, "eng": int(eng), "eblk": eblk,
-			"anc": anc, "us": us, "hop": hop, "stand": stand,
+			"anc": anc, "dtg": dtg, "tswitch": tswitch, "us": us, "hop": hop, "stand": stand,
 			"ticks": hs[5], "breaks": hs[6]}
 
 	snap.mats = materials(player.position)
+	snap.loot = loot_snapshot(player.position)
 
 	rec.snapshot(snap)
 	var rt = get_node_or_null("/root/BotRuntime")

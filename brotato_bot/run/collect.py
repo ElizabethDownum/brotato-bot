@@ -32,6 +32,7 @@ from brotato_bot.run.models import (
     DeathRecord,
     DecisionRow,
     LevelupRow,
+    LooterRow,
     OfferRow,
     RunSummary,
     ShopRow,
@@ -105,6 +106,7 @@ def summarize(events: list[dict], plan: dict | None = None) -> render.ReportSumm
     offers: list[OfferRow] = []
     board: OfferRow | None = None
     crates: list[ShopRow] = []
+    looters: list[LooterRow] = []
     materials: dict[int, render.MaterialSnapshot] = {}
     wave_materials: dict[int, dict[str, float | None]] = {}
     trees: dict[int, dict[str, float | None]] = {}
@@ -163,6 +165,18 @@ def summarize(events: list[dict], plan: dict | None = None) -> render.ReportSumm
                     action=_str(e.get("action")) or "?",
                     score=_float(e.get("score")),
                     source=_str(e.get("source")),
+                )
+            )
+        elif kind == "loot_alien" and e.get("outcome") in ("killed", "escaped", "wave_end"):
+            spawn_t, end_t = _float(e.get("spawn_t")), _float(e.get("end_t"))
+            looters.append(
+                LooterRow(
+                    wave=_int(e.get("wave")),
+                    outcome=e["outcome"],
+                    closest=_float(e.get("closest")),
+                    lifetime=max(end_t - spawn_t, 0.0)
+                    if spawn_t is not None and end_t is not None
+                    else None,
                 )
             )
         elif kind == "build":
@@ -332,6 +346,7 @@ def summarize(events: list[dict], plan: dict | None = None) -> render.ReportSumm
         target_waves=target_waves,
         offers=offers,
         crates=crates,
+        looters=looters,
         build=build,
         materials=[materials[w] for w in sorted(materials)],
         wave_materials=wave_materials,

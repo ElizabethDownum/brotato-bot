@@ -43,6 +43,7 @@ class Steering(TypedDict, total=False):
     gold_value: float
     stand_continuity: float
     tree_policy: Literal["auto", "seek", "preserve"]
+    drop_pull: Literal["linear", "target"]
 
 
 @with_config(_PATCH_CONFIG)

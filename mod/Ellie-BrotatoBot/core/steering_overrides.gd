@@ -26,6 +26,7 @@ static func resolve(row: Dictionary, overrides: Dictionary, character_id = "") -
 	out["sweep_radius"] = float(out.get("sweep_radius", 420.0))
 	out["stand_continuity"] = float(out.get("stand_continuity", -1.2))
 	out["tree_policy"] = valid.get("tree_policy", "auto")
+	out["drop_pull"] = out.get("drop_pull", "linear")
 	if out.tree_policy == "seek" and not valid.has("tree_value"):
 		out.tree_value = 4.0
 	elif out.tree_policy == "preserve":

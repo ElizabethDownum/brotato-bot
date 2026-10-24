@@ -1,0 +1,6 @@
+{"kind":"header","run_id":"loot-fixture","character_id":"character_well_rounded","danger":1,"profile_id":1}
+{"kind":"snapshot","wave":1,"loot":{"alive":2,"nearest":250.5,"in_range":true}}
+{"kind":"loot_alien","wave":1,"alien_id":42,"spawn_t":2.0,"end_t":9.5,"closest":120.5,"outcome":"killed"}
+{"kind":"loot_alien","wave":1,"alien_id":43,"spawn_t":4.0,"end_t":12.0,"closest":650.0,"outcome":"escaped"}
+{"kind":"loot_alien","wave":2,"alien_id":42,"spawn_t":6.0,"end_t":60.0,"closest":910.0,"outcome":"wave_end"}
+{"kind":"end","wave":2,"outcome":"abandoned"}

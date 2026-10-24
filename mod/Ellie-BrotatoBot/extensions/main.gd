@@ -35,6 +35,7 @@ func _ready():
 	coop_focus_hud = CoopFocusHud.new()
 	add_child(coop_focus_hud)
 	_bot_start_recording()
+	ai_telemetry.seed_loot()
 	_bot_gold_at_wave_start = RunData.get_player_gold(0)
 	_bot_trees_spawned = _bot_living_trees()
 	_bot_run_guards()
@@ -189,6 +190,8 @@ func _bot_on_end_of_the_wave():
 # cleanup only attracts the pickups (1043-1047): its bag is observed next wave.
 # No pending wave_end exists on death; run closure flushes unknown bags as null.
 func clean_up_room() -> void:
+	if ai_telemetry != null:
+		ai_telemetry.finish_loot_wave()
 	.clean_up_room()
 	var rec = _bot_recorder()
 	if rec != null and (ProgressData.settings.optimize_end_waves or _active_golds.empty()):
@@ -235,7 +238,16 @@ func _bot_checkpoint():
 	var _cp = rt.checkpoint()
 
 
+func _on_EntitySpawner_enemy_respawned(enemy: Enemy) -> void:
+	._on_EntitySpawner_enemy_respawned(enemy)
+	# This signal covers new and pooled lives, after position/array insertion.
+	if ai_telemetry != null:
+		ai_telemetry.record_loot_spawn(enemy)
+
+
 func _on_enemy_died(enemy: Enemy, args: Entity.DieArgs) -> void:
+	if ai_telemetry != null:
+		ai_telemetry.record_loot_end(enemy, args)
 	if not _cleaning_up and args.enemy_killed_by_player:
 		_bot_kills_this_wave += 1
 	._on_enemy_died(enemy, args)

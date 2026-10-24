@@ -14,6 +14,29 @@ FIXTURES = Path(__file__).parent / "fixtures"
 RUN_ID = "20261022-201500-well_rounded-d0"
 
 
+def test_looters_fixture_table_total_and_summary_round_trip():
+    summary = collect.summarize(collect.parse_jsonl(FIXTURES / "run_looters.jsonl"))
+    md = render.run_report(summary)
+    assert "## Looters\n\n| wave | outcome | closest px | lifetime s |" in md
+    assert "| 1 | killed | 120.5 | 7.5 |" in md
+    assert "| 1 | escaped | 650 | 8 |" in md
+    assert "| 2 | wave_end | 910 | 54 |" in md
+    assert "Run total (killed/seen): 1/3" in md
+    assert len(summary.looters) == 3  # pooled instance 42 has two distinct lives
+    assert render.run_report(RunSummary.model_validate(summary.model_dump())) == md
+
+
+def test_looters_missing_optional_fields_and_old_recordings():
+    assert "## Looters" not in render.run_report(collect.summarize([]))
+    summary = collect.summarize(
+        [{"kind": "loot_alien", "outcome": "killed"}, {"kind": "loot_alien", "outcome": "?"}]
+    )
+    assert len(summary.looters) == 1
+    assert summary.looters[0].closest is None
+    assert summary.looters[0].lifetime is None
+    assert "| - | killed | - | - |" in render.run_report(summary)
+
+
 @pytest.fixture
 def material_events():
     events = collect.parse_jsonl(FIXTURES / "run_telemetry.jsonl")

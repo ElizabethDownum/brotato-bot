@@ -253,9 +253,11 @@ def _revise(patch):
 
 
 @pytest.mark.parametrize("policy", ["auto", "seek", "preserve"])
-def test_plan_patch_accepts_steering(policy):
+@pytest.mark.parametrize("drop_pull", ["linear", "target"])
+def test_plan_patch_accepts_steering(policy, drop_pull):
     steering = {
         "tree_policy": policy,
+        "drop_pull": drop_pull,
         "tree_value": 4,
         "sweep": 1.5,
         "sweep_radius": 420,
@@ -292,11 +294,20 @@ def test_json_schema_steering_matches_model():
         "type": "string",
         "enum": ["auto", "seek", "preserve"],
     }
+    assert steering["properties"]["drop_pull"] == {
+        "type": "string",
+        "enum": ["linear", "target"],
+    }
     assert all(
         value == {"type": "number"}
         for key, value in steering["properties"].items()
-        if key != "tree_policy"
+        if key not in {"tree_policy", "drop_pull"}
     )
+
+
+@pytest.mark.parametrize("value", ["auto", 1, True, None, [], {}])
+def test_plan_patch_rejects_invalid_drop_pull(value):
+    assert schema.validate(_revise({"steering": {"drop_pull": value}}))
 
 
 def test_plan_patch_accepts_the_plan_keys_the_mod_reads():

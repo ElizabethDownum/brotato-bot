@@ -36,7 +36,8 @@
             "sweep_radius": {"type": "number"},
             "gold_value": {"type": "number"},
             "stand_continuity": {"type": "number"},
-            "tree_policy": {"type": "string", "enum": ["auto", "seek", "preserve"]}
+            "tree_policy": {"type": "string", "enum": ["auto", "seek", "preserve"]},
+            "drop_pull": {"type": "string", "enum": ["linear", "target"]}
           },
           "additionalProperties": false
         },

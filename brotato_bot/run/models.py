@@ -36,6 +36,13 @@ class MaterialRow(BaseModel):
     bag: float | None = None
 
 
+class LooterRow(BaseModel):
+    wave: int | None = None
+    outcome: Literal["killed", "escaped", "wave_end"]
+    closest: float | None = None
+    lifetime: float | None = None
+
+
 class ShopRow(BaseModel):
     """One shop action, from a ``shop`` event: ``action`` is buy/reroll/lock/pass/ban/go and
     ``source`` is rule/haiku."""
@@ -114,6 +121,7 @@ class RunSummary(BaseModel):
     crates: list[ShopRow] = Field(default_factory=list)
     build: dict[str, list[str]] | None = None
     materials: list[MaterialRow] = Field(default_factory=list)
+    looters: list[LooterRow] = Field(default_factory=list)
     launch: dict | None = None
     goal_items: list[str] = Field(default_factory=list)
 

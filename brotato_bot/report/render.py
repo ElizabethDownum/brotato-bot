@@ -160,6 +160,16 @@ def run_report(summary: RunSummary, outcomes: dict[str, str] | None = None) -> s
     notes = "".join(f"- {n}\n" for n in s.notes)
     # Keep the established sections unchanged for recordings without the new events.
     telemetry = []
+    if s.looters:
+        killed = sum(row.outcome == "killed" for row in s.looters)
+        telemetry.append(
+            "## Looters\n\n"
+            + _table(
+                ["wave", "outcome", "closest px", "lifetime s"],
+                [(r.wave, r.outcome, r.closest, r.lifetime) for r in s.looters],
+            )
+            + f"\n\nRun total (killed/seen): {killed}/{len(s.looters)}"
+        )
     if s.offers:
         telemetry.append(
             "## Offers\n\n"

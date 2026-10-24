@@ -363,6 +363,19 @@ Common `plan` keys. This table is the full set. The header comment in
 | `steering` | Optional object, default `{}`; merged one level deep and accepted in `plan_patch`. Numeric keys: `tree_value` (default 0; Pacifist 5, Explorer 6; living trees within 900 px), `sweep` (1.0) and `sweep_radius` (420 px), `gold_value` (baseline material reward 0.8; Old 1.8), `stand_continuity` (standing-after-standing cost -1.2; moving continuity unchanged). `tree_policy`: `"auto"` (default, keep the row/reward), `"seek"` (use explicit `tree_value`, else 4), `"preserve"` (force tree reward 0). Preservation only removes deliberate attraction; spacing against incidental fire is out of scope. Character material gates/phases still apply. Overrides apply after character/loadout and command-line defaults and refresh on the next steering decision after a cached plan change; hand edits use the existing one-second mtime resolution. Unknown or wrong-typed entries warn and are ignored on load; invalid patches are rejected. |
 | `weapon_set` (string), `deprioritize_weapons` (list of ids), `unique_weapons`, `stack_combine`, `hitrate_pref`, `spend_surplus` (booleans) | per-character shop tweaks read by `shop_advisor.gd` and `base_shop.gd` |
 
+`steering.drop_pull` accepts `"linear"` (default) or `"target"`. Target mode
+chooses the marked, unattracted floor gold/material drop with the lowest distance
+/ reward value and retains its instance id and position. It switches only when
+a candidate is less than half the current target's distance away, or the target
+is gone/collected. Only that target earns nonnegative approach gain (multiplier
+`TARGET_GAIN = 1.0`); every marked drop still earns the collection bonus when the
+projected segment enters its attract rim. The target clears whenever the quiet
+gate for draw/sweep is false and is chosen afresh when quiet returns. Food, trees,
+loot aliens, held rewards and linear scoring keep their existing behavior.
+Snapshot `arb.dtg` is the current target distance in px (-1 when absent);
+`arb.tswitch` counts target acquisitions, including the first, over the arbiter's
+lifetime. Clearing alone does not increment it.
+
 `ask_on` is matched against shop offers (item and weapon ids, e.g.
 `item_bag`, `item_scar`, `weapon_smg_1`) and level-up options (upgrade ids,
 e.g. `upgrade_armor_1`). All five ids above exist in the game's resources.
@@ -471,10 +484,11 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    | Kind | Data | When |
    |---|---|---|
    | `header` | `character_id`, `danger`, `zone` (actual `RunData.current_zone`), `plan_id`, `profile_id`, `game_version`, `mod_version`, `start_wave`, `run_id` | first line |
-   | `steering` | `character_id` (source character), `overrides` (applied plan entries), `resolved` (`tree_value`, `sweep`, `sweep_radius`, `gold_value`, `stand_continuity`, `tree_policy`, `material_value`, `caution`) | once per run, immediately after `header`; initial values, with material value and caution evaluated at that wave's starting state; later patches are recorded in decision events |
+   | `steering` | `character_id` (source character), `overrides` (applied plan entries), `resolved` (`tree_value`, `sweep`, `sweep_radius`, `gold_value`, `stand_continuity`, `tree_policy`, `drop_pull`, `material_value`, `caution`) | once per run, immediately after `header`; initial values, with material value and caution evaluated at that wave's starting state; later patches are recorded in decision events |
    | `bot_state` | `state` (`acting`, `idle`, `halted`, `complete`), `reason` (`enabled`, `toggle_off`, `main_menu`, `run_start`, or the halt reason) | Shift+Space on or off, a halt, the main menu, and right after the header (the bot's state when the file opened) |
    | `launch` | `token`, `character_id`, `starting_weapon`, `danger`, `zone` (requested zone) | wave 1 of a launched run, before the bot is enabled |
-   | `snapshot` | position, heading, threats, `mats`, ... (`mats`: `floor` = material pickup count, `floor_value` = sum of their material values, `unattached` = count not yet attracted, `bag` = `RunData.bonus_gold`, `nearest` = distance to the nearest floor pickup, -1 when none; floor/value/nearest include attracted pickups) | about 1 Hz, only while the bot is enabled |
+   | `snapshot` | position, heading, threats, `mats`, `loot`, ... (`mats`: `floor` = material pickup count, `floor_value` = sum of their material values, `unattached` = count not yet attracted, `bag` = `RunData.bonus_gold`, `nearest` = distance to the nearest floor pickup, -1 when none; floor/value/nearest include attracted pickups). `loot`: `alive` = live loot aliens, `nearest` = nearest distance in px (-1 if none), `in_range` = nearest is strictly inside WorldView's 900 px `PICKUP_RANGE`. | about 1 Hz, only while the bot is enabled |
+   | `loot_alien` | `alien_id` (pooled instance id; a respawn starts another life), `wave`, `spawn_t`, `end_t` (wave seconds), `closest` (player 0 distance in px), `outcome` (`killed`, `escaped`, `wave_end`) | once per departing life while a run is recorded; closest sampled each physics tick and at death/cleanup. Player kills count as killed; enemy-cap culls and unexplained disappearances as escaped; room cleanup, including player death, as wave_end. The collect report's Looters table totals killed/seen among these completed lives; a truncated run can still have live aliens absent from that total. |
    | `damage`, `dash`, `bullet_hell` | — | only while the bot is enabled |
    | `death` | `wave`, `position`, `killer`, `last_threats`, `build`, `dmg_w` | player 0 dies |
    | `wave_end` | `wave`, `hp`, `gold`, `damage_taken`, `kills`, `stats` (the state export's `stat_*` map), `materials: {floor_count, floor_value, bag_before, bag_after, collected_value}` (`collected_value`: wallet at wave end minus wallet at wave start, before harvesting), `trees: {spawned, felled, alive}` (initial living trees plus subsequent spawns, combat deaths, living at wave end; cleanup deaths excluded) | every completed wave; emitted when `bag_after` is observed (see below) |

@@ -2,6 +2,7 @@ extends Reference
 
 const PlanFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/plan_file.gd")
 const SteeringOverrides = preload("res://mods-unpacked/Ellie-BrotatoBot/core/steering_overrides.gd")
+const FloorDrop = preload("floor_drop.gd")
 
 # Turns live game state into the plain arrays the arbiter scores.
 #
@@ -1004,6 +1005,7 @@ func gather(main, player) -> void:
 			enemy_near = true
 			break
 	var draw = 1.0 if enemy_near else gold_pickup_draw
+	var drop_quiet = not enemy_near
 	# Sweep: between spawn bursts the floor is free money and the human walks
 	# it (Explorer #27048 left 2-34 bonus gold a wave, the bot ~half its
 	# drops). With no enemy inside sweep_radius the drops are worth more.
@@ -1017,13 +1019,17 @@ func gather(main, player) -> void:
 				break
 		if quiet:
 			gold_value *= sweep
+		drop_quiet = drop_quiet and quiet
+	var drop_live_positions = {}
 	for g in main._active_golds:
 		if not is_instance_valid(g):
 			continue
 		if "attracted_by" in g and g.attracted_by != null:
 			continue
+		if row.drop_pull == "target":
+			drop_live_positions[g.get_instance_id()] = g.position
 		if g.position.distance_squared_to(pos) < pickup_sq:
-			rewards.push_back([g.position, gold_value * draw])
+			rewards.push_back(FloorDrop.reward(g.position, gold_value, draw, g.get_instance_id()))
 
 	# Scapegoat revive (see REVIVE_VALUE): a dead goat's zone is a held reward.
 	if revive_mult > 0.0 and ("pets" in spawner):
@@ -1071,6 +1077,9 @@ func gather(main, player) -> void:
 
 	profile = {}
 	profile["stand_continuity"] = row.stand_continuity
+	profile["drop_pull"] = row.drop_pull
+	profile["drop_quiet"] = drop_quiet
+	profile["drop_live_positions"] = drop_live_positions
 	profile["pickup_radius"] = pickup_radius   # every row: the attract rim prices drops
 	if row.get("stand_income", false):
 		# The not-moving material tick, in the pickup unit (gold_value per

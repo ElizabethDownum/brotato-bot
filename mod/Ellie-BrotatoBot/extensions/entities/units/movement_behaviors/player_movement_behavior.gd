@@ -136,7 +136,7 @@ const CASCADE_FLEE_STRENGTH = 0.05       # dominates the field during the free w
 const PROJ_SLIDE_BODY = 30.0             # lane slide: our body radius + bullet radius, roughly
 const PROJ_SLIDE_INFLUENCE = 1.8         # lane slide influence = (bullet half + body) x this
 # -- Loot / eggs --
-const LOOT_CHASE_MULT = 50.0             # attraction multiplier for loot aliens
+const LOOT_CHASE_MULT = 50.0             # unused legacy declaration; arbiter uses WorldView LOOT_VALUE
 # -- Map edges --
 const EDGE_GUARD_DISTANCE = 280.0        # inward push starts this close to a wall (pillar fields herd us outward)
 const EDGE_GUARD_STRENGTH = 0.04         # strong enough to beat swarm/barrage pressure, not a charge dodge

@@ -25,6 +25,7 @@ const DEEP_KEYS = ["stats", "item_bonus", "prefer_sets", "steering"]
 const STEERING_TYPES = {
 	"tree_value": "number", "sweep": "number", "sweep_radius": "number",
 	"gold_value": "number", "stand_continuity": "number", "tree_policy": "tree_policy",
+	"drop_pull": "drop_pull",
 }
 
 # BOTato plan keys whose built-in values are ints. JSON numbers parse as floats,
@@ -203,6 +204,8 @@ static func _type_ok(kind, v) -> bool:
 			return typeof(v) == TYPE_STRING and v in ["ranged", "melee", "any"]
 		"tree_policy":
 			return typeof(v) == TYPE_STRING and v in ["auto", "seek", "preserve"]
+		"drop_pull":
+			return typeof(v) == TYPE_STRING and v in ["linear", "target"]
 		"steering":
 			if typeof(v) != TYPE_DICTIONARY:
 				return false
