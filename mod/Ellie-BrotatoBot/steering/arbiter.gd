@@ -411,6 +411,7 @@ var stand_mult = 1.0             # --arb-stand: multiplier on the row's standing
 const STAND_COMMIT = 1.0
 var stand_commit = STAND_COMMIT  # --arb-standcommit
 var _stand_income = 0.0          # profile stand_income: points per second a stand earns
+var _stand_continuity = -1.2     # cost of standing after standing; moving continuity is separate
 var _stand_progress = 0.0        # profile stand_progress: share of the current tick done
 var last_stand = 0.0             # telemetry mirror of _stand_income
 var last_hop = false             # the chosen candidate is a half-speed hop (telemetry + execution)
@@ -638,6 +639,7 @@ func choose(p0: Vector2, speed: float, body_radius: float, far: Vector2,
 		mitigation: float, profile: Dictionary = {}) -> Vector2:
 
 	var edge = min(min(p0.x, far.x - p0.x), min(p0.y, far.y - p0.y))
+	_stand_continuity = float(profile.get("stand_continuity", -w_hyst))
 	var escaping = false
 	_fire_still = profile.get("fire_still", false)    # read by _update_pin's dwell trigger
 	# Pin escape arms globally via --arb-pin, or per character via the profile:
@@ -1425,7 +1427,7 @@ func _cost(d: Vector2, p0: Vector2, speed: float, body_radius: float, far: Vecto
 		# not cosmetic: Streamer's income needs a full unbroken second standing
 		# and every twitch resets the tick, while Soldier and Engineer lose a
 		# firing window to a step they had no reason to take.
-		total -= w_hyst
+		total += _stand_continuity
 	elif prefers_still and last_dir != Vector2.ZERO and d == Vector2.ZERO:
 		# The other half of tap-moving. Mid-dodge, the hysteresis reward above
 		# hands every keep-going candidate ~w_hyst that STOPPING does not get, so

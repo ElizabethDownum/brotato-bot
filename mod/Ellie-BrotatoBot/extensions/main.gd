@@ -9,6 +9,7 @@ const PlanFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/plan_file.gd
 const Guards = preload("res://mods-unpacked/Ellie-BrotatoBot/core/guards.gd")
 const Checkpoint = preload("res://mods-unpacked/Ellie-BrotatoBot/core/checkpoint.gd")
 const StateExport = preload("res://mods-unpacked/Ellie-BrotatoBot/core/state_export.gd")
+const WorldView = preload("res://mods-unpacked/Ellie-BrotatoBot/steering/world_view.gd")
 
 const MOD_ID = "Ellie-BrotatoBot"
 
@@ -82,6 +83,12 @@ func _bot_start_recording():
 		"mod_version": mod_version,
 		"start_wave": RunData.current_wave,
 	})
+	# Same resolver as live movement, before any other event follows the header.
+	var world = WorldView.new()
+	var options = get_node_or_null("/root/AutobattlerOptions")
+	if options != null:
+		world.apply_overrides(options.arb_overrides)
+	rt.recorder.event("steering", world.steering_event(character_id, _bot_player0()))
 	rt.on_run_started()
 	# The bot is often enabled before the file opens: log its state now.
 	rt.record_bot_state("run_start")
@@ -168,8 +175,8 @@ func _bot_on_end_of_the_wave():
 			"damage_taken": ai_telemetry.damage_taken_this_wave(),
 			"kills": _bot_kills_this_wave,
 			"stats": StateExport.stats(RunData, get_tree().root, 0),
-			"materials": RunRecorder.wave_materials(mats.floor, mats.floor_value, mats.bag, null),
-			"collected_value": int(RunData.get_player_gold(0) - _bot_gold_at_wave_start),
+			"materials": RunRecorder.wave_materials(mats.floor, mats.floor_value, mats.bag, null,
+				RunData.get_player_gold(0), _bot_gold_at_wave_start),
 			"trees": RunRecorder.wave_trees(_bot_trees_spawned, _bot_trees_felled, _bot_living_trees()),
 		})
 	_bot_checkpoint()

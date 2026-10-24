@@ -1,5 +1,8 @@
 extends Reference
 
+const PlanFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/plan_file.gd")
+const SteeringOverrides = preload("res://mods-unpacked/Ellie-BrotatoBot/core/steering_overrides.gd")
+
 # Turns live game state into the plain arrays the arbiter scores.
 #
 # The split is deliberate: everything that knows about Brotato's node layout
@@ -263,6 +266,8 @@ const BIRTH_STEP_COST = 4.0      # avoid_births: a red X priced as a small stand
 #                         even while moving; fire_still rows default to 40
 #   still         String  "prefer" | "never"
 const CHARACTER_PROFILES = {
+	# Explicit control for the first plan-selected economy experiment.
+	"character_well_rounded": {"gold": 0.8, "caution": 1.0, "tree_value": 0.0, "sweep": 1.0},
 	# --- Economy: materials are the win condition ---
 	"character_saver": {"gold": 2.5, "anchor": "perimeter", "anchor_inner": 460.0,
 			"caution_phases": [[6, 1.25], [99, 0.9]]},
@@ -610,6 +615,8 @@ var player_speed = 1.0           # sets how sticky every body is; a fast build
 # Keys the arbiter reads: anchor, anchor_radius, anchor_inner, caution,
 # engage, never_still.
 var profile = {}
+var _plan_steering = {}
+var _stand_continuity_default = -1.2
 var wave_time_left = 1e9         # seconds until the wave ends; 1e9 when unreadable
 
 
@@ -777,6 +784,8 @@ func _aoe_profile(anim) -> Dictionary:
 
 
 func apply_overrides(d: Dictionary) -> void:
+	if d.has("hyst"):
+		_stand_continuity_default = -float(d["hyst"])
 	if d.has("persist"):
 		persist_max = max(float(d["persist"]), 1.0)
 		print("WORLDVIEW persist_max=%.2f" % persist_max)
@@ -856,6 +865,37 @@ func _contact_ticks(enemy_speed: float) -> float:
 	return CONTACT_RATE / max(separation, 1.0 / persist_max)
 
 
+# Re-resolve loadout rows each wave/tick, but PlanFile reads/validates JSON only
+# on change (save() also invalidates its cache for same-second checkpoint edits).
+# Plan values overlay character and command-line defaults.
+func steering_row(character_id, player) -> Dictionary:
+	var row = {}
+	if char_profile != 0.0 and CHARACTER_PROFILES.has(character_id):
+		row = CHARACTER_PROFILES[character_id].duplicate(true)
+		if player != null and row.has("if_melee") and _all_melee(player):
+			for k in row["if_melee"]:
+				row[k] = row["if_melee"][k]
+	if sweep_override >= 0.0:
+		row["sweep"] = sweep_override
+	if gold_value_override != null:
+		row["gold"] = gold_value_override
+	row["stand_continuity"] = _stand_continuity_default
+	_plan_steering = SteeringOverrides.from_plan(PlanFile.load_cached(PlanFile.DEFAULT_PATH), character_id)
+	return SteeringOverrides.resolve(row, _plan_steering)
+
+
+# Once-per-run initial settings. Dynamic character gates/phases still apply;
+# material_value and caution are evaluated at this first wave's starting state.
+func steering_event(character_id, player) -> Dictionary:
+	var row = steering_row(character_id, player)
+	var material = float(row.gold_value)
+	var hp_ratio = 1.0
+	if player != null:
+		material = _gold_value(row, player)
+		hp_ratio = float(player.current_stats.health) / max(float(player.max_stats.health), 1.0)
+	return SteeringOverrides.event(character_id, _plan_steering, row, material, _caution(row, hp_ratio))
+
+
 func gather(main, player) -> void:
 	threats = []
 	rewards = []
@@ -882,22 +922,7 @@ func gather(main, player) -> void:
 	weapon_range = _weapon_range(player)
 	_refresh_kill_ref(player)
 	var character_id = RunData.get_player_character(player.player_index).my_id
-	# char_profile = 0 (--arb-charprofile=0) empties the row, which is what makes
-	# "this character, generic steering" an exact control arm rather than an
-	# approximation of one.
-	var row = {}
-	if char_profile != 0.0 and CHARACTER_PROFILES.has(character_id):
-		row = CHARACTER_PROFILES[character_id]
-		# Loadout-conditional rows. Some characters play two different games
-		# depending on what they picked up -- One-Armed is a ranged kiter with
-		# a gun and a lifesteal brawler with an axe -- and a row tuned for one
-		# actively fights the other. `if_melee` overlays its keys when the
-		# player holds NO ranged weapon (same test _weapon_range uses).
-		if row.has("if_melee") and _all_melee(player):
-			var merged = row.duplicate()
-			for k in row["if_melee"]:
-				merged[k] = row["if_melee"][k]
-			row = merged
+	var row = steering_row(character_id, player)
 	prefers_still = row.get("still", "") == "prefer"
 	_loot_value = float(row.get("loot_value", LOOT_VALUE))
 	if row.has("kill_ref"):
@@ -979,8 +1004,6 @@ func gather(main, player) -> void:
 	# it (Explorer #27048 left 2-34 bonus gold a wave, the bot ~half its
 	# drops). With no enemy inside sweep_radius the drops are worth more.
 	var sweep = float(row.get("sweep", 1.0))
-	if sweep_override >= 0.0:
-		sweep = sweep_override
 	if sweep != 1.0:
 		var quiet_sq = pow(float(row.get("sweep_radius", SWEEP_RADIUS)), 2)
 		var quiet = true
@@ -1043,6 +1066,7 @@ func gather(main, player) -> void:
 						BIRTH_STEP_COST, KIND_MARK, 0.0, TICKS_ONCE, INF_TIME])
 
 	profile = {}
+	profile["stand_continuity"] = row.stand_continuity
 	profile["pickup_radius"] = pickup_radius   # every row: the attract rim prices drops
 	if row.get("stand_income", false):
 		# The not-moving material tick, in the pickup unit (gold_value per
@@ -1150,7 +1174,7 @@ func _gold_value(row: Dictionary, player) -> float:
 	var mode = row.get("gold_mode", "")
 	if mode == "builder":
 		return _builder_gold_value(player)
-	if gold_value_override != null:
+	if gold_value_override != null and not _plan_steering.has("gold_value"):
 		return gold_value_override
 	# End-of-wave sweep: characters that spend the wave NOT collecting (Soldier
 	# stands and lets its tripled pickup radius vacuum; Engineer holds its pod)

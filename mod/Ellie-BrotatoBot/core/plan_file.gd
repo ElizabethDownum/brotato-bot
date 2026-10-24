@@ -20,7 +20,12 @@ const BotPaths = preload("bot_paths.gd")
 const DEFAULT_PATH = BotPaths.ROOT + "/plan.json"
 
 # Keys merged one level deep by merge(); every other key is replaced wholesale.
-const DEEP_KEYS = ["stats", "item_bonus", "prefer_sets"]
+const DEEP_KEYS = ["stats", "item_bonus", "prefer_sets", "steering"]
+
+const STEERING_TYPES = {
+	"tree_value": "number", "sweep": "number", "sweep_radius": "number",
+	"gold_value": "number", "stand_continuity": "number", "tree_policy": "tree_policy",
+}
 
 # BOTato plan keys whose built-in values are ints. JSON numbers parse as floats,
 # so load_from converts these back with int() (e.g. for range()/%d use).
@@ -35,6 +40,7 @@ const KEY_TYPES = {
 	"weapon_type": "weapon_type", "weapon_set": "string",
 	"stats": "number_map", "item_bonus": "number_map", "prefer_sets": "number_map",
 	"phase_boost": "phase_boost",
+	"steering": "steering",
 	"harvest_cap": "integer", "max_weapons": "integer", "reroll_keep": "integer",
 	"max_rerolls": "integer", "gold_floor": "integer", "min_buy": "number",
 	"prefer_weapons": "string_list", "ban_items": "string_list",
@@ -87,6 +93,8 @@ static func load_from(path):
 		d.target_challenge = ""
 	d.target_challenge = str(d.target_challenge)
 	_normalize_ints(d.plan)
+	if d.plan.has("steering"):
+		d.plan.steering = valid_steering(d.plan.steering)
 	return d
 
 
@@ -167,6 +175,20 @@ static func value_ok(key, v) -> bool:
 	return _type_ok(KEY_TYPES.get(key, ""), v)
 
 
+# Keep usable siblings from a hand-written plan; warn once when the file loads.
+static func valid_steering(v) -> Dictionary:
+	var out = {}
+	if typeof(v) != TYPE_DICTIONARY:
+		push_warning("PlanFile: steering is not an object; ignored")
+		return out
+	for k in v:
+		if _type_ok(STEERING_TYPES.get(k, ""), v[k]):
+			out[k] = v[k]
+		else:
+			push_warning("PlanFile: steering key '%s' is unknown or wrong-typed; ignored" % str(k))
+	return out
+
+
 static func _type_ok(kind, v) -> bool:
 	match kind:
 		"number":
@@ -179,6 +201,15 @@ static func _type_ok(kind, v) -> bool:
 			return typeof(v) == TYPE_BOOL
 		"weapon_type":
 			return typeof(v) == TYPE_STRING and v in ["ranged", "melee", "any"]
+		"tree_policy":
+			return typeof(v) == TYPE_STRING and v in ["auto", "seek", "preserve"]
+		"steering":
+			if typeof(v) != TYPE_DICTIONARY:
+				return false
+			for k in v:
+				if not _type_ok(STEERING_TYPES.get(k, ""), v[k]):
+					return false
+			return true
 		"string_list":
 			if typeof(v) != TYPE_ARRAY:
 				return false
@@ -204,7 +235,7 @@ static func _type_ok(kind, v) -> bool:
 	return false
 
 
-# base.duplicate(true) overlaid with override: stats, item_bonus and prefer_sets merge one
+# base.duplicate(true) overlaid with override: DEEP_KEYS merge one
 # level deep when both sides are dictionaries; any other key replaces wholesale.
 # Neither input is mutated and the result shares no containers with them.
 static func merge(base, override):

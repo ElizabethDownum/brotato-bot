@@ -241,12 +241,15 @@ func test_mats_counts_floor_and_finds_nearest():
 
 
 func test_wave_materials_and_trees_have_exact_integer_shapes():
-	var m = RunRecorder.wave_materials(3.0, 7.0, 2.0, 9.0)
+	var m = RunRecorder.wave_materials(3.0, 7.0, 2.0, 9.0, 123.0, 104.0)
 	assert_eq(m.floor_count, 3, "count")
 	assert_eq(m.floor_value, 7, "value")
 	assert_eq(m.bag_before, 2, "bag before cleanup")
 	assert_eq(m.bag_after, 9, "bag after cleanup")
-	assert_eq(m.keys().size(), 4, "exact materials shape")
+	assert_eq(m.collected_value, 19, "wallet gain nested in materials")
+	assert_eq(m.keys().size(), 5, "exact materials shape")
+	assert_eq(RunRecorder.wave_materials(0, 0, 0, null, 4, 9).collected_value, -5,
+		"net spending may produce a negative delta")
 	assert_eq(RunRecorder.wave_materials(1, 2, 0, null).bag_after, null, "unknown is not zero")
 	var trees = RunRecorder.wave_trees(5.0, 3.0, 2.0)
 	assert_eq(trees.spawned, 5, "spawned lives, including pooled respawns")
@@ -259,8 +262,8 @@ func test_wave_end_waits_for_observed_bag_and_writes_once():
 	var root = _make_root()
 	var rec = RunRecorder.new(root)
 	var rid = rec.start_run(HEADER)
-	var data = {"wave": 1, "collected_value": 19,
-		"materials": RunRecorder.wave_materials(3, 7, 2, null),
+	var data = {"wave": 1,
+		"materials": RunRecorder.wave_materials(3, 7, 2, null, 123, 104),
 		"trees": RunRecorder.wave_trees(5, 3, 2)}
 	rec.begin_wave_end(data)
 	data.materials.floor_value = 999
@@ -274,7 +277,8 @@ func test_wave_end_waits_for_observed_bag_and_writes_once():
 	assert_eq(lines[1].kind, "wave_end", "event")
 	assert_eq(int(lines[1].materials.floor_value), 7, "captured before cleanup; independent copy")
 	assert_eq(int(lines[1].materials.bag_after), 9, "observed bag")
-	assert_eq(int(lines[1].collected_value), 19, "wallet gain preserved")
+	assert_eq(int(lines[1].materials.collected_value), 19, "nested wallet gain preserved")
+	assert_false(lines[1].has("collected_value"), "no misplaced top-level field")
 	assert_eq(int(lines[1].trees.alive), 2, "cleanup does not rewrite live count")
 	_remove_tree(root)
 

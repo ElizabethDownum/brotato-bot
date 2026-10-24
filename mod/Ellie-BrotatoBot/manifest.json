@@ -1,7 +1,7 @@
 {
 	"name": "BrotatoBot",
 	"namespace": "Ellie",
-	"version_number": "0.1.3",
+	"version_number": "0.1.4",
 	"description": "Attended Brotato bot with file-based plans, run recording and sidecar decisions.",
 	"website_url": "",
 	"dependencies": [],

@@ -167,9 +167,12 @@ static func mats(pickups: Array, origin: Vector2, bag) -> Dictionary:
 		"bag": int(bag), "nearest": nearest}
 
 
-static func wave_materials(floor_count, floor_value, bag_before, bag_after) -> Dictionary:
+static func wave_materials(floor_count, floor_value, bag_before, bag_after,
+		gold_at_end = null, gold_at_start = null) -> Dictionary:
 	return {"floor_count": int(floor_count), "floor_value": int(floor_value),
-		"bag_before": int(bag_before), "bag_after": null if bag_after == null else int(bag_after)}
+		"bag_before": int(bag_before), "bag_after": null if bag_after == null else int(bag_after),
+		"collected_value": null if gold_at_end == null or gold_at_start == null \
+			else int(gold_at_end - gold_at_start)}
 
 
 static func wave_trees(spawned, felled, alive) -> Dictionary:
