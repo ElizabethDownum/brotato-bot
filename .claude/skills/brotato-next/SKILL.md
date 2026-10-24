@@ -43,18 +43,17 @@ Do not start the game. Do not run the `claude` command.
 4. Choose the target and the character.
    a. The excluded ids are the paused ids (step 1, plus ESCALATED from step 3).
    b. Method A: if the first line of `targets.md` is a challenge id that is not excluded and is listed in `open` in `unlock_state.json`, that id is the target. A named id that is in `done` or `blocked`, or is unknown, cannot be run: use Method B and say so in `## Target`.
-      - The character is `progress[<target>].requires_character` from `unlock_state.json`, if that value is not `null`.
-      - If that value is `null`, the character comes from the fit ranking (step 4g).
+      - Choose the character in step 4g: use `progress[<target>].requires_character` from `unlock_state.json` when it is not `null`; otherwise use the fit ranking.
    c. Method B: use this when Method A does not apply. This includes `any locked character`, a missing `targets.md`, and a named target that is excluded or not in `open`.
       - Candidates: the ids in `open` that are the `unlocked_by` of a character whose `unlocked` is `false` in `characters`. Remove the excluded ids.
       - The target is the candidate with the smallest `value` in `progress`. `value` is the completion target, not a cost. It is the only ordering the file gives.
-      - The character follows the same rule as Method A: `requires_character` if not `null`; otherwise the fit ranking (step 4g).
+      - Choose the character in step 4g, following the same rule as Method A.
       - Never choose a character whose `unlocked` is `false`, including the locked character that the target unlocks.
       - If there are no candidates, stop and do not write a proposal. Report `all open targets paused` when paused ids removed the last candidates, otherwise report that no open target is left. Include the line from step 2 and any pause from step 3.
    d. Danger: the `danger` of the newest bot row in `runs/index.json` (step 1), or the number a `chal_difficulty_<n>` target requires if that is higher. If there is no bot row, use 0 (or that number).
+   g. Rank the character and the starting weapon for the target: run `uv run python -m brotato_bot proposal fit --target <target>`. It prints one line per unlocked character (`need` is what items, sets and level-ups must still supply in raw units toward the goal after the character's flat start; a veto means the character's gain modifier nullifies the stat), `Top character: <id>`, then the unlocked starting weapons of that character, then `Top weapon: <id>`. If it prints `no candidate character`, stop and report it; do not write a proposal. The character is `requires_character` when it is not `null`; otherwise it is the fit's top character. A lower choice needs one sentence in `## Why` giving the reason. The starting weapon is the fit's top weapon for the chosen character (when the character is not the top one, run it again with `--character <id>`). If the output is `no stat goal for <target>`, use the starting weapon `any`: keep `requires_character` when set (it must be unlocked); otherwise choose an unlocked character (`"unlocked": true` in `characters`) that the guides from step 1 support. If the required character is locked, stop and report `no candidate character`. If the output is `Top weapon: none unlocked`, use the starting weapon `any`.
    e. The material change. Find the newest finished bot row on the chosen target: the last bot row whose `target_challenge` is the target and whose `outcome` is `win` or `death`. If the line from step 2 starts with `stagnant (` or `escalate (` and names this target, the new plan family (the `plan_id` without its `-vN` suffix) or the character must differ from that row's. A new `-vN` alone does not count. `proposal validate` checks this.
    f. Read `knowledge/cache/character-<slug>.md` if that file exists. `<slug>` is the character id without its `character_` prefix, with every `_` replaced by `-`: `character_well_rounded` gives `knowledge/cache/character-well-rounded.md`.
-   g. Rank the character and the starting weapon for the target: run `uv run python -m brotato_bot proposal fit --target <target>`. It prints one line per unlocked character (`need` is what items, sets and level-ups must still supply toward the goal after the character's flat start; a veto means the character's gain modifier nullifies the stat), `Top character: <id>`, then the unlocked starting weapons of that character, then `Top weapon: <id>`. The character is `requires_character` when it is not `null`; otherwise it is the fit's top character. A lower choice needs one sentence in `## Why` giving the reason. The starting weapon is the fit's top weapon for the chosen character (when the character is not the top one, run it again with `--character <id>`). If the output is `no stat goal for <target>`, choose an unlocked character (`"unlocked": true` in `characters`) that the guides support and use the starting weapon `any`.
 
 5. Write the proposal.
    a. If step 3 gave you a path, write the proposal to that path. Otherwise run `uv run python -m brotato_bot proposal next-path`; its output is the path of the new file. Write the proposal to that path.
@@ -64,7 +63,7 @@ Do not start the game. Do not run the `claude` command.
       - `- character: <character id>`
       - `- danger: <number>`
       - `- target: <challenge id>`, or `- target: none` when there is no target
-      - `- starting_weapon: <weapon id>` from step 4g (for example `weapon_rock`), or `any` when the owner picks it
+      - `- starting_weapon: <weapon id>` from step 4g (for example `weapon_rock`), or `any` when step 4g printed `no stat goal` or `Top weapon: none unlocked`
    e. `## Plan`: the plan starts from the skeleton below, and the character's curated values replace the skeleton's values.
       - Open `mod/Ellie-BrotatoBot/shopping/build_plans.gd` and find the row for the character: search for `"<character_id>": {`.
       - If there is a row, copy every key it sets over the skeleton's value. For `stats`, use the row's whole `stats` map. For every other key, copy the row's value, including `item_bonus` and `phase_boost`. Keys the row does not set keep the skeleton's value. If there is no row, the skeleton stands.
@@ -73,7 +72,7 @@ Do not start the game. Do not run the `claude` command.
       - After a `stagnant` or `escalate` line on this target, the plan family or the character must be new (step 4e). A new `-vN` alone does not count, and `proposal validate` rejects it.
       - Do not add `target_challenge` to the plan. Installing the proposal writes the `## Next run` target into it.
       - Change values only as the guides support. Keep every key.
-   f. `## Why`: at most three sentences. Each sentence names the file or the dataset fact it relies on.
+   f. `## Why`: at most three sentences. Each sentence names the file or the dataset fact it relies on. Include the reason for a lower-ranked character from step 4g when applicable. Step 5i adds the shaping evidence after the shaping command runs; keep that within the same three sentences.
    g. `## Risk`: one to three sentences.
    h. `## Stagnation check`: the line from step 2, copied exactly (see below).
    Do not add any other `##` heading. Do not leave any `<...>` placeholder in the file.

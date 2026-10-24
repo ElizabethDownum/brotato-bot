@@ -90,3 +90,23 @@ def test_next_skill_uses_the_fit_ranking_and_names_the_starting_weapon():
     assert "- starting_weapon: <weapon id>" in text
     assert "the writer does not set `weapon_set` by hand" in text
     assert "do not set `weapon_set` unless" not in text
+
+
+def test_next_skill_picks_character_before_material_change_and_character_guide():
+    text = NEXT.read_text(encoding="utf-8")
+    step4 = text[
+        text.index("4. Choose the target and the character.") : text.index("5. Write the proposal.")
+    ]
+    assert step4.index("   d. Danger:") < step4.index("   g. Rank the character")
+    assert step4.index("   g. Rank the character") < step4.index("   e. The material change.")
+    assert step4.index("   e. The material change.") < step4.index("   f. Read `knowledge/cache/")
+    assert (
+        "If it prints `no candidate character`, stop and report it; do not write a proposal."
+        in step4
+    )
+    assert "If the output is `Top weapon: none unlocked`, use the starting weapon `any`." in step4
+    assert "the guides from step 1 support" in step4
+    assert "keep `requires_character` when set (it must be unlocked)" in step4
+    assert "or `any` when step 4g printed `no stat goal` or `Top weapon: none unlocked`" in text
+    assert "or `any` when the owner picks it" not in text
+    assert "Step 5i adds the shaping evidence after the shaping command runs" in text
