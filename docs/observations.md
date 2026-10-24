@@ -782,3 +782,20 @@ Report: `.superpowers/sdd/2026-10-24-steering-audit/sol-report.md` (brief beside
   was a lap of the arena edge at speed 2 with about 100 enemies until horned bruisers
   caught it (152 damage in about 20 s). That fits speed plus danger-1 density; sweep is
   not ruled out late, which proposal 9 tests by holding it.
+
+## 2026-10-24 owner observations (held as evidence, no action yet)
+
+Ellie, watching runs, during run 8 (proposal 9):
+
+1. **Idle with materials on the floor.** The character often stands still and waits while
+   materials lie on the ground that it could collect. Context, not yet checked against
+   it: the greedy material draw applies only with no enemy within 280 px; `stand_continuity`
+   is -1.2; the arbiter has stand-and-shoot rewards (`FIRE_STILL_*` in `steering/arbiter.gd`);
+   the quiet-floor route and the stand-still-bonus change are parked. Testable from the
+   snapshots: frames with near-zero movement while `mats.nearest` is small and the nearest
+   enemy is far.
+2. **Loot enemies are not chased.** High-value enemies such as the looter (drops a crate)
+   are not pursued; a kill depends on the looter wandering into weapon range. `grep -i looter`
+   over `mod/Ellie-BrotatoBot/steering/` finds nothing, so the steering has no
+   looter-specific term today. Testable: a `looter` appears as `nearest_threat` in run 7's
+   wave 19 snapshots; count looter sightings against crates gained.
