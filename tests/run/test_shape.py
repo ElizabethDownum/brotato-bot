@@ -476,6 +476,20 @@ def test_prefer_sets_bonus_is_capped():
     assert shaped["plan"]["prefer_sets"] == {"set_blunt": shape.ITEM_BONUS_CAP}
 
 
+def test_chunky_cannot_prefer_sets_for_its_vetoed_speed_goal():
+    goal = shape.goal_for("chal_slow", SLOW)
+    chunky = {
+        "id": "character_chunky",
+        "gain_modifiers": [{"stat": "stat_speed", "pct": -100}],
+    }
+    dataset = _blunt_dataset(character=chunky)
+    assert shape.preferred_sets(goal, dataset, chunky) == {}
+    plan = {**_plan(), "character_id": chunky["id"]}
+    shaped = shape.shape_plan(plan, goal, ITEMS, dataset)
+    assert "prefer_sets" not in shaped["plan"]
+    assert shaped["plan"]["weapon_type"] == "ranged"
+
+
 def test_shape_markdown_reports_the_set_and_is_idempotent():
     goal = shape.goal_for("chal_slow", SLOW)
     dataset = _blunt_dataset()

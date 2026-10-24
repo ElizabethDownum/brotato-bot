@@ -114,7 +114,10 @@ def full_set_bonus(by_count: dict[int, float], sign: int) -> float:
 
 def preferred_sets(goal: Goal, dataset: dict, character: dict | None) -> dict[str, float]:
     """``{set_id: bonus}`` for sets worth at least ``PREFER_SET_SHARE`` of the character's need."""
-    need = character_goal_fit(character, goal)["need"]
+    fit = character_goal_fit(character, goal)
+    if fit["veto"]:
+        return {}
+    need = fit["need"]
     out: dict[str, float] = {}
     for s in goal_data(goal, dataset)["sets"]:
         bonus = full_set_bonus(s["by_count"], goal.sign)
