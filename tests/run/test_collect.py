@@ -16,7 +16,7 @@ def test_report_renders_new_telemetry():
     plan = {"plan": {"ask_on": ["item_goal"], "item_bonus": {"item_bonus": 3}}}
     s = collect.summarize(events, plan)
     md = render.run_report(s)
-    assert "target chal_slow fired on wave 1" in md
+    assert "target chal_slow fired on wave 2" in md
     assert "launched by the mod: character_old, weapon_rock, danger 0" in md
     assert "| wave | hp | gold | dmg | kills | speed |" in md
     assert "| 1 | 10 | - | - | - | -21 |" in md
@@ -26,22 +26,47 @@ def test_report_renders_new_telemetry():
     assert "| 1 | item_beanie | recycle | -16 |" in md
     assert "## Build" in md
     assert "weapon_rock_1 x2" in md and "item_metal_plate x3" in md
-    assert "| 1 | 4 | 6 | 3 |" in md
-    assert "| 2 | 10 | 10 | 4 |" in md
-    assert "| Run total | 6 | 10 | 7 |" in md
+    assert "bag swept at wave end" in md
+    assert "| 1 | 4 | 6 | 4 |" in md
+    assert "| 2 | 10 | 10 |  |" in md
+    assert "| Run total | 6 | 10 | 4 |" in md
+    assert "sum of swept bag" in md
     assert collect.index_row(s)["target_fired"] is True
 
 
-def test_target_wave_override_and_unknown_wave():
+def test_target_wave_override_and_first_wave():
     events = [
         {"kind": "challenge", "id": "unknown", "is_target": True},
         {"kind": "wave_end", "wave": 2},
-        {"kind": "challenge", "id": "explicit", "is_target": True, "wave": 3},
+        {"kind": "challenge", "id": "inferred", "is_target": True},
+        {"kind": "challenge", "id": "explicit", "is_target": True, "wave": 7},
         {"kind": "challenge", "id": "explicit", "is_target": True, "wave": 4},
     ]
     s = collect.summarize(events)
-    assert s.target_waves == {"unknown": None, "explicit": 3}
+    assert s.target_waves == {"unknown": 1, "inferred": 3, "explicit": 7}
     assert "| 2 | - | - | - | - |  |" in render.run_report(s)
+
+
+def test_materials_use_next_wave_peak_and_leave_missing_waves_blank():
+    events = collect.parse_jsonl(FIXTURES / "run_telemetry.jsonl")
+    # Bag pays out during wave 2, so its final reading must not replace its peak.
+    events.extend(
+        [
+            {"kind": "snapshot", "wave": 2, "mats": {"bag": 9}},
+            {"kind": "snapshot", "wave": 2, "mats": {"bag": 0}},
+            {"kind": "snapshot", "wave": 2, "mats": {"floor": 2}},
+            {"kind": "snapshot", "wave": 4, "mats": {"floor": 8, "bag": 7}},
+            {"kind": "snapshot", "wave": 5, "mats": {"floor": 0, "bag": 0}},
+        ]
+    )
+    s = collect.summarize(events)
+    assert [(r.wave, r.bag) for r in s.materials] == [(1, 9), (2, None), (4, 0), (5, None)]
+    md = render.run_report(s)
+    assert "| 1 | 4 | 6 | 9 |" in md
+    assert "| 2 | 6 | 10 |  |" in md
+    assert "| 4 | 8 | 8 | 0 |" in md
+    assert "| 5 | 0 | 0 |  |" in md
+    assert "| Run total | 4.66667 | 10 | 9 |" in md
 
 
 def test_build_on_death_replaces_duplicate_dump():

@@ -172,7 +172,7 @@ def run_report(summary: RunSummary, outcomes: dict[str, str] | None = None) -> s
                 r.wave,
                 sum(r.floors) / len(r.floors) if r.floors else None,
                 max(r.floors, default=None),
-                r.bag,
+                r.bag if r.bag is not None else "",
             )
             for r in s.materials
         ]
@@ -187,10 +187,12 @@ def run_report(summary: RunSummary, outcomes: dict[str, str] | None = None) -> s
         telemetry.append(
             "## Materials\n\n"
             + _table(
-                ["wave", "mean floor", "max floor", "bag (last snapshot)"],
+                ["wave", "mean floor", "max floor", "bag swept at wave end"],
                 rows,
             )
-            + "\n\nRun total: snapshot-weighted floor mean, floor maximum, sum of last bags."
+            + "\n\nRun total: snapshot-weighted floor mean, floor maximum, sum of swept bag."
+            + " Bag swept at wave end is the maximum bag in the following wave's snapshots;"
+            + " blank when unavailable (including the last wave)."
         )
     return TEMPLATE.read_text(encoding="utf-8").format(
         run_id=s.run_id,

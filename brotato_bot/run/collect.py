@@ -102,6 +102,7 @@ def summarize(events: list[dict], plan: dict | None = None) -> RunSummary:
     board: OfferRow | None = None
     crates: list[ShopRow] = []
     materials: dict[int, MaterialRow] = {}
+    bag_peaks: dict[int, float] = {}
     build = None
     launch = None
 
@@ -153,7 +154,9 @@ def summarize(events: list[dict], plan: dict | None = None) -> RunSummary:
                 floor = _float(e["mats"].get("floor"))
                 if floor is not None:
                     row.floors.append(floor)
-                row.bag = _float(e["mats"].get("bag"))
+                bag = _float(e["mats"].get("bag"))
+                if bag is not None:
+                    bag_peaks[w] = max(bag_peaks.get(w, bag), bag)
         elif kind == "decision":
             resp = e.get("response") if isinstance(e.get("response"), dict) else {}
             wave = _int(e.get("wave"))
@@ -223,7 +226,7 @@ def summarize(events: list[dict], plan: dict | None = None) -> RunSummary:
             if cid and e.get("is_target") is True and cid not in targets:
                 targets.append(cid)
                 wave = _int(e.get("wave"))
-                target_waves[cid] = wave if wave is not None else last_wave
+                target_waves[cid] = wave if wave is not None else (last_wave or 0) + 1
         elif kind == "death":
             if death is None:
                 death_build = e.get("build") if isinstance(e.get("build"), dict) else {}
@@ -268,6 +271,11 @@ def summarize(events: list[dict], plan: dict | None = None) -> RunSummary:
     start_wave = _int(header.get("start_wave")) or 1
     if start_wave > 1:
         notes.append(f"recording starts at wave {start_wave} (resumed or retried run)")
+
+    # The end-of-wave sweep happens after the last snapshot. Its bag is visible
+    # during the following wave, before being paid out; no following data means unknown.
+    for w, row in materials.items():
+        row.bag = bag_peaks.get(w + 1)
 
     return RunSummary(
         run_id=_str(header.get("run_id")) or "",
