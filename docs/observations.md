@@ -774,3 +774,11 @@ Report: `.superpowers/sdd/2026-10-24-steering-audit/sol-report.md` (brief beside
   with arm B steering held, so it is both the fix test and arm B's second reading. If it
   holds, the follow-up is a default speed weight for rows without one (a mod change via
   the usual brief and review), not per-proposal patches.
+- Checked against run 6 (snapshots, per wave): through wave 12 run 7 kept enemies as far
+  away as run 6 or farther (median nearest enemy 309-552 px vs 340-480) with similar live
+  enemy counts, so sweep 2.5 shows no cost while speed was 4-6. From wave 13 run 7 had
+  about twice run 6's live enemies, speed 4 then 2, the nearest enemy closed to about
+  200-270 px, and wall time rose (edge < 150 px: 12% of wave 17, 30% of wave 19). Wave 19
+  was a lap of the arena edge at speed 2 with about 100 enemies until horned bruisers
+  caught it (152 damage in about 20 s). That fits speed plus danger-1 density; sweep is
+  not ruled out late, which proposal 9 tests by holding it.
