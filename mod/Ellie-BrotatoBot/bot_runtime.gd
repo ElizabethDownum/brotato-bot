@@ -33,8 +33,9 @@ extends Node
 #                  pressed through (null otherwise; reset_for_menu leaves it alone)
 #   launch_request launch.json as read (null until a valid file is found); read
 #                  at most once per process and kept across profile refusals
-#   launch_used    the request was spent: the launcher pressed Start, or it was
-#                  cancelled; it never launches again in this process
+#   launch_used    the request was spent: the launcher pressed Start, it was
+#                  cancelled, or run start discarded it as stale; it never
+#                  launches again in this process
 
 const BotConfig = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_config.gd")
 const Guards = preload("res://mods-unpacked/Ellie-BrotatoBot/core/guards.gd")

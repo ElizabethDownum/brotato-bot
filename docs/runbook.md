@@ -261,14 +261,15 @@ it while idle (`BOT idle` plus the plan line), turn on AI visuals. This also dra
 | `target_challenge` | string | `""` | The challenge id to watch for, e.g. `chal_gatherer_1`. A non-empty `target_challenge` in `plan.json` overrides it. |
 | `export_hotkey` | string | `"F9"` | Key name for the advisor export, as Godot names keys (`OS.find_scancode_from_string`). An unknown name falls back to F9. |
 
-Shop ask rules, in order (`DecisionClient.should_ask`), on every board of a
-visit (the first view and after each reroll or buy), only while a sidecar
-heartbeat is fresh (section 4):
+Shop ask rules, in order (`DecisionClient.should_ask`), at most once per board
+of a visit (the first view and each board after a reroll; a lock or a buy
+leaves the same board), only while a sidecar heartbeat is fresh (section 4):
 
 1. `ask_per_visit` asks already made this visit: no ask.
-2. An `ask_on` id is on the board: `pivot`.
-3. A dead board, where no affordable option scores at or above the plan's
-   `min_buy`: no ask (the rules reroll or leave).
+2. A dead board, where no affordable option scores at or above the plan's
+   `min_buy`: no ask (the rules reroll or leave), even with an `ask_on` id on
+   the board.
+3. An `ask_on` id is on the board: `pivot`.
 4. A genuine tie (best affordable `>= ask_floor`, and best minus second
    `< ask_tie_margin`): `ask`.
 5. A big purchase (gold `>= ask_gold_floor`, and the best affordable option's
@@ -384,8 +385,12 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    start for you, on the main menu you land on after loading the profile:
    - It presses Start, picks the character, picks the starting weapon, picks
      the danger and starts the run. Each step first checks that the game's
-     profile is the bot's; a wrong profile cancels the launch, deletes
-     nothing, and line 1 reads `Launch refused: wrong profile (<id>)`.
+     profile is the bot's; a wrong profile stops the launch, deletes
+     nothing, and line 1 reads `Launch refused: wrong profile (<id>)`. The
+     launch is evaluated each time the main menu is shown, so after loading
+     the bot profile and coming back to the main menu it starts.
+   - Solo only: a co-op run (or any player count other than one) cancels the
+     launch, deletes `launch.json`, and line 1 reads `Launch refused: co-op`.
    - `starting_weapon: any` leaves the weapon pick to you (line 1 reads
      `Launch: pick the starting weapon`); the launch carries on from the next
      screen. The weapon is looked up as the tier-1 id (`weapon_rock_1`, the
@@ -395,10 +400,11 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
      `launch.json`, and line 1 reads `Launch refused: character <id> not
      available`, `... weapon <id> not available` or `... danger <n> not
      available`. You finish from that screen by hand.
-   - Pressing Back, or reaching the main menu, mid-launch cancels it. A launch
-     file is read at most once per game process, and `launch.json` is deleted
-     when the run starts (a stale file from an older `prepare` is deleted
-     then too, without enabling the bot).
+   - Pressing Back, or reaching the main menu, mid-launch cancels it (on the
+     bot profile; the file is kept on any other). A launch file is read at
+     most once per game process and launches at most once. `launch.json` is
+     deleted when the launched run starts; a run started by hand on the bot
+     profile deletes a stale file too, without enabling the bot.
    - When wave 1 starts, the mod records a `launch` event and switches the bot
      on through the same guarded path as Shift+Space, so the profile and plan
      checks and the human-pause rules apply unchanged. Do not touch the move
@@ -472,8 +478,9 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    - The bot asks only when `%APPDATA%\Brotato\brotato-bot\sidecar.alive`
      was modified within the last **10 s**. Otherwise the rules decide at
      once: no request, no pause and no `decision` line.
-   - A shop asks up to `ask_per_visit` times per visit, on whichever boards
-     `should_ask` flags (section 3.4); never on a dead board.
+   - A shop asks up to `ask_per_visit` times per visit, at most once per
+     board, on whichever boards `should_ask` flags (section 3.4); never on a
+     dead board.
    - After two decisions in a row time out, the bot stops asking for the rest
      of the run: a `warning` line (`message`), line 4 `sidecar: off`, and a
      checkpoint then logs `"reason":"asking_disabled"`. Any answer (valid or
