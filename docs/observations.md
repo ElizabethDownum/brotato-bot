@@ -213,7 +213,7 @@ change only when a later run or a code read confirms it.
   spent 359 on buys and 175 on rerolls). 11 sidecar asks, all answered by haiku, all 11
   rationales name the speed goal.
 - The miss: none of Bag, Ugly Tooth, Reinforced Steel, Statue, Esty's Couch or Evil Hat was
-  bought in 69 rerolls across 19 shops (about 88 boards, at most about 350 slot rolls;
+  bought in 61 rerolls across 19 shops (about 80 boards, at most about 320 slot rolls;
   the first draft of this entry said 380 offers). Helmet (wave 8) and Campfire (wave 12)
   were the only speed buys. Checked and ruled out:
   `score_shop_entry` has no filter beyond the scorer (Helmet's 16.33 in the run log matches
@@ -286,4 +286,49 @@ claims verified by the controller at the cited lines of the restored decompiled 
   work, not its goal relevance); run 2 ended near -5 speed, not -10, and four of its held
   items came from crates.
 - Corrections to earlier entries: run 3 bought two speed items (Helmet, Campfire), and
-  its offer count was about 88 boards, not 380 offers.
+  its offer count was about 80 boards, not 380 offers.
+
+## 2026-10-23 audit B (Opus 5.5, read-only): the rules, not Haiku, spend the gold away from the goal
+
+Report: `.superpowers/sdd/2026-10-23-levers-audit/report-b.md`. Controller verified the
+ask thresholds, the reroll count (61), the Piggy Bank payout code and the untranslated
+objective text.
+
+- Provenance: every Well Rounded weight and every shop constant (`reroll_keep` 5,
+  `LOCK_MIN_SCORE` 28 weapons-only, `SURPLUS_KEEP` 120, `HUNT_KEEP` 30, weapon scores) is
+  BOTato's, tuned for survival at danger 1 with no unlock goal under the flat scorer. The
+  shaping constants (`DOMINANT_MARGIN` 4, item bonus 1.5/pt cap 30) have no calibration
+  record. `ask_floor` 4 and `ask_tie_margin` 3 were set for the flat scale and are stale.
+  Under the shaped plan a -1 speed item scores 6.17 while Lens scores 8 and Alien Worm 7:
+  dominance holds per unit, not per goal point, so junk keeps beating one-point goal items.
+- The ask fires on the wrong boards: 5 of 80 run-3 boards were asked, all dead boards
+  where Haiku could only say "reroll" (24 of 28 asks matched the rule). Boards never asked
+  because the margin was wide: run 3 w8 Scope 94g, w9 Pile of Books 123g (a w9 Statue costs
+  exactly 123), w11 Crystal 147g, w13 340g of junk after Haiku's reroll, w16 Glass Cannon
+  211g, w18 Kraken's Eye 326g. Spend split run 3: weapons 863, goal items 135, other items
+  3236 (2081 on items scoring under 12), rerolls 1097. Haiku's one bad call (run 2 w13
+  `skip` with 328 gold, two +speed items on the board) came from not knowing that skip
+  leaves the shop with no rerolls.
+- Haiku's view: the objective line reads `CHAL_SLOW: CHAL_STAT_DESC` (untranslated; the
+  stat and value still arrive via the progress entry); the goal-item list has no locked
+  status, `max_nb`, rarity or current-wave price; no reroll price, no min_buy, no waves
+  left, no explanation of what the rules do after each action; 5.7k characters of
+  knowledge excerpts including other characters' pages and BOTato's "banked gold is wasted
+  at low danger"; past decisions from goal-less run 1 marked "win". `confidence` is unused.
+  Haiku never used `revise_plan` or `lock`, and cannot express hold-gold, hunt-an-item,
+  lock-across-visits, or crate take/recycle.
+- Ranked: (1) retarget the ask on the magnitude scale, ask when a goal id is on the board
+  or gold is high with nothing goal-relevant, stop asking dead boards (step 5); (2) let
+  Haiku set parameters the rules then apply (keep gold, hunt ids, min_buy, ask_on), action
+  plus bounded patch in one reply (step 7); (3) prompt facts: mechanics of skip/reroll/lock,
+  reroll price, min_buy, waves left, goal now vs. needed (-25 net: Well Rounded starts at +5, and only items and weapon sets lower speed), goal list
+  filtered and priced (step 5); (4) prompt noise out, translate CHAL_STAT_DESC, drop
+  "weight survival" for stat goals (step 5); (5) shaping per goal point and danger-aware,
+  min_buy rising late, locked items out, `ask_on` filled (step 5); (6) gold floor while an
+  interest item is held (new rule); (7) experience feedback carries target and
+  target_fired or is dropped (step 5); (8) crate rule and event (step 7); (9) stagnation by
+  goal-stat progress plus wave_end stats (new); (10) `plan_patch` guard on the goal stat's
+  sign and size (step 7).
+- Division of labour recommended: rules decide clear boards and dead boards; Haiku is
+  asked when a goal item is on the board or affordable soon, and otherwise sets parameters
+  (keep, hunt, min_buy) that the rules apply on every later board of the visit.
