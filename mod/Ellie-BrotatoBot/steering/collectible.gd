@@ -2,8 +2,11 @@ extends Reference
 
 # Target-only metadata. Legacy linear rewards never pass through this adapter.
 # Keep fields 2/3 compatible with the arbiter's attract/held reward layouts.
-const CRATE_VALUE = 6.0
-const LEGENDARY_CRATE_VALUE = 12.0
+# main.gd:1049-1056 attracts uncollected crates at wave end; materials take priority.
+const CRATE_VALUE = 1.5
+const LEGENDARY_CRATE_VALUE = 2.0
+const CRATE_MATERIAL_REFERENCE_VALUE = 3.0  # quiet Well Rounded .8 * 1.5 * 2.5
+const LOOT_TARGET_VALUE = 8.0    # looter_stats.tres: gold value; drops require a kill
 
 
 static func reward(position: Vector2, value: float, attracted: bool,
@@ -26,7 +29,16 @@ static func consumable(position: Vector2, consumable_id: String, food_value: flo
 
 static func marked(r: Array) -> bool:
 	return r.size() > 5 and float(r[3]) == 0.0 \
-		and r[4] in ["floor_drop", "crate", "food", "tree"]
+		and r[4] in ["floor_drop", "crate", "food", "tree", "loot"]
+
+
+static func loot(unit, enabled_value: float, body_radius: float = 20.0) -> Array:
+	if not is_instance_valid(unit) or not unit.is_loot or unit.dead or unit._pending_die \
+			or enabled_value == 0.0:
+		return []
+	var r = reward(unit.position, LOOT_TARGET_VALUE, false, "loot", unit.get_instance_id())
+	r.append(body_radius)    # contact clearance, independent of the weapon standoff
+	return r
 
 
 static func kind(r: Array) -> String:

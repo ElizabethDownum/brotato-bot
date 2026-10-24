@@ -210,7 +210,7 @@ const FOOD_BOMB_MAX = 9.0
 const FOOD_BOMB_ALONE = -1.5     # detonating on an empty floor wastes the whole pickup
 const METER_COOLDOWN_MIN = 12.0  # buccaneer: frames of cooldown that make a weapon
                                  # worth spending a pickup to reset
-const LOOT_VALUE = 4.0           # a fleeing loot alien, for characters that can catch one
+const LOOT_VALUE = 4.0           # a wandering loot alien; legacy linear chase reward
 const BIRTH_STEP_COST = 4.0      # avoid_births: a red X priced as a small standing AoE.
                                  # Stepping on one relocates (bull) or cancels (pacifist,
                                  # jack, king) the spawn -- a real cost, never a lethal
@@ -1461,7 +1461,7 @@ func _builder_gold_value(player, baseline: float) -> float:
 
 
 func _add_unit(unit, pos: Vector2, range_sq: float, target_range_sq: float, pickup_sq: float) -> void:
-	if unit.dead or unit._pending_die:
+	if not is_instance_valid(unit) or unit.dead or unit._pending_die:
 		return
 	if unit.has_method("get_charmed_by_player_index") and unit.get_charmed_by_player_index() != -1:
 		return    # allied, harmless
@@ -1470,9 +1470,15 @@ func _add_unit(unit, pos: Vector2, range_sq: float, target_range_sq: float, pick
 	var dist_sq = offset.length_squared()
 
 	if unit.is_loot:
-		# Loot aliens flee and are worth chasing, not avoiding -- for anyone
-		# who can catch and kill one. Pacifist can do neither (loot_value 0).
-		if dist_sq < pickup_sq and _loot_value != 0.0:
+		# Loot aliens wander. Chase to weapon range: a living one at wave end
+		# loses its drops. Pacifist cannot kill one (loot_value 0).
+		if _target_mode:
+			var r = Collectible.loot(unit, _loot_value, _body_radius(unit))
+			if not r.empty():
+				_target_collectibles.append(r)
+				if dist_sq < pickup_sq:
+					rewards.append(r)
+		elif dist_sq < pickup_sq and _loot_value != 0.0:
 			rewards.push_back([unit.position, _loot_value])
 		return
 

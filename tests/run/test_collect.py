@@ -39,6 +39,23 @@ def test_looters_missing_optional_fields_and_old_recordings():
     assert "| - | killed | - | - |" in render.run_report(summary)
 
 
+def test_loot_target_snapshots_leave_looters_table_and_totals_unchanged():
+    events = collect.parse_jsonl(FIXTURES / "run_looters.jsonl")
+    baseline = collect.summarize(events)
+    events.insert(
+        2,
+        {
+            "kind": "snapshot",
+            "wave": 1,
+            "arb": {"dtg": 240, "tkind": "loot", "tswitch": 1, "tdrop": 0},
+            "loot": {"alive": 2, "nearest": 240, "in_steer_range": True},
+        },
+    )
+    result = collect.summarize(events)
+    assert result.looters == baseline.looters
+    assert render.run_report(result) == render.run_report(baseline)
+
+
 @pytest.fixture
 def material_events():
     events = collect.parse_jsonl(FIXTURES / "run_telemetry.jsonl")

@@ -365,7 +365,13 @@ Common `plan` keys. This table is the full set. The header comment in
 
 `steering.drop_pull` accepts `"linear"` (default) or `"target"`. Target mode
 chooses from the whole map: unattracted materials, normal/legendary crates
-(values 6/12), food with a positive resolved food value, and positive-value trees.
+(values 1.5/2), food with a positive resolved food value, positive-value trees,
+and live loot aliens when the resolved `loot_value` is nonzero (target value 8).
+Crates are vacuumed at wave end (`main.gd:1049-1056`), so a material of value 3
+beats either crate at equal distance. Against a material at 300 px, a normal
+crate wins below 150 px and a legendary below 200 px. A looter wins below 800 px.
+When materials have a smaller resolved reward, crate rank weights scale down
+from the value-3 reference; they still lose to an equally distant clear material.
 Rank is distance / value, penalized by live non-loot enemies near the target
 (260 px) and along its straight route (220 px), plus the existing threat tuples
 along that route. Contact reach always forbids selection. Commitment ends when
@@ -380,11 +386,20 @@ at 280 px. Quiet draw/sweep multipliers still resolve as before; target mode
 also stays active near enemies. Every positive marked collectible crossed by
 the projected segment still earns its collection bonus. The 900 px horizon
 remains for linear mode and all other reward terms, including pass-through
-bonuses for non-targets. Loot aliens and held rewards keep their existing behavior.
+bonuses for non-targets. Loot aliens wander; their position refreshes each decision.
+The bot closes to `min(weapon_range * 0.8, 240)` px, then retains the target and
+earns the capped 3-point gain for standing in range. Loot earns no pickup bonus;
+an 8-point tapered body-clearance cost discourages touching it. When already
+overlapping, clearance is the worse of a 0.1-second travel sample and the
+endpoint, so escape beats a move through the body to a clear endpoint. The looter is
+excluded from route threats to its own target. Death, pending death, freeing or
+removal ends the commitment. Other enemies and route risk still apply. Linear
+mode retains its existing two-field loot reward (value 4, inside 900 px), and
+other held rewards retain their behavior.
 Snapshot `arb.dtg` is the current target distance in px (-1 when absent);
 `arb.tswitch` counts target acquisitions, including the first, over the arbiter's
 lifetime. Clearing alone does not increment it. `arb.tkind` is `material`,
-`crate`, `food`, `tree` or `none`; `arb.tdrop` counts committed targets dropped
+`crate`, `food`, `tree`, `loot` or `none`; `arb.tdrop` counts committed targets dropped
 because of threat (per arbiter lifetime, normally one wave).
 
 `ask_on` is matched against shop offers (item and weapon ids, e.g.

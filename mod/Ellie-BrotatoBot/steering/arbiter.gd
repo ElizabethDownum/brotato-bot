@@ -432,6 +432,11 @@ const TARGET_RISK_WEIGHT = 4.0
 const TARGET_DANGER_RADIUS = 280.0   # quiet draw boundary in WorldView
 const TARGET_PULL_FLOOR = 1.5        # full approach beats the standing bonus 1.2
 const TARGET_APPROACH_CAP = 3.0     # below W_ROOM=6 and ordinary contact costs
+const LOOT_STANDOFF_SHARE = 0.8     # leave room inside the shortest weapon's reach
+const LOOT_STANDOFF_CAP = 240.0     # do not park at the edge of long ranged weapons
+const LOOT_CONTACT_COST = 8.0       # exceeds capped loot pull + moving continuity
+const LOOT_ESCAPE_SAMPLE = 0.1     # s: price initial penetration before a clear endpoint
+var _loot_standoff = 0.0
 var _drop_target_id = -1
 var _drop_target_pos = Vector2.ZERO
 var _target_reward = []
@@ -703,6 +708,9 @@ func _update_drop_target(p0: Vector2, rewards: Array, enemies: Array,
 	var current = null
 	var candidate = null
 	var best = INF
+	var crate_candidate = null
+	var best_crate = INF
+	var material_value = Collectible.CRATE_MATERIAL_REFERENCE_VALUE
 	var threatened = false
 	_target_danger = 1.0
 	for e in enemies:
@@ -716,9 +724,12 @@ func _update_drop_target(p0: Vector2, rewards: Array, enemies: Array,
 	for r in rewards:
 		if not Collectible.marked(r):
 			continue
+		if r[4] == "floor_drop" and r[1] > 0.0:
+			material_value = min(material_value, r[1])
 		var distance = p0.distance_to(r[0])
 		var rim = _pickup_radius if r[2] else 0.0
-		if distance <= rim or r[1] <= 0.0:
+		# A living loot target is held in weapon range, never "collected".
+		if (distance <= rim and r[4] != "loot") or r[1] <= 0.0:
 			continue
 		var route = _target_route(p0, r[0], enemies, threats, body_radius)
 		if route[1]:
@@ -728,9 +739,19 @@ func _update_drop_target(p0: Vector2, rewards: Array, enemies: Array,
 		if r[5] == _drop_target_id:
 			current = r
 		var score = distance / r[1] * route[0]
-		if score < best:
+		if r[4] == "crate":
+			if score < best_crate:
+				best_crate = score
+				crate_candidate = r
+		elif score < best:
 			best = score
 			candidate = r
+	# One scan still suffices: every crate shares this rank scale. Materials
+	# can be .8 without quiet multipliers; keep crates below even those while
+	# preserving the 1.5:2 legendary ordering and the nominal value-3 crossover.
+	if crate_candidate != null and best_crate * Collectible.CRATE_MATERIAL_REFERENCE_VALUE \
+			/ material_value < best:
+		candidate = crate_candidate
 	if threatened:
 		target_threat_drops += 1
 	var selected = current
@@ -796,6 +817,7 @@ func choose(p0: Vector2, speed: float, body_radius: float, far: Vector2,
 	_anchor_inner = float(profile.get("anchor_inner", 0.0))
 	_anchor_w = w_anchor * float(profile.get("anchor_w", 1.0))
 	_pickup_radius = float(profile.get("pickup_radius", 0.0))
+	_loot_standoff = min(max(weapon_range, 0.0) * LOOT_STANDOFF_SHARE, LOOT_STANDOFF_CAP)
 	_target_on = profile.get("drop_pull", "linear") == "target"
 	if _target_on:
 		_update_drop_target(p0, profile.get("target_collectibles", rewards),
@@ -1476,6 +1498,33 @@ func _cost(d: Vector2, p0: Vector2, speed: float, body_radius: float, far: Vecto
 			total += _stand_income * _stand_progress
 
 	for r in rewards:
+		if _target_on and Collectible.marked(r) and r[4] == "loot":
+			# Live position is refreshed by WorldView every decision. Do not pay
+			# pickup_taken: this is a moving enemy to shoot, not a pickup to touch.
+			var closest = Geometry.get_closest_point_to_segment_2d(r[0], p0, p_end)
+			var contact = body_radius + float(r[6])
+			var clearance = closest.distance_to(r[0])
+			if p0.distance_to(r[0]) <= contact:
+				# The segment minimum is already inside contact in every heading.
+				# Sample the start of travel as well as the endpoint: escaping can
+				# clear, but running through the body cannot hide behind a clear end.
+				var early = p0.linear_interpolate(p_end, min(LOOT_ESCAPE_SAMPLE / horizon, 1.0))
+				clearance = min(early.distance_to(r[0]), p_end.distance_to(r[0]))
+			total += LOOT_CONTACT_COST * _taper(clearance, contact)
+			if r[5] == _drop_target_id:
+				var d0 = max(p0.distance_to(r[0]) - _loot_standoff, 0.0)
+				var d1 = max(closest.distance_to(r[0]) - _loot_standoff, 0.0)
+				var closed = max(d0 - d1, 0.0) / max(speed * horizon, 1.0)
+				var pull = max(w_pickup * r[1] / (1.0 + d0 / PICKUP_FALLOFF),
+					w_pickup * TARGET_PULL_FLOOR)
+				var gain = min(pull * closed, w_pickup * TARGET_APPROACH_CAP)
+				# Reaching range earns the same capped gain as a full approach;
+				# once reached, standing earns it instead. This beats momentum's
+				# 1.2 bonus without a pickup payout or a forced movement override.
+				if (d0 > 0.0 and d1 == 0.0) or (d0 == 0.0 and d == Vector2.ZERO):
+					gain = w_pickup * TARGET_APPROACH_CAP
+				total -= gain * _target_danger
+			continue
 		# Attracted rewards (drops, food) are taken at the attract rim, so the
 		# distance that matters is to the rim; a felled reward (tree, r[2]
 		# false) still has to be reached. A HELD reward (r[3] = its own rim,
