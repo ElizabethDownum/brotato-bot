@@ -840,3 +840,18 @@ Ellie, watching runs, during run 8 (proposal 9):
   the goal data, but held items render as bare ids and held weapons as id/type/sets, so an
   ask in run 8 would have shown `item_blood_donation x1` with no hint of its HP drain. The
   crate-ask task adds held-item effects to every screen's State section, capped and measured.
+
+## 2026-10-24 shipped: shop `pass`, crate asks, held-item context (mod sync 4)
+
+- Commits `cd73734` (pass) and `05d09cf` (crate asks + held items with effects in every
+  prompt), Sol high; one Opus 5.5 review (`.superpowers/sdd/2026-10-24-crate-ask/review-opus.md`):
+  ship, no compile errors. Synced with the game closed; sidecar restarted on the new schema.
+- Review follow-ups, not yet done: passed items still reach later asks and spend the budget
+  (`_decision_options` ignores `passed`); passing the unlocked copy of a locked duplicate
+  keeps gold reserved; the weapon context lists keys absent from the dataset
+  (`knockback`, `min_range`, `lifesteal`; the data uses `base_knockback`) and omits
+  `proc_effects`; the 8000-character cap cuts mid-line.
+- Crate-ask breadth (review finding 1): 156 of 247 items trip it, including plain-stat text
+  keys such as `effect_knockback` (14 items); 101 have a text key on a non-stat key. Crates
+  arrive about 6-8 per run, so this is a few asks per run, not per wave. Measure in run 9
+  before narrowing.
