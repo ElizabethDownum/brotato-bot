@@ -79,7 +79,7 @@ source; "audit" means the claim is the auditor's and was not re-checked.
 - Character mechanics (F01 extended): before the value curves, inventory every character's
   effects from the dataset and game source and classify each as a plain stat modifier
   (handled by the curves at current stats) or a mechanic. Mechanics get handlers wherever
-  they change how the character should be played. Owner scope: **any measured behaviour or
+  they change how the character should be played. Owner scope (soft ruling; raise evidence that contradicts it): **any measured behaviour or
   policy is fair game** when it helps or hurts that character, not only steering, weapon
   choice and stat preferences (e.g. Engineer: one turret, uncollected materials buff it, so
   leave some on the floor; the turret copies the best ranged weapon and scales with
