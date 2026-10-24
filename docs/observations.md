@@ -872,11 +872,12 @@ Ellie, watching runs, during run 8 (proposal 9):
 
 ## 2026-10-24 run 9 (`runs/20261024-111641-well_rounded-d1`, proposal 10, mod sync 5): died wave 19
 
-- Best run on this target so far (run 7 died wave 13 and run 8 died wave 11). chal_difficulty_1
+- Ties run 7 (also died wave 19, with 74 HP at the end of wave 18) and beats run 8 (died
+  wave 11); `stagnation` now reads this target as stagnant (19, 11, 19). chal_difficulty_1
   did not fire, and chal_gatherer_5 did. Killed by helmet_alien at wave 19: 142 damage from 6
   hits in about 18 s, with 103 enemies on screen at the end. No earlier wave peaked above 53.
   The bot was 12 px from the map edge. HP was 67/78.
-- Speed weight held: speed went 5 → 11 → 20 → 22, with no collapse like run 7's 6→2. Run 7 died at wave 13.
+- Speed weight held: speed went 5 → 11 → 20 → 22, with no collapse like run 7's 6→2.
 - Survival stats drifted down late: armor 0 → -3 and regen +1 → -3 between waves 14 and 18
   (Sunglasses, Gummy Berserker x2, Broken Mouth x2, Fresh Meat). Harvesting reached 66, but
   harvesting grows about 5% per wave on its own (owner reminder), so passing the plan's
