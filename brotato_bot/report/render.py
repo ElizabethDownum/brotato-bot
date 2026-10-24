@@ -9,11 +9,26 @@ from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
-from brotato_bot.run.models import RunSummary
+from pydantic import Field
+
+from brotato_bot.run.models import MaterialRow, RunSummary
 
 TEMPLATE = Path(__file__).parent / "templates" / "run.md.tmpl"
 CHECKPOINT_TEMPLATE = TEMPLATE.with_name("checkpoint.md.tmpl")
 NONE = "_none_"
+
+
+class MaterialSnapshot(MaterialRow):
+    floor_values: list[float] = Field(default_factory=list)
+    unattached: list[float] = Field(default_factory=list)
+
+
+class ReportSummary(RunSummary):
+    """Run summary with wave-end counters and optional snapshot value samples."""
+
+    materials: list[MaterialSnapshot] = Field(default_factory=list)
+    wave_materials: dict[int, dict[str, float | None]] = Field(default_factory=dict)
+    trees: dict[int, dict[str, float | None]] = Field(default_factory=dict)
 
 
 def _cell(v: Any) -> str:
@@ -82,7 +97,11 @@ def _challenges_section(s: RunSummary) -> str:
 
 
 def run_report(summary: RunSummary, outcomes: dict[str, str] | None = None) -> str:
-    s = summary
+    s = (
+        summary
+        if isinstance(summary, ReportSummary)
+        else ReportSummary.model_validate(summary.model_dump())
+    )
     outcomes = outcomes or {}
     danger = s.danger if s.danger is not None else "?"
     plan_section = "\n".join(
@@ -165,14 +184,81 @@ def run_report(summary: RunSummary, outcomes: dict[str, str] | None = None) -> s
                 for key, values in s.build.items()
             )
         )
-    if s.materials:
+    if s.wave_materials:
+        rows = []
+        swept = []
+        collected = []
+        for wave, m in sorted(s.wave_materials.items()):
+            before, after = m.get("bag_before"), m.get("bag_after")
+            sweep = after - before if before is not None and after is not None else None
+            swept.append(sweep)
+            collected.append(m.get("collected_value"))
+            rows.append(
+                (
+                    wave,
+                    m.get("floor_count"),
+                    m.get("floor_value"),
+                    before,
+                    after,
+                    sweep,
+                    m.get("collected_value") if m.get("collected_value") is not None else "",
+                )
+            )
+        rows.append(
+            (
+                "Run total",
+                "",
+                "",
+                "",
+                s.wave_materials[max(s.wave_materials)].get("bag_after"),
+                sum(swept) if all(v is not None for v in swept) else "",
+                sum(collected) if all(v is not None for v in collected) else "",
+            )
+        )
+        telemetry.append(
+            "## Materials\n\n"
+            + _table(
+                [
+                    "wave",
+                    "floor count",
+                    "floor value",
+                    "bag before",
+                    "bag after",
+                    "swept",
+                    "collected value",
+                ],
+                rows,
+            )
+            + "\n\nRun total: bag after is the bag left at the end of the run; swept and"
+            + " collected value are totals (blank when any wave is unknown)."
+            + "\n\nThe bag pays out only through newly spawned pickups and the floor is capped"
+            + " at 50 pickups, so a growing bag before means unspent value."
+        )
+    if s.materials and (
+        not s.wave_materials or any(r.floor_values or r.unattached for r in s.materials)
+    ):
         floors = [v for r in s.materials for v in r.floors]
+        extra = any(r.floor_values or r.unattached for r in s.materials)
+        floor_values = [v for r in s.materials for v in r.floor_values]
+        unattached = [v for r in s.materials for v in r.unattached]
+
+        def means(values, loose):
+            return (
+                (
+                    sum(values) / len(values) if values else "",
+                    sum(loose) / len(loose) if loose else "",
+                )
+                if extra
+                else ()
+            )
+
         rows = [
             (
                 r.wave,
                 sum(r.floors) / len(r.floors) if r.floors else None,
                 max(r.floors, default=None),
                 r.bag if r.bag is not None else "",
+                *means(r.floor_values, r.unattached),
             )
             for r in s.materials
         ]
@@ -182,17 +268,34 @@ def run_report(summary: RunSummary, outcomes: dict[str, str] | None = None) -> s
                 sum(floors) / len(floors) if floors else None,
                 max(floors, default=None),
                 sum(r.bag or 0 for r in s.materials),
+                *means(floor_values, unattached),
             )
         )
         telemetry.append(
-            "## Materials\n\n"
+            ("## Material snapshots\n\n" if s.wave_materials else "## Materials\n\n")
             + _table(
-                ["wave", "mean floor", "max floor", "bag swept at wave end"],
+                ["wave", "mean floor", "max floor", "bag swept at wave end"]
+                + (["mean floor value", "mean unattached"] if extra else []),
                 rows,
             )
             + "\n\nRun total: snapshot-weighted floor mean, floor maximum, sum of swept bag."
             + " Bag swept at wave end is the maximum bag in the following wave's snapshots;"
             + " blank when unavailable (including the last wave)."
+        )
+    if s.trees:
+        felled = [t.get("felled") for t in s.trees.values()]
+        telemetry.append(
+            "## Trees\n\n"
+            + _table(
+                ["wave", "spawned", "felled", "alive"],
+                [
+                    (wave, t.get("spawned"), t.get("felled"), t.get("alive"))
+                    for wave, t in sorted(s.trees.items())
+                ]
+                + [
+                    ("Run total", "", sum(felled) if all(v is not None for v in felled) else "", "")
+                ],
+            )
         )
     return TEMPLATE.read_text(encoding="utf-8").format(
         run_id=s.run_id,

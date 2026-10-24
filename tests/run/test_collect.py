@@ -3,12 +3,138 @@ import os
 import shutil
 from pathlib import Path
 
+import pytest
+
 from brotato_bot import cli
 from brotato_bot.report import render
 from brotato_bot.run import collect
+from brotato_bot.run.models import RunSummary
 
 FIXTURES = Path(__file__).parent / "fixtures"
 RUN_ID = "20261022-201500-well_rounded-d0"
+
+
+@pytest.fixture
+def material_events():
+    events = collect.parse_jsonl(FIXTURES / "run_telemetry.jsonl")
+    events.extend(
+        [
+            {
+                "kind": "wave_end",
+                "wave": 1,
+                "materials": {
+                    "floor_count": 3,
+                    "floor_value": 7,
+                    "bag_before": 4,
+                    "bag_after": 11,
+                    "collected_value": 20,
+                },
+                "trees": {"spawned": 5, "felled": 3, "alive": 2},
+            },
+            {
+                "kind": "wave_end",
+                "wave": 2,
+                "materials": {
+                    "floor_count": 0,
+                    "floor_value": 0,
+                    "bag_before": 2,
+                    "bag_after": 2,
+                    "collected_value": 0,
+                },
+                "trees": {"spawned": 4, "felled": 4, "alive": 0},
+            },
+        ]
+    )
+    return events
+
+
+def test_wave_end_materials_replace_snapshot_estimates(material_events):
+    s = collect.summarize(material_events)
+    # These recorded values differ from the following snapshot's bag estimate (4).
+    md = render.run_report(s)
+    assert (
+        "| wave | floor count | floor value | bag before | bag after | swept | collected value |"
+        in md
+    )
+    assert "| 1 | 3 | 7 | 4 | 11 | 7 | 20 |" in md
+    assert "| 2 | 0 | 0 | 2 | 2 | 0 | 0 |" in md
+    assert "| Run total |  |  |  | 2 | 7 | 20 |" in md
+    assert "bag swept at wave end" not in md
+    assert "bag left at the end of the run" in md
+    assert "only through newly spawned pickups" in md
+    assert "50 pickups" in md and "unspent value" in md
+    # Extensions survive a summary round trip.
+    assert render.run_report(render.ReportSummary.model_validate(s.model_dump())) == md
+
+
+@pytest.mark.parametrize("unknown_waves", [(1,), (1, 2)])
+def test_unknown_collected_value_stays_blank(material_events, unknown_waves):
+    for event in material_events:
+        if event.get("materials") and event["wave"] in unknown_waves:
+            event["materials"]["collected_value"] = None
+    md = render.run_report(collect.summarize(material_events))
+    assert "| 1 | 3 | 7 | 4 | 11 | 7 |  |" in md
+    assert "| Run total |  |  |  | 2 | 7 |  |" in md
+
+
+def test_trees_render_independently_of_materials(material_events):
+    for event in material_events:
+        event.pop("materials", None)
+    md = render.run_report(collect.summarize(material_events))
+    assert "## Trees\n\n| wave | spawned | felled | alive |" in md
+    assert "| 1 | 5 | 3 | 2 |" in md
+    assert "| 2 | 4 | 4 | 0 |" in md
+    assert "| Run total |  | 7 |  |" in md
+
+
+def test_snapshot_value_means_use_only_present_samples(material_events):
+    material_events.extend(
+        [
+            {"kind": "snapshot", "wave": 1, "mats": {"floor_value": 12, "unattached": 0}},
+            {"kind": "snapshot", "wave": 1, "mats": {"floor_value": 6, "unattached": 2}},
+            {"kind": "snapshot", "wave": 2, "mats": {"floor_value": 0}},
+            {"kind": "snapshot", "wave": 2, "mats": {"floor_value": None, "unattached": True}},
+        ]
+    )
+    md = render.run_report(collect.summarize(material_events))
+    assert "## Material snapshots" in md
+    assert "| mean floor value | mean unattached |" in md
+    assert "| 1 | 4 | 6 | 4 | 9 | 1 |" in md
+    assert "| 2 | 10 | 10 |  | 0 |  |" in md
+    assert "| Run total | 6 | 10 | 4 | 6 | 1 |" in md
+    # Older streams can carry these snapshot fields without wave-end telemetry.
+    for event in material_events:
+        event.pop("materials", None)
+    md = render.run_report(collect.summarize(material_events))
+    assert "## Materials\n" in md and "## Material snapshots" not in md
+    assert "| Run total | 6 | 10 | 4 | 6 | 1 |" in md
+
+
+def test_absent_wave_telemetry_omits_tables():
+    events = collect.parse_jsonl(FIXTURES / "run_small.jsonl")
+    events.extend(
+        [
+            {"kind": "wave_end", "wave": 4, "materials": None, "trees": []},
+            {"kind": "wave_end", "materials": {"bag_after": 99}, "trees": {"felled": 99}},
+        ]
+    )
+    md = render.run_report(collect.summarize(events))
+    assert "## Materials" not in md and "## Trees" not in md
+
+
+def test_report_still_accepts_shared_summary_model():
+    s = collect.summarize(collect.parse_jsonl(FIXTURES / "run_telemetry.jsonl"))
+    assert render.run_report(RunSummary.model_validate(s.model_dump())) == render.run_report(s)
+
+
+def test_collect_writes_material_and_tree_telemetry(tmp_paths, material_events):
+    tmp_paths.runs_in.mkdir(parents=True, exist_ok=True)
+    (tmp_paths.runs_in / "materials.jsonl").write_text(
+        "\n".join(json.dumps(e) for e in material_events) + "\n", encoding="utf-8"
+    )
+    md = collect.collect("materials", tmp_paths).read_text(encoding="utf-8")
+    assert "| Run total |  |  |  | 2 | 7 | 20 |" in md
+    assert "## Trees\n" in md and "| Run total |  | 7 |  |" in md
 
 
 def test_report_renders_new_telemetry():

@@ -32,7 +32,6 @@ from brotato_bot.run.models import (
     DeathRecord,
     DecisionRow,
     LevelupRow,
-    MaterialRow,
     OfferRow,
     RunSummary,
     ShopRow,
@@ -82,7 +81,7 @@ def _str(v: Any) -> str | None:
     return v if isinstance(v, str) else None
 
 
-def summarize(events: list[dict], plan: dict | None = None) -> RunSummary:
+def summarize(events: list[dict], plan: dict | None = None) -> render.ReportSummary:
     """Fold the run's events into a RunSummary."""
     header: dict = next((e for e in events if e.get("kind") == "header"), {})
     waves: dict[int, WaveRow] = {}
@@ -101,7 +100,9 @@ def summarize(events: list[dict], plan: dict | None = None) -> RunSummary:
     offers: list[OfferRow] = []
     board: OfferRow | None = None
     crates: list[ShopRow] = []
-    materials: dict[int, MaterialRow] = {}
+    materials: dict[int, render.MaterialSnapshot] = {}
+    wave_materials: dict[int, dict[str, float | None]] = {}
+    trees: dict[int, dict[str, float | None]] = {}
     bag_peaks: dict[int, float] = {}
     build = None
     launch = None
@@ -126,6 +127,16 @@ def summarize(events: list[dict], plan: dict | None = None) -> RunSummary:
             )
             last_wave = w
             board = None
+            for key, rows, fields in (
+                (
+                    "materials",
+                    wave_materials,
+                    ("floor_count", "floor_value", "bag_before", "bag_after", "collected_value"),
+                ),
+                ("trees", trees, ("spawned", "felled", "alive")),
+            ):
+                if isinstance(e.get(key), dict):
+                    rows[w] = {field: _float(e[key].get(field)) for field in fields}
         elif kind == "offer":
             board = OfferRow(
                 wave=_int(e.get("wave")),
@@ -150,7 +161,14 @@ def summarize(events: list[dict], plan: dict | None = None) -> RunSummary:
         elif kind == "snapshot" and isinstance(e.get("mats"), dict):
             w = _int(e.get("wave"))
             if w is not None:
-                row = materials.setdefault(w, MaterialRow(wave=w))
+                row = materials.setdefault(w, render.MaterialSnapshot(wave=w))
+                for key, values in (
+                    ("floor_value", row.floor_values),
+                    ("unattached", row.unattached),
+                ):
+                    value = _float(e["mats"].get(key))
+                    if value is not None:
+                        values.append(value)
                 floor = _float(e["mats"].get("floor"))
                 if floor is not None:
                     row.floors.append(floor)
@@ -278,7 +296,7 @@ def summarize(events: list[dict], plan: dict | None = None) -> RunSummary:
     for w, row in materials.items():
         row.bag = bag_peaks.get(w + 1)
 
-    return RunSummary(
+    return render.ReportSummary(
         run_id=_str(header.get("run_id")) or "",
         character_id=_str(header.get("character_id")) or "",
         danger=_int(header.get("danger")),
@@ -303,6 +321,8 @@ def summarize(events: list[dict], plan: dict | None = None) -> RunSummary:
         crates=crates,
         build=build,
         materials=[materials[w] for w in sorted(materials)],
+        wave_materials=wave_materials,
+        trees=trees,
         launch=launch,
         goal_items=list(
             dict.fromkeys(
