@@ -12,8 +12,8 @@ extends Reference
 #   harvest_cap  once stat_harvesting reaches this, stop over-valuing harvesting
 #   item_bonus   item my_id -> extra score, for named guide items whose value is
 #                a special effect rather than a stat (Bag, Scar, Cape, ...)
-#   prefer_sets  weapon set my_id -> bonus (the set's full value for the goal); a
-#                weapon in the set scores bonus/6 per set (shopping/set_score.gd),
+#   prefer_sets  weapon set my_id -> score value of one more weapon in that set;
+#                added per set as is (shopping/set_score.gd),
 #                a soft term -- weapon_set stays the hard gate
 #   max_weapons  stop buying non-combining weapons past this many held
 #   reroll_keep  never spend the last of the gold rerolling -- keep at least this

@@ -306,15 +306,14 @@ func _auto_pick_loop() -> void:
 					if landed:
 						_record_levelup(rt, ups[idx], ask.options, source, decision_id)
 			elif container._items_container.visible:
-				# A crate/consumable item is shown. Items are free stats -- take
-				# them. But an off-plan WEAPON (wrong set/type, e.g. a plank for
-				# elemental Mage) does ~0 damage and would waste a weapon slot, so
-				# recycle it for gold instead.
+				# Free items still need a non-negative score: stat_score plus
+				# item_bonus. score_shop_entry delegates weapons to score_weapon,
+				# preserving their existing take/recycle rule too.
 				var idata = container._item_data
 				var crate_plan = _plan_for(pi)
 				var crate_score = ShopAdvisor.score_shop_entry([idata, 0], crate_plan, pi)
 				var crate_action = "take"
-				if idata is WeaponData and ShopAdvisor.score_weapon(idata, crate_plan, pi) < 0.0:
+				if crate_score < 0.0:
 					crate_action = "recycle"
 				# Both handlers no-op while the button delay runs (decompiled
 				# upgrades_ui_player_container.gd:212-224); idata and the score are
