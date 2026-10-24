@@ -45,7 +45,9 @@ DATASET = {
             "tier": 2,
             "weapon_type": "ranged",
             "base_damage": 4.0,
+            "base_knockback": 2.0,
             "cooldown": 4.0,
+            "proc_effects": [{"kind": "burn_dot", "damage": 3.0, "tick_interval": 0.5}],
             "scaling_stats": [["stat_ranged_damage", 0.6]],
             "sets": ["Gun"],
             "effects": [],
@@ -421,6 +423,8 @@ def test_every_screen_has_held_effects_weapon_tier_and_stats(screen):
     assert "Lose 1 HP per second" in section
     assert "weapon_smg_2 (tier 2, ranged, sets Gun)" in section
     assert '"base_damage":4.0' in section and '"scaling_stats":' in section
+    assert '"base_knockback":2.0' in section
+    assert '"proc_effects":[{"kind":"burn_dot","damage":3.0,"tick_interval":0.5}]' in section
     assert "item_unknown x1: effects record unavailable" in section
     assert "weapon_unknown_1" in section and "record unavailable" in section
 
@@ -437,8 +441,11 @@ def test_equipment_cap_leaves_rest_of_state_and_offered_effects_intact():
     state = dict(_state(), items=[{"id": f"item_{i}", "count": 1} for i in range(25)])
     look = prompt._Lookup(dataset)
     equipment = "\n".join(prompt._equipment_lines(state, look))
-    assert len(equipment) == prompt.EQUIPMENT_MAX_CHARS
+    assert len(equipment) <= prompt.EQUIPMENT_MAX_CHARS
     assert equipment.endswith(prompt.EQUIPMENT_TRUNCATED)
+    for line in equipment.splitlines():
+        if line.startswith("  - item_"):
+            json.loads(line.split(": effects ", 1)[1])  # every retained record is complete
     req = _request(
         kind="crate",
         screen="crate",
@@ -451,6 +458,35 @@ def test_equipment_cap_leaves_rest_of_state_and_offered_effects_intact():
     options = text.split("## Options")[1].split("## Plan")[0]
     assert "Start next wave at 1 HP" in options
     assert "effect_hp_start_next_wave" in options
+
+
+@pytest.mark.parametrize("extra", [-1, 0, 1])
+def test_equipment_truncation_keeps_the_longest_complete_line_prefix(monkeypatch, extra):
+    state = dict(_state(), items=[{"id": "item_bag", "count": 1}])
+    look = prompt._Lookup(DATASET)
+    full_lines = prompt._equipment_lines(state, look)
+    prefix = "\n".join(full_lines[:-1])
+    cap = len(prefix) + len(prompt.EQUIPMENT_TRUNCATED) + 1 + extra
+    monkeypatch.setattr(prompt, "EQUIPMENT_MAX_CHARS", cap)
+    lines = prompt._equipment_lines(state, look)
+    expected = full_lines[:-2] if extra < 0 else full_lines[:-1]
+    assert lines == [*expected, prompt.EQUIPMENT_TRUNCATED]
+    assert len("\n".join(lines)) <= cap
+
+
+def test_equipment_cap_omits_a_single_oversized_record():
+    dataset = {"weapons": [{"id": "weapon_huge", "tier": 1, "effects": ["x" * 9000]}]}
+    state = {"weapons": [{"id": "weapon_huge_1"}]}
+    lines = prompt._equipment_lines(state, prompt._Lookup(dataset))
+    assert lines == ["- weapons:", prompt.EQUIPMENT_TRUNCATED]
+
+
+def test_equipment_exact_cap_needs_no_truncation(monkeypatch):
+    state = {"items": [{"id": "item_bag", "count": 1}]}
+    look = prompt._Lookup(DATASET)
+    full = prompt._equipment_lines(state, look)
+    monkeypatch.setattr(prompt, "EQUIPMENT_MAX_CHARS", len("\n".join(full)))
+    assert prompt._equipment_lines(state, look) == full
 
 
 def test_crate_includes_full_effects_objective_distance_and_plan():

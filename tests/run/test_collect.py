@@ -689,3 +689,21 @@ def test_crates_report_sources_and_legacy_events_round_trip():
     assert "| wave | item | action | score | source |" in crates
     for source in ("rule", "haiku", "timeout"):
         assert f"| 7 | item_weird_ghost | recycle | 2 | {source} |" in crates
+
+
+def test_reused_crates_keep_every_action_with_the_original_decision_id():
+    event = {
+        "kind": "crate",
+        "wave": 7,
+        "item_id": "item_weird_ghost",
+        "action": "recycle",
+        "score": 2.0,
+        "source": "haiku",
+        "id": "crate-test-001",
+    }
+    summary = collect.summarize([{"kind": "header", "run_id": "crate-test"}, event, event])
+    assert len(summary.crates) == 2
+    assert all(row.source == "haiku" for row in summary.crates)
+    assert RunSummary.model_validate_json(summary.model_dump_json()).crates == summary.crates
+    md = render.run_report(summary)
+    assert md.count("| 7 | item_weird_ghost | recycle | 2 | haiku |") == 2

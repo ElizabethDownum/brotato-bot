@@ -102,15 +102,16 @@ func discard_response(id: String) -> void:
 #   ""       asked_this_visit has reached ask_per_visit
 #   ""       a dead board: no affordable option scores at or above min_buy
 #            (even with an ask_on id offered: an unaffordable goal never asks)
-#   "pivot"  an offered id is in ask_on (on every board of the visit)
+#   "pivot"  an un-ruled offered id is in ask_on
 #   "ask"    a tie: best >= ask_floor and best - second < ask_tie_margin
 #   "ask"    a big purchase: gold >= ask_gold_floor and the best affordable
 #            option costs at least ask_big_share of gold (it cannot be an ask_on
 #            id: any ask_on id on the board already pivoted)
 #   ""       let the rules decide
+# Shop rulings are visit-local {my_id: action}; ruled ids cannot trigger any ask.
 static func should_ask(scores: Array, affordable: Array, cfg: Dictionary,
 		offered_ids: Array = [], ask_on: Array = [], min_buy = null, gold: int = 0,
-		prices: Array = [], asked_this_visit: int = 0) -> String:
+		prices: Array = [], asked_this_visit: int = 0, ruled: Dictionary = {}) -> String:
 	var shop = min_buy != null
 	if shop and asked_this_visit >= int(cfg.get("ask_per_visit", DEFAULT_PER_VISIT)):
 		return ""
@@ -119,6 +120,8 @@ static func should_ask(scores: Array, affordable: Array, cfg: Dictionary,
 	for i in affordable:
 		var k = int(i)
 		if k < 0 or k >= scores.size():
+			continue
+		if shop and k < offered_ids.size() and ruled.has(offered_ids[k]):
 			continue
 		vals.append(float(scores[k]))
 		if best_i < 0 or float(scores[k]) > float(scores[best_i]):
@@ -129,6 +132,8 @@ static func should_ask(scores: Array, affordable: Array, cfg: Dictionary,
 	if shop and (best_i < 0 or float(scores[best_i]) < float(min_buy)):
 		return ""
 	for id in offered_ids:
+		if shop and ruled.has(id):
+			continue
 		if ask_on.has(id):
 			return "pivot"
 	if not shop:

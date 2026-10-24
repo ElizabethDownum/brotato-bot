@@ -443,7 +443,7 @@ func _auto_shop_player(pi) -> void:
 	var saved_note = ""
 	var saved_id = ""   # saved item my_id: rerolls can move a lock to another node
 	var tried = {}   # ShopItem instance_id -> true, so a failed buy is not retried
-	var passed = {}   # item my_id -> true for this visit, including later rerolls
+	var ruled = {}   # item my_id -> applied Haiku action for this visit, including rerolls
 	# Proactive bans: spend the run's ban tokens to permanently remove items this
 	# character never wants (e.g. medical guns on a glass cannon) -- they leave BOTH
 	# this shop and all future ones (added to banned_items). Done once up front so the
@@ -482,9 +482,9 @@ func _auto_shop_player(pi) -> void:
 		# rules keep shopping; "skip" ends the whole visit.
 		var rt = BotRuntime.instance()
 		if asked_view != offer_view and asks < int(rt.config.get("ask_per_visit", DecisionClient.DEFAULT_PER_VISIT)) and rt.sidecar_ready():
-			var ask = _decision_options(nodes, gold, plan, pi)
+			var ask = _decision_options(nodes, gold, plan, pi, ruled)
 			var why = DecisionClient.should_ask(ask.scores, ask.affordable, rt.config,
-				ask.ids, plan.get("ask_on", []), plan["min_buy"], gold, ask.prices, asks)
+				ask.ids, plan.get("ask_on", []), plan["min_buy"], gold, ask.prices, asks, ruled)
 			if why != "":
 				asks += 1
 				asked_view = offer_view
@@ -500,38 +500,44 @@ func _auto_shop_player(pi) -> void:
 					target = null
 				var target_score = ask.scores[oi] if target != null else null
 				var applied = "rule"
-				if act == "buy" and target != null and not passed.has(target.item_data.my_id) and int(target.value) <= gold:
+				if act == "buy" and target != null and not ruled.has(target.item_data.my_id) and int(target.value) <= gold:
 					tried[target.get_instance_id()] = true
 					if target.locked:
 						target.change_lock_status(false)
 						save_floor = gold_floor
 						saved_id = ""
-					bought.push_back("%s@%d(ai)" % [target.item_data.my_id, int(target.value)])
-					buys += 1
 					var t_id = target.item_data.my_id
 					var t_price = int(target.value)
 					container.on_shop_item_buy_button_pressed(target)
-					_record_shop(pi, "buy", t_id, t_price, target_score, "haiku")
-					applied = "buy"
-				elif act == "pass" and target != null:
-					passed[target.item_data.my_id] = true
-					if target.locked:
-						target.change_lock_status(false)
-						if target.item_data.my_id == saved_id:
-							save_floor = gold_floor
-							saved_id = ""
-							saved_note = ""
+					# Rejected buys leave the node active (delay / weapon restrictions).
+					if not target.active:
+						bought.push_back("%s@%d(ai)" % [t_id, t_price])
+						buys += 1
+						_record_shop(pi, "buy", t_id, t_price, target_score, "haiku")
+						ruled[t_id] = "buy"
+						applied = "buy"
+				elif act == "pass" and target != null and not ruled.has(target.item_data.my_id):
+					ruled[target.item_data.my_id] = "pass"
+					for node in nodes:
+						if node != null and node.active and node.item_data.my_id == target.item_data.my_id and node.locked:
+							node.change_lock_status(false)
+					if target.item_data.my_id == saved_id:
+						save_floor = gold_floor
+						saved_id = ""
+						saved_note = ""
 					_record_shop(pi, "pass", target.item_data.my_id, int(target.value), target_score, "haiku")
 					applied = "pass"
-				elif act == "lock" and target != null and not passed.has(target.item_data.my_id):
+				elif act == "lock" and target != null and not ruled.has(target.item_data.my_id):
 					if not target.locked:
 						target.change_lock_status(true)
-					tried[target.get_instance_id()] = true   # keep it, do not buy it this pass
-					save_floor = gold_floor + int(target.value)
-					saved_id = target.item_data.my_id
-					saved_note = " lock=%s@%d(ai)" % [target.item_data.my_id, int(target.value)]
-					_record_shop(pi, "lock", target.item_data.my_id, int(target.value), target_score, "haiku")
-					applied = "lock"
+					if target.locked:   # change_lock_status can no-op when locking is disabled
+						tried[target.get_instance_id()] = true   # keep it, do not buy it this pass
+						save_floor = gold_floor + int(target.value)
+						saved_id = target.item_data.my_id
+						saved_note = " lock=%s@%d(ai)" % [target.item_data.my_id, int(target.value)]
+						_record_shop(pi, "lock", target.item_data.my_id, int(target.value), target_score, "haiku")
+						ruled[target.item_data.my_id] = "lock"
+						applied = "lock"
 				elif act == "reroll" and _reroll_price.size() > pi:
 					var rprice = _reroll_price[pi]
 					if rprice <= 0 or _free_rerolls[pi] > 0 or _has_bonus_free_reroll[pi] or gold >= rprice:
@@ -572,7 +578,7 @@ func _auto_shop_player(pi) -> void:
 		for node in nodes:
 			if node == null or not node.active:
 				continue
-			if passed.has(node.item_data.my_id):
+			if ruled.get(node.item_data.my_id, "") == "pass":
 				continue
 			if tried.has(node.get_instance_id()):
 				continue
@@ -589,6 +595,8 @@ func _auto_shop_player(pi) -> void:
 				best_raw_score = raw_sc
 				best_node = node
 		if best_node != null:
+			if ruled.get(best_node.item_data.my_id, "") == "buy":
+				print("BOTLOG SHOP reuse player=%d item=%s action=buy" % [pi, best_node.item_data.my_id])
 			tried[best_node.get_instance_id()] = true
 			if best_node.locked:
 				best_node.change_lock_status(false)   # clear the lock registration before buying
@@ -607,7 +615,7 @@ func _auto_shop_player(pi) -> void:
 		# carry to the next wave's shop), then stop -- do not reroll it away or
 		# spend the saved gold.
 		if save_floor == gold_floor:
-			var target = _weapon_to_save_for(nodes, gold, plan, pi, passed)
+			var target = _weapon_to_save_for(nodes, gold, plan, pi, ruled)
 			if target != null:
 				if not target.locked:
 					target.change_lock_status(true)
@@ -639,7 +647,7 @@ func _auto_shop_player(pi) -> void:
 		# surface one. No-op for every plan without prefer_weapons.
 		var hunting = not plan.get("prefer_weapons", []).empty() \
 			and RunData.get_player_weapons(pi).size() < int(plan.get("max_weapons", 6)) \
-			and not _offering_has_preferred(nodes, plan, passed) \
+			and not _offering_has_preferred(nodes, plan, ruled) \
 			and gold - price >= HUNT_KEEP and rerolls < HUNT_MAX_REROLLS
 		if _reroll_price.size() > pi and (free or can_pay or surplus_spend or hunting):
 			var reroll_count_before = _reroll_count[pi]
@@ -664,7 +672,7 @@ func _auto_shop_player(pi) -> void:
 		_on_GoButton_pressed(pi)
 		_record_shop(pi, "go", null, null, null, "rule")
 
-# The scored offering for a sidecar decision. Only active nodes are options;
+# The scored offering for a sidecar decision. Only active, un-ruled ids are options;
 # option i (options[i].index == i, the response's option_index) is nodes[i]:
 #   options     [{index, id, kind: "weapon"|"item", price, score}]
 #   nodes       the ShopItem node behind each option
@@ -672,10 +680,12 @@ func _auto_shop_player(pi) -> void:
 #   prices      each option's price
 #   affordable  indices of the options whose price is <= gold
 #   ids         every offered item id (matched against the plan's ask_on)
-func _decision_options(nodes, gold, plan, pi) -> Dictionary:
+func _decision_options(nodes, gold, plan, pi, ruled) -> Dictionary:
 	var out = {"options": [], "nodes": [], "scores": [], "affordable": [], "ids": [], "prices": []}
 	for node in nodes:
 		if node == null or not is_instance_valid(node) or not node.active:
+			continue
+		if ruled.has(node.item_data.my_id):
 			continue
 		var i = out.options.size()
 		var sc = float(ShopAdvisor.score_shop_entry([node.item_data, node.wave_value], plan, pi))
@@ -739,27 +749,27 @@ func _record_applied(rt, r, applied) -> void:
 # Is any offered weapon one of the plan's prefer_weapons (matched by my_id
 # substring)? Used by reroll-to-find to stop rerolling once a taser is on the
 # board (the buy loop / lock-and-save then handles acquiring it).
-func _offering_has_preferred(nodes, plan, passed) -> bool:
+func _offering_has_preferred(nodes, plan, ruled) -> bool:
 	var prefs = plan.get("prefer_weapons", [])
 	if prefs.empty():
 		return false
 	for node in nodes:
 		if node == null or not node.active or not (node.item_data is WeaponData):
 			continue
-		if passed.has(node.item_data.my_id):
+		if ruled.get(node.item_data.my_id, "") == "pass":
 			continue
 		for pref in prefs:
 			if pref in node.item_data.my_id:
 				return true
 	return false
 
-func _weapon_to_save_for(nodes, gold, plan, pi, passed):
+func _weapon_to_save_for(nodes, gold, plan, pi, ruled):
 	var best = null
 	var best_sc = LOCK_MIN_SCORE
 	for node in nodes:
 		if node == null or not node.active:
 			continue
-		if passed.has(node.item_data.my_id):
+		if ruled.get(node.item_data.my_id, "") == "pass":
 			continue
 		if not (node.item_data is WeaponData):
 			continue

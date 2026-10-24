@@ -11,6 +11,7 @@ const Coop = preload("res://mods-unpacked/Ellie-BrotatoBot/extensions/ui/menus/r
 const RunRecorder = preload("res://mods-unpacked/Ellie-BrotatoBot/core/run_recorder.gd")
 const DecisionClient = preload("res://mods-unpacked/Ellie-BrotatoBot/core/decision_client.gd")
 const PickWatchdog = preload("res://mods-unpacked/Ellie-BrotatoBot/core/pick_watchdog.gd")
+const CrateRulings = preload("res://mods-unpacked/Ellie-BrotatoBot/core/crate_rulings.gd")
 
 const PICK_WAIT = 0.3    # pace between picks -- slow enough to watch each selection land
                          # (also must exceed the container's 0.1s ButtonDelayTimer, or a
@@ -21,6 +22,7 @@ var _auto_heartbeat = 0        # bumped each pick; the _process watchdog watches
 var _auto_seen_heartbeat = 0
 var _auto_stall_ms = 0        # processed ms since the loop's last progress (reset on a non-stall frame)
 var _auto_deciding = false     # a sidecar decision is pending: the watchdog must not reclaim the loop
+var _crate_rulings = CrateRulings.new()
 var _focus_outline = null
 
 
@@ -321,7 +323,14 @@ func _auto_pick_loop() -> void:
 				var crate_source = "rule"
 				var crate_decision_id = ""
 				var crate_rt = BotRuntime.instance()
-				if DecisionClient.has_description_effect(idata.effects) and crate_rt.sidecar_ready():
+				var crate_wave = RunData.current_wave
+				var crate_reused = _crate_rulings.answer(crate_wave, pi, idata.my_id)
+				if not crate_reused.empty():
+					crate_action = crate_reused.action
+					crate_source = "haiku"
+					crate_decision_id = crate_reused.id
+					print("BOTLOG CRATE reuse player=%d wave=%d item=%s action=%s" % [pi, crate_wave, idata.my_id, crate_action])
+				elif DecisionClient.has_description_effect(idata.effects) and crate_rt.sidecar_ready():
 					# Keep the queue entry too: different crates can share resources.
 					var crate_choice = _showing_option[pi]
 					var crate_options = [{"index": 0, "id": idata.my_id, "kind": "item", "score": crate_score}]
@@ -352,6 +361,8 @@ func _auto_pick_loop() -> void:
 				else:
 					container._on_TakeButton_pressed()
 				if crate_landed:
+					if crate_source == "haiku":
+						_crate_rulings.remember(crate_wave, pi, idata.my_id, crate_action, crate_decision_id)
 					_record_crate(idata, crate_action, crate_score, crate_source, crate_decision_id)
 				acted = true
 		if not acted:

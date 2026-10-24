@@ -263,7 +263,12 @@ it while idle (`BOT idle` plus the plan line), turn on AI visuals. This also dra
 
 Shop ask rules, in order (`DecisionClient.should_ask`), at most once per board
 of a visit (the first view and each board after a reroll; a lock, buy or pass
-leaves the same board), only while a sidecar heartbeat is fresh (section 4):
+leaves the same board), only while a sidecar heartbeat is fresh (section 4).
+Applied `buy`, `lock` and `pass` rulings are kept by item id for this visit:
+ruled ids are omitted from later asks and all triggers below. An approved
+re-offered copy may be bought by the rules under their usual score/gold checks;
+locks retain their existing behavior and passed ids remain excluded. The next
+visit starts with no rulings.
 
 1. `ask_per_visit` asks already made this visit: no ask.
 2. A dead board, where no affordable option scores at or above the plan's
@@ -569,11 +574,13 @@ All files are under `%APPDATA%\Brotato\brotato-bot\` (`user://brotato-bot`).
     `value` are the upgrade's first effect).
   - `screen: "crate"`: one `{index: 0, id, kind: "item", score}`. There is no price.
     An effect with a non-empty `text_key` triggers the ask whenever the sidecar is
-    ready; pure stat blocks use the existing score rule without asking. The prompt
+    ready and this player has no applied ruling for that id in this wave; pure stat
+    blocks use the existing score rule without asking. The prompt
     includes the offered item's full dataset record, objective, goal distance when
     available, and plan weights. Every screen includes held item effects (key, value,
-    `text_key`/text), grouped once per id with `xN`, and held weapon tiers and key stats.
-    Held equipment text is capped at 8000 characters with an explicit truncation note;
+    `text_key`/text), grouped once per id with `xN`, and held weapon tiers, key stats,
+    base knockback and proc effects. Held equipment text is capped at 8000 characters,
+    retaining complete lines followed by an explicit truncation note;
     the offered item's record is outside that cap. Missing records retain their ids.
 - **`option_index` indexes `request.options[]` only.** It is not the state
   file's `shop[].index`, which is the raw slot index with gaps. The two
@@ -593,8 +600,8 @@ All files are under `%APPDATA%\Brotato\brotato-bot\` (`user://brotato-bot`).
   | `tags` | optional, ignored |
 
   `pass` declines the selected item id for the rest of this visit, including after
-  rerolls, unlocks the selected node if locked, and lets the rules keep shopping.
-  Its saved gold is released if that node was the saving target. The next visit
+  rerolls, unlocks every board node with that id, and lets the rules keep shopping.
+  Its saved gold is released if that id was the saving target. The next visit
   may judge the item again. `skip` ends the whole visit. Prefer `pass` when only
   the option in question is wrong.
 
@@ -603,6 +610,10 @@ All files are under `%APPDATA%\Brotato\brotato-bot\` (`user://brotato-bot`).
   event records `haiku` only when that answer was applied, `timeout` when the wait
   timed out, and `rule` otherwise. After the pause the bot checks that it may still
   act and the same crate choice is still displayed before touching a button.
+  Later copies of the same id for the same player in this wave reuse an applied
+  `take`/`recycle` answer without asking, even if the sidecar is then unavailable.
+  Each reused crate event keeps `source: "haiku"` and the original decision `id`;
+  there is no extra decision event. The cache clears at the next wave.
 
   A response that fails these rules counts as `invalid` and the rules decide.
   An action that does not fit the screen (e.g. `pick` in the shop) is applied

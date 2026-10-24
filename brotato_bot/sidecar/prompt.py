@@ -248,12 +248,11 @@ def _equipment_lines(state: dict, look: _Lookup) -> list[str]:
                 "cooldown",
                 "crit_chance",
                 "crit_damage",
-                "min_range",
                 "max_range",
-                "knockback",
-                "lifesteal",
+                "base_knockback",
                 "scaling_stats",
                 "effects",
+                "proc_effects",
             )
             if key in rec and rec[key] not in (None, "", [], {})
         }
@@ -287,7 +286,8 @@ def _equipment_lines(state: dict, look: _Lookup) -> list[str]:
     )
     if len(text) > EQUIPMENT_MAX_CHARS:
         keep = EQUIPMENT_MAX_CHARS - len(EQUIPMENT_TRUNCATED) - 1
-        text = text[:keep] + "\n" + EQUIPMENT_TRUNCATED
+        end = text.rfind("\n", 0, keep + 1)
+        text = (text[:end] + "\n" if end >= 0 else "") + EQUIPMENT_TRUNCATED
     return text.splitlines()
 
 

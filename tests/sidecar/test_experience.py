@@ -252,6 +252,29 @@ def test_crate_experience_rejects_an_action_mismatch(tmp_path):
     assert row["applied"] is False and row["chosen"] is None and row["kept_to_end"] is None
 
 
+@pytest.mark.parametrize("action", ["take", "recycle"])
+def test_reused_crate_events_share_one_applied_decision(tmp_path, action):
+    decisions, run = tmp_path / "decisions.jsonl", tmp_path / "run.jsonl"
+    rec = {**_decision(1, 1, _resp(action), [{"id": "item_bag"}]), "kind": "crate"}
+    experience.append(decisions, rec)
+    for _ in range(3):
+        experience.append(
+            run,
+            {
+                "kind": "crate",
+                "id": rec["id"],
+                "item_id": "item_bag",
+                "action": action,
+                "source": "haiku",
+            },
+        )
+    rows = experience.join_outcomes(decisions, _summary(), run_jsonl=run)
+    assert len(rows) == 1
+    assert rows[0]["applied"] is True
+    assert rows[0]["chosen"] == "item_bag"
+    assert rows[0]["kept_to_end"] is (True if action == "take" else None)
+
+
 @pytest.mark.parametrize("applied", ["pass", "rule", None])
 def test_join_outcomes_pass_names_declined_item_without_claiming_ownership(tmp_path, applied):
     decisions = tmp_path / "decisions.jsonl"
