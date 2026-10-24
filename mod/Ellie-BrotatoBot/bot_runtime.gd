@@ -397,12 +397,13 @@ func launch_release():
 
 
 # The pending launch for the screen about to press something, or null. Every
-# step re-checks the profile: a wrong profile cancels the launch and keeps the file.
+# step re-checks the profile: a wrong profile drops the pending launch, keeps the
+# file and leaves the request unspent (refused, not cancelled).
 func launch_step():
 	if pending_launch == null:
 		return null
-	var progress = get_node_or_null("/root/ProgressData")
-	if progress == null or not Guards.profile_ok(progress.current_profile_id, config):
+	if not launch_profile_ok():
+		var progress = get_node_or_null("/root/ProgressData")
 		var pid = int(progress.current_profile_id) if progress != null else -1
 		pending_launch = null
 		set_status("Launch refused: wrong profile (%d)" % pid)
@@ -410,11 +411,30 @@ func launch_step():
 	return pending_launch
 
 
-# Drops the pending launch, deletes launch.json and shows why.
+# The game is on the bot profile (false when ProgressData is missing).
+func launch_profile_ok() -> bool:
+	var progress = get_node_or_null("/root/ProgressData")
+	return progress != null and Guards.profile_ok(progress.current_profile_id, config)
+
+
+# Cancels the pending launch: it is spent, launch.json is deleted and the status
+# says why. Goes through launch_step first, so on the wrong profile this is a
+# refusal that deletes nothing; with no pending launch it does nothing.
 func launch_cancel(text: String):
+	if launch_step() == null:
+		return
 	pending_launch = null
+	launch_used = true
 	launch_delete()
 	set_status(text)
+
+
+# A run started by hand on the bot profile with no launch pending: a launch.json
+# (or a cached request) left over is stale. Delete it and never launch it.
+func launch_discard():
+	if launch_request != null or File.new().file_exists(LaunchFile.DEFAULT_PATH):
+		launch_used = true
+	launch_delete()
 
 
 func launch_delete():

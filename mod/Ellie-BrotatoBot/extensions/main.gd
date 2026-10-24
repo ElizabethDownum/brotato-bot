@@ -99,19 +99,25 @@ func _bot_run_guards():
 	var _ok = rt.may_act()
 
 
-# A run has started. launch.json is deleted now whether or not a launch was
-# pending (a stale file must never relaunch). With a pending launch (every step
-# passed the profile check), record the launch event and switch the bot on once
-# wave 1 is running, through the same guarded path as Shift+Space.
+# A run has started. With a pending launch that still passes launch_step (the
+# profile check), delete launch.json, record the launch event and switch the bot
+# on once wave 1 is running, through the same guarded path as Shift+Space. A
+# pending launch refused by the profile check deletes nothing. With no launch
+# pending, a launch.json on the bot profile is stale and is deleted (it must
+# never relaunch); on another profile it is left alone.
 func _bot_launch_start():
 	var rt = get_node_or_null("/root/BotRuntime")
 	if rt == null:
 		return
+	var had_pending = rt.pending_launch != null
 	var launch = rt.launch_step()
-	rt.pending_launch = null
-	rt.launch_delete()
 	if launch == null:
+		if not had_pending and rt.launch_profile_ok():
+			rt.launch_discard()
 		return
+	rt.pending_launch = null
+	rt.launch_used = true
+	rt.launch_delete()
 	var rec = _bot_recorder()
 	if rec != null:
 		rec.event("launch", RunRecorder.launch_event(launch))
