@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from brotato_bot import cli, paths
 from brotato_bot.run import fit, shape
 
@@ -147,10 +149,32 @@ def test_ranking_orders_by_need_then_row_and_puts_vetoes_last():
     assert rows[0]["economy"] == 10
 
 
-def test_gain_modifier_scales_the_start_without_a_veto():
+def test_gain_modifier_reports_raw_base_and_need_without_a_veto():
     char = _char("character_x", flat=[("stat_speed", -10)], gain=[("stat_speed", 50)])
     fitted = shape.character_goal_fit(char, shape.goal_for("chal_slow", _state()))
-    assert not fitted["veto"] and fitted["base"] == 15 and fitted["need"] == 5
+    assert not fitted["veto"]
+    assert fitted["start"] == -10 and fitted["base"] == 10
+    assert fitted["need"] == pytest.approx(10 / 3)
+
+
+@pytest.mark.parametrize(
+    ("cid", "pct", "need"),
+    [("character_entrepreneur", 50, 200 / 1.5), ("character_knight", -80, 1000)],
+)
+def test_agriculture_gain_modifiers_need_raw_harvesting(cid, pct, need):
+    character = _char(cid, gain=[("stat_harvesting", pct)])
+    fitted = shape.character_goal_fit(
+        character, shape.Goal("chal_agriculture", "stat_harvesting", 200)
+    )
+    assert not fitted["veto"]
+    assert fitted["base"] == 0
+    assert fitted["need"] == pytest.approx(need)
+
+
+@pytest.mark.parametrize("pct", [-100, -150])
+def test_nonpositive_gain_multiplier_is_a_veto(pct):
+    character = _char("character_x", gain=[("stat_speed", pct)])
+    assert shape.character_goal_fit(character, shape.Goal("chal_slow", "stat_speed", -20))["veto"]
 
 
 def test_requires_character_is_the_only_candidate_even_if_not_listed_unlocked():

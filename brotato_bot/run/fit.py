@@ -96,7 +96,7 @@ def _character_line(r: dict) -> str:
     if r["veto"]:
         note = " VETO (gain -100%: changes are nullified)"
     elif r["gain_pct"] not in (None, 0):
-        note = f" (start scaled by gain {gain})"
+        note = f" (whole stat scaled by gain {gain}; need in raw units)"
     return (
         f"{r['id']}: base {r['base']:+g}, gain {gain}, need {r['need']:+g}{note}, "
         f"banned {','.join(r['banned']) or '-'}, row {'yes' if r['row'] else 'no'}, "

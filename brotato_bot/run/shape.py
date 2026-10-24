@@ -295,23 +295,25 @@ def bonus_on(rows: Any, stat: str, key: str) -> float | None:
 def character_goal_fit(character: dict | None, goal: Goal) -> dict:
     """What a character's start supplies toward a stat goal.
 
-    ``start`` is the flat bonus on the goal stat, scaled by the character's gain modifier on
-    it (a documented simplification: the game applies gain modifiers to gains, not to the
-    flat start); ``veto`` when that modifier is -100% or lower (Chunky's speed: changes are
-    nullified); ``base`` is ``start`` with the goal's sign (a -10 speed start on a -20 goal
-    is +10, a +5 start is -5); ``need`` is what items, sets and level-ups must still supply,
-    in the goal's direction."""
+    The game scales the whole stat, including the flat ``start``, by ``g = 1 + gain/100``
+    and checks the challenge against that scaled value. ``veto`` when ``g <= 0`` (Chunky's
+    speed: changes are nullified); ``base`` is the raw ``start`` with the goal's sign (a
+    -10 speed start on a -20 goal is +10, a +5 start is -5). ``need`` is what items, sets
+    and level-ups must still supply in raw units in the goal's direction:
+    ``(goal.value / g - start) * goal.sign`` for a non-vetoed character."""
     character = character or {}
     start = bonus_on(character.get("flat_bonuses"), goal.stat, "value") or 0.0
     pct = bonus_on(character.get("gain_modifiers"), goal.stat, "pct")
-    veto = pct is not None and pct <= -100
-    scaled = start if pct is None or veto else start * (1 + pct / 100)
+    g = 1 + (pct or 0) / 100
+    veto = g <= 0
     return {
-        "start": scaled,
+        "start": start,
         "gain_pct": pct,
         "veto": veto,
-        "base": scaled * goal.sign + 0.0,  # + 0.0 turns -0.0 into 0.0
-        "need": (goal.value - scaled) * goal.sign,
+        "base": start * goal.sign + 0.0,  # + 0.0 turns -0.0 into 0.0
+        "need": (goal.value / g - start) * goal.sign
+        if not veto
+        else (goal.value - start) * goal.sign,
     }
 
 
