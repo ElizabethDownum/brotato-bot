@@ -28,6 +28,7 @@ from typing import Any
 from brotato_bot import cli, paths
 from brotato_bot.fsutil import read_json
 from brotato_bot.run import fit, prepare, shape, stagnation
+from brotato_bot.run.prepare import MAX_DANGER
 
 SECTIONS = ("## Target", "## Next run", "## Plan", "## Why", "## Risk", "## Stagnation check")
 _NAME = re.compile(r"\d{4}-\d{2}-\d{2}-(\d+)\.md")
@@ -37,7 +38,6 @@ _RUN_BULLET = re.compile(r"- (character|danger|target|starting_weapon): (.+)")
 _RUN_KEYS = ["character", "danger", "target", "starting_weapon"]
 ANY_WEAPON = "any"
 _PLACEHOLDER = re.compile(r"<[A-Za-z][^<>\n]*>")
-MAX_DANGER = 5
 
 
 def next_path(proposals_dir: Path, today: date) -> Path:

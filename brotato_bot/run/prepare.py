@@ -26,6 +26,7 @@ from brotato_bot.paths import Paths
 REQUIRED_PLAN_KEYS = ("plan_id", "character_id", "plan")
 DEFAULT_BOT_PROFILE_ID = 1
 LAUNCH_NAME = "launch.json"
+MAX_DANGER = 5
 
 
 def validate_plan(plan: Any) -> None:
@@ -47,6 +48,8 @@ def validate_plan(plan: Any) -> None:
     danger = plan.get("danger", 0)
     if isinstance(danger, bool) or not isinstance(danger, int):
         raise ValueError("plan danger must be an integer")  # noqa: TRY004
+    if not 0 <= danger <= MAX_DANGER:
+        raise ValueError(f"plan danger must be between 0 and {MAX_DANGER}")
     weapon = plan.get("starting_weapon", "any")
     if not isinstance(weapon, str) or not weapon:
         raise ValueError("plan starting_weapon must be a non-empty string")

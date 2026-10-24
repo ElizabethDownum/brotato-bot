@@ -278,11 +278,29 @@ def test_prepare_from_proposal_refuses_the_plan_only_flags(tmp_paths, tmp_path, 
     assert cli.main(["prepare", "--from-proposal", path, "--danger", "1"]) == 1
 
 
+def test_prepare_plan_rejects_out_of_range_danger_before_writing(tmp_paths, tmp_path, capsys):
+    plan_file = tmp_path / "plan_in.json"
+    plan_file.write_text(json.dumps(PLAN), encoding="utf-8")
+    assert cli.main(["prepare", "--plan", str(plan_file), "--danger", "9"]) == 1
+    assert "danger must be between 0 and 5" in capsys.readouterr().out
+    assert not tmp_paths.plan_json.exists()
+    assert not tmp_paths.config_json.exists()
+    assert not tmp_paths.plan_json.with_name("launch.json").exists()
+
+
+@pytest.mark.parametrize("danger", [0, prepare.MAX_DANGER])
+def test_validate_plan_accepts_danger_boundaries(danger):
+    prepare.validate_plan({**PLAN, "danger": danger})
+
+
 @pytest.mark.parametrize(
     "extra",
     [
         {"danger": "2"},
         {"danger": True},
+        {"danger": -1},
+        {"danger": 6},
+        {"danger": 9},
         {"starting_weapon": ""},
         {"plan": {"prefer_sets": {"set_blunt": "x"}}},
         {"plan": {"prefer_sets": []}},
