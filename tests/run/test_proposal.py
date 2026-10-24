@@ -53,12 +53,16 @@ def test_extract_plan_rejects_two_json_blocks(proposal_md):
     assert "## Plan: needs exactly one ```json block, found 2" in errors
 
 
-def test_next_run_parses_three_bullets(proposal_md):
+def test_next_run_parses_the_four_bullets(proposal_md):
     assert proposal.next_run(proposal_md()) == {
         "character_id": CHARACTER,
         "danger": 0,
         "target": TARGET,
+        "starting_weapon": "any",
     }
+    assert proposal.next_run(proposal_md(starting_weapon="weapon_rock"))["starting_weapon"] == (
+        "weapon_rock"
+    )
     none = proposal_md().replace(f"- target: {TARGET}", "- target: none")
     assert proposal.next_run(none)["target"] is None
 
@@ -66,19 +70,19 @@ def test_next_run_parses_three_bullets(proposal_md):
 def test_next_run_rejects_duplicate_bullet(proposal_md):
     text = proposal_md().replace("- danger: 0", "- danger: 0\n- danger: 1")
     errors = proposal.validate(text, UNLOCKED)
-    assert any("exactly three bullets" in e for e in errors)
+    assert any("needs the bullets" in e for e in errors)
 
 
 def test_next_run_rejects_extra_bullet(proposal_md):
     text = proposal_md().replace(f"- target: {TARGET}", f"- target: {TARGET}\n- note: anything")
     errors = proposal.validate(text, UNLOCKED)
-    assert any("not a character, danger or target bullet" in e for e in errors)
+    assert any("not a character, danger, target or starting_weapon bullet" in e for e in errors)
 
 
 def test_next_run_rejects_unknown_bullet_text(proposal_md):
     text = proposal_md().replace("- danger: 0", "- danger 0")
     errors = proposal.validate(text, UNLOCKED)
-    assert any("not a character, danger or target bullet" in e for e in errors)
+    assert any("not a character, danger, target or starting_weapon bullet" in e for e in errors)
 
 
 def test_next_run_rejects_non_integer_danger_without_doubled_prefix(proposal_md):
@@ -343,3 +347,53 @@ def test_cli_next_path_is_under_proposals_dir(tmp_paths, capsys):
     out = Path(capsys.readouterr().out.strip())
     assert out.parent == tmp_paths.proposals_dir
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}-001\.md", out.name)
+
+
+WEAPON_DATASET = {
+    "characters": [{"id": CHARACTER, "starting_weapon_pool": ["Rock", "Revolver"]}],
+    "weapons": [
+        {"id": "weapon_rock", "display_name": "Rock"},
+        {"id": "weapon_rock", "display_name": "Rock"},
+        {"id": "weapon_revolver", "display_name": "Revolver"},
+        {"id": "weapon_knife", "display_name": "Knife"},
+    ],
+}
+
+
+def test_a_proposal_without_the_starting_weapon_bullet_stays_valid_as_any(proposal_md):
+    legacy = proposal_md().replace("- starting_weapon: any\n", "")
+    assert "starting_weapon" not in legacy.split("## Plan")[0]
+    assert proposal.next_run(legacy)["starting_weapon"] == "any"
+    assert proposal.validate(legacy, UNLOCKED) == []
+
+
+def test_starting_weapon_must_come_after_target(proposal_md):
+    text = proposal_md().replace(
+        f"- target: {TARGET}\n- starting_weapon: any",
+        f"- starting_weapon: any\n- target: {TARGET}",
+    )
+    assert any("needs the bullets" in e for e in proposal.validate(text, UNLOCKED))
+
+
+def test_starting_weapon_any_or_a_pool_weapon_is_valid(proposal_md):
+    for weapon in ("any", "weapon_rock", "weapon_revolver"):
+        text = proposal_md(starting_weapon=weapon)
+        assert proposal.validate(text, UNLOCKED, dataset=WEAPON_DATASET) == []
+
+
+def test_starting_weapon_outside_the_characters_pool_is_rejected(proposal_md):
+    text = proposal_md(starting_weapon="weapon_knife")
+    errors = proposal.validate(text, UNLOCKED, dataset=WEAPON_DATASET)
+    assert (
+        f"## Next run: starting_weapon weapon_knife is not in {CHARACTER}'s starting pool" in errors
+    )
+    assert proposal.validate(text, UNLOCKED) == []  # no dataset: the pool is not checked
+
+
+def test_locked_starting_weapon_is_rejected_when_the_state_has_the_lists(proposal_md):
+    state = _state(weapons_unlocked=["weapon_revolver"])
+    text = proposal_md(starting_weapon="weapon_rock")
+    errors = proposal.validate(text, state, dataset=WEAPON_DATASET)
+    assert "## Next run: starting_weapon weapon_rock is locked on the bot profile" in errors
+    assert proposal.validate(proposal_md(starting_weapon="weapon_revolver"), state) == []
+    assert proposal.validate(text, UNLOCKED, dataset=WEAPON_DATASET) == []  # lists absent

@@ -2,8 +2,10 @@
 
 A proposal has these headings in this order: ``# Proposal N``, ``## Target``,
 ``## Next run``, ``## Plan``, ``## Why``, ``## Risk``, ``## Stagnation check``. ``## Plan`` holds
-exactly one fenced JSON plan file. ``## Next run`` holds exactly three bullets, in the order
-character, danger, target.
+exactly one fenced JSON plan file. ``## Next run`` holds the bullets character, danger,
+target and starting_weapon, in that order; ``starting_weapon`` is a dataset weapon id or
+``any``. A proposal without that last bullet (written before 2026-10-23) stays valid and
+means ``any``: ``validate`` returns errors only, so there is no warning channel.
 
 Given the ``runs/index.json`` rows, ``validate`` also enforces the stagnation rule: after a
 ``stagnant`` or ``escalate`` verdict on the proposal's target, the plan family or the
@@ -31,8 +33,9 @@ SECTIONS = ("## Target", "## Next run", "## Plan", "## Why", "## Risk", "## Stag
 _NAME = re.compile(r"\d{4}-\d{2}-\d{2}-(\d+)\.md")
 _TITLE = re.compile(r"# Proposal (\d+)")
 _FENCED_JSON = re.compile(r"```json[ \t]*\n(.*?)```", re.DOTALL)
-_RUN_BULLET = re.compile(r"- (character|danger|target): (.+)")
-_RUN_KEYS = ["character", "danger", "target"]
+_RUN_BULLET = re.compile(r"- (character|danger|target|starting_weapon): (.+)")
+_RUN_KEYS = ["character", "danger", "target", "starting_weapon"]
+ANY_WEAPON = "any"
 _PLACEHOLDER = re.compile(r"<[A-Za-z][^<>\n]*>")
 MAX_DANGER = 5
 
@@ -58,6 +61,15 @@ def load_unlock_state(path: Path, profile: int = 1) -> dict:
             f"{path} was built for profile {data.get('profile')}; run unlock-state --profile 1"
         )
     return data
+
+
+def load_dataset_optional(path: Path) -> dict | None:
+    """The dataset object, None when ``brotato.json`` is absent or unusable (the checks that
+    need it are skipped)."""
+    try:
+        return shape.load_dataset(path)
+    except ValueError:
+        return None
 
 
 def load_rows(index: Path) -> list | None:
@@ -113,7 +125,8 @@ def extract_plan(markdown: str) -> dict:
 
 
 def next_run(markdown: str) -> dict:
-    """``{character_id, danger, target}`` from ``## Next run``; target is None for ``none``."""
+    """``{character_id, danger, target, starting_weapon}`` from ``## Next run``; target is None
+    for ``none`` and a missing ``starting_weapon`` bullet is ``any``."""
     body = _section(markdown, "## Next run")
     if body is None:
         raise ValueError("section missing")
@@ -123,10 +136,15 @@ def next_run(markdown: str) -> dict:
             continue
         m = _RUN_BULLET.fullmatch(line)
         if m is None:
-            raise ValueError(f"line is not a character, danger or target bullet: {line!r}")
+            raise ValueError(
+                f"line is not a character, danger, target or starting_weapon bullet: {line!r}"
+            )
         bullets.append((m.group(1), m.group(2)))
-    if [key for key, _ in bullets] != _RUN_KEYS:
-        raise ValueError("needs exactly three bullets, character, danger and target, in that order")
+    keys = [key for key, _ in bullets]
+    if keys not in (_RUN_KEYS, _RUN_KEYS[:3]):
+        raise ValueError(
+            "needs the bullets character, danger, target and starting_weapon, in that order"
+        )
     fields = dict(bullets)
     try:
         danger = int(fields["danger"])
@@ -137,6 +155,7 @@ def next_run(markdown: str) -> dict:
         "character_id": fields["character"],
         "danger": danger,
         "target": None if target == "none" else target,
+        "starting_weapon": fields.get("starting_weapon", ANY_WEAPON),
     }
 
 
@@ -153,6 +172,34 @@ def _target_errors(target: str, character: str, unlock_state: dict) -> list[str]
     need = info.get("requires_character") if isinstance(info, dict) else None
     if need is not None and need != character:
         errors.append(f"## Next run: target {target} needs character {need}, not {character}")
+    return errors
+
+
+def _weapon_errors(
+    weapon: str, character: str, unlock_state: dict, dataset: dict | None
+) -> list[str]:
+    """``starting_weapon`` must be ``any`` or a dataset weapon id in the character's starting
+    pool (pool entries are display names), unlocked when the state carries the lists."""
+    if weapon == ANY_WEAPON:
+        return []
+    errors = []
+    char = None
+    if dataset is not None:
+        char = next((c for c in dataset.get("characters") or [] if c.get("id") == character), None)
+    if char is not None:
+        names = set(char.get("starting_weapon_pool") or [])
+        pool = {
+            w["id"]
+            for w in dataset.get("weapons") or []
+            if isinstance(w.get("id"), str) and w.get("display_name") in names
+        }
+        if weapon not in pool:
+            errors.append(
+                f"## Next run: starting_weapon {weapon} is not in {character}'s starting pool"
+            )
+    unlocked = unlock_state.get("weapons_unlocked")
+    if isinstance(unlocked, list) and weapon not in unlocked:
+        errors.append(f"## Next run: starting_weapon {weapon} is locked on the bot profile")
     return errors
 
 
@@ -181,11 +228,13 @@ def validate(
     unlock_state: dict[str, Any],
     file_name: str | None = None,
     rows: list | None = None,
+    dataset: dict | None = None,
 ) -> list[str]:
     """Problems with a proposal; an empty list means it is valid.
 
     ``file_name`` (the proposal's file name) enables the check that the title number matches it.
     ``rows`` (the ``runs/index.json`` list) enables the stagnation material-change check.
+    ``dataset`` (``brotato.json``) enables the starting-pool check of ``starting_weapon``.
     """
     markdown = markdown.replace("\r\n", "\n")
     errors = _check_sections(markdown)
@@ -227,6 +276,7 @@ def validate(
     entry = characters.get(character) if isinstance(characters, dict) else None
     if isinstance(entry, dict) and entry.get("unlocked") is False:
         errors.append(f"character {character} is locked on the bot profile")
+    errors.extend(_weapon_errors(run["starting_weapon"], character, unlock_state, dataset))
     if run["target"] is not None:
         errors.extend(_target_errors(run["target"], character, unlock_state))
         errors.extend(shape.goal_errors(plan, run, unlock_state))
@@ -249,7 +299,8 @@ def _validate(args: argparse.Namespace) -> int:
     except (OSError, ValueError) as exc:
         print(f"proposal: {exc}")
         return 1
-    errors = validate(markdown, unlock_state, Path(args.file).name, rows)
+    dataset = load_dataset_optional(p.data_dir / "brotato.json")
+    errors = validate(markdown, unlock_state, Path(args.file).name, rows, dataset)
     if errors:
         for e in errors:
             print(e)

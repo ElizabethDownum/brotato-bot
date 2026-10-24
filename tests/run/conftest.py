@@ -27,6 +27,7 @@ def proposal_md():
         plan_character=None,
         plan_id="well-rounded-v1",
         plan_target=None,
+        starting_weapon="any",
     ):
         plan_character = plan_character or character
         plan_target_line = (
@@ -41,6 +42,7 @@ Work toward {target}, the next unlock on the bot profile.
 - character: {character}
 - danger: 0
 - target: {target}
+- starting_weapon: {starting_weapon}
 
 ## Plan
 ```json

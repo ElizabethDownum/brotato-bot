@@ -7,6 +7,7 @@
 - character: <character_id>
 - danger: <n>
 - target: <challenge id or none>
+- starting_weapon: <weapon id from the fit's top choice, or any>
 
 ## Plan
 ```json
