@@ -411,6 +411,22 @@ func launch_step():
 	return pending_launch
 
 
+# launch_step for a run-start screen about to press a pick, and for run start:
+# a launch that is not a solo, one-player run is cancelled ("Launch refused:
+# co-op") before any automated pick.
+func launch_pick_step():
+	var launch = launch_step()
+	if launch != null and not launch_solo_ok():
+		launch_cancel("Launch refused: co-op")
+		return null
+	return launch
+
+
+func launch_solo_ok() -> bool:
+	var run_data = get_node_or_null("/root/RunData")
+	return run_data != null and Guards.solo_ok(run_data.is_coop_run, run_data.get_player_count())
+
+
 # The game is on the bot profile (false when ProgressData is missing).
 func launch_profile_ok() -> bool:
 	var progress = get_node_or_null("/root/ProgressData")

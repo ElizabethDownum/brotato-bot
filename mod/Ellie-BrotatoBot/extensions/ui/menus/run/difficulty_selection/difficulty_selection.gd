@@ -34,7 +34,7 @@ func _go_back() -> void:
 # a locked element and cancels the launch. The press starts the run.
 func _bot_launch_pick() -> void:
 	var rt = BotRuntime.instance()
-	var launch = rt.launch_step() if rt != null else null
+	var launch = rt.launch_pick_step() if rt != null else null
 	if launch == null:
 		return
 	var element = _find_inventory_element_by_id(Keys.generate_hash(LaunchFile.difficulty_id(launch.danger)), 0)

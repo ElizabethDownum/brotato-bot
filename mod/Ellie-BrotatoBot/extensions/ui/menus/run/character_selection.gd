@@ -62,7 +62,7 @@ func _on_element_focused(element: InventoryElement, inventory_player_index: int,
 # calls _on_selections_completed, which changes scene).
 func _bot_launch_pick() -> void:
 	var rt = BotRuntime.instance()
-	var launch = rt.launch_step() if rt != null else null
+	var launch = rt.launch_pick_step() if rt != null else null
 	if launch == null:
 		return
 	var element = _find_inventory_element_by_id(Keys.generate_hash(launch.character_id), 0)

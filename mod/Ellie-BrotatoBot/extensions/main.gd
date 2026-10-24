@@ -99,10 +99,11 @@ func _bot_run_guards():
 	var _ok = rt.may_act()
 
 
-# A run has started. With a pending launch that still passes launch_step (the
-# profile check), delete launch.json, record the launch event and switch the bot
-# on once wave 1 is running, through the same guarded path as Shift+Space. A
-# pending launch refused by the profile check deletes nothing. With no launch
+# A run has started. With a pending launch that still passes launch_pick_step
+# (the profile check, then solo: a co-op run cancels it), delete launch.json,
+# record the launch event and switch the bot on once wave 1 is running, through
+# the same guarded path as Shift+Space (solo re-checked there). A pending
+# launch refused by the profile check deletes nothing. With no launch
 # pending, a launch.json on the bot profile is stale and is deleted (it must
 # never relaunch); on another profile it is left alone.
 func _bot_launch_start():
@@ -110,7 +111,7 @@ func _bot_launch_start():
 	if rt == null:
 		return
 	var had_pending = rt.pending_launch != null
-	var launch = rt.launch_step()
+	var launch = rt.launch_pick_step()
 	if launch == null:
 		if not had_pending and rt.launch_profile_ok():
 			rt.launch_discard()
@@ -125,6 +126,11 @@ func _bot_launch_start():
 
 
 func _bot_launch_enable():
+	if not Guards.solo_ok(RunData.is_coop_run, RunData.get_player_count()):
+		var rt = get_node_or_null("/root/BotRuntime")
+		if rt != null:
+			rt.set_status("Launch refused: co-op")
+		return
 	var options = get_node_or_null("/root/AutobattlerOptions")
 	if options != null:
 		var _on = options.enable_bot()

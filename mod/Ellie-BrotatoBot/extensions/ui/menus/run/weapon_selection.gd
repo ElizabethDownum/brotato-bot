@@ -54,7 +54,7 @@ func _go_back() -> void:
 # the launch continues from the next screen.
 func _bot_launch_pick() -> void:
 	var rt = BotRuntime.instance()
-	var launch = rt.launch_step() if rt != null else null
+	var launch = rt.launch_pick_step() if rt != null else null
 	if launch == null:
 		return
 	if launch.starting_weapon == "any":

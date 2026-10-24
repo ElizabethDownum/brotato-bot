@@ -28,6 +28,12 @@ static func profile_ok(current_profile_id, config) -> bool:
 	return int(current_profile_id) == int(config.get("bot_profile_id", 1))
 
 
+# The launcher drives solo runs only: not a co-op run and exactly one player
+# (RunData.is_coop_run, RunData.get_player_count()).
+static func solo_ok(is_coop_run, player_count) -> bool:
+	return not bool(is_coop_run) and int(player_count) == 1
+
+
 static func plan_present(path) -> bool:
 	return File.new().file_exists(path)
 

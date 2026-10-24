@@ -40,6 +40,14 @@ func test_profile_ok_only_for_bot_profile():
 	assert_false(Guards.profile_ok(0, {}), "default never allows profile 0")
 
 
+func test_solo_ok_needs_solo_and_one_player():
+	assert_true(Guards.solo_ok(false, 1), "solo, one player")
+	assert_false(Guards.solo_ok(true, 1), "co-op with one player")
+	assert_false(Guards.solo_ok(true, 0), "co-op entry with no players yet")
+	assert_false(Guards.solo_ok(false, 0), "no player")
+	assert_false(Guards.solo_ok(false, 2), "two players")
+
+
 func test_profile_zero_is_never_the_bot_profile():
 	assert_false(Guards.profile_ok(0, {"bot_profile_id": 0}), "config 0 does not admit profile 0")
 	assert_false(Guards.profile_ok(0, {"bot_profile_id": 0.0}), "float config 0 either")
