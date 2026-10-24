@@ -313,12 +313,19 @@ func _auto_pick_loop() -> void:
 				var idata = container._item_data
 				var crate_plan = _plan_for(pi)
 				var crate_score = ShopAdvisor.score_shop_entry([idata, 0], crate_plan, pi)
+				var crate_action = "take"
 				if idata is WeaponData and ShopAdvisor.score_weapon(idata, crate_plan, pi) < 0.0:
-					_record_crate(idata, "recycle", crate_score)
+					crate_action = "recycle"
+				# Both handlers no-op while the button delay runs (decompiled
+				# upgrades_ui_player_container.gd:212-224); idata and the score are
+				# taken above, before an accepted take advances the queue.
+				var crate_landed = not container._button_pressed
+				if crate_action == "recycle":
 					container._on_DiscardButton_pressed()
 				else:
-					_record_crate(idata, "take", crate_score)
 					container._on_TakeButton_pressed()
+				if crate_landed:
+					_record_crate(idata, crate_action, crate_score)
 				acted = true
 		if not acted:
 			break
