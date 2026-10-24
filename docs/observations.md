@@ -896,3 +896,40 @@ Ellie, watching runs, during run 8 (proposal 9):
 - Crate asks: 2 of 5 crates asked (Baby Gecko, Pocket Factory), both `take`. That is a low ask
   load, so eligibility needs no narrowing.
 - Asks overall: 26 decisions across 19 waves.
+
+## 2026-10-24 measured: the owner's steering evidence (idling near materials, ignoring looters)
+
+- **Idling is measured.**
+  - Method: snapshots with wave_time > 0, using the `arb.still`/`arb.frames` window fields.
+  - In runs 6-9, 40%, 28%, 36% and 22% of frames are stationary.
+  - Of the snapshots where the bot stood still for at least half the window, 77-87% had
+    unattached materials within 400 px and no enemy within 300 px. That is 291/342, 210/243,
+    112/131 and 151/196.
+  - While standing still, the median nearest material was 198-212 px away, with 28-35
+    unattached on the floor.
+- **Mechanism (hypothesis, from the code, not yet tested headlessly).**
+  - Each pickup is priced independently and linearly (`steering/arbiter.gd` ~1338-1358):
+    gain = value x closed / (1 + d0/320), where closed runs from -1 to 1. A move away from a
+    pickup costs as much as a move toward it earns.
+  - On a scattered floor the pulls cancel. The net pull in any direction is small, while
+    standing after standing earns the continuity bonus `stand_continuity` = -w_hyst = 1.2
+    (~1423-1430). A move from a stand gets no hysteresis bonus.
+  - So the bot stands in the middle of a ring of materials: a local minimum of the potential
+    field.
+  - In quiet time a pickup is worth roughly 0.8 gold x 1.5 draw x 2.5 sweep = 3.0. That beats
+    1.2 alone, but not once opposite pickups cancel it.
+  - Candidate fixes, neither tried:
+    - (a) clamp `closed` at 0 for unattracted floor drops. Pickups do not despawn, so walking
+      away loses nothing, and every move toward any pickup then earns.
+    - (b) steer to the best cluster, a single target, instead of summing.
+  - First, test it headlessly: a ring-of-drops fixture in the arbiter tests should reproduce
+    the stand.
+- **Looters (no telemetry; code reading only).**
+  - A loot alien is a reward of `LOOT_VALUE` 4.0 (`world_view.gd` ~211, ~1439-1443). Well
+    Rounded has no override.
+  - It goes through the same falloff as a single drop, so it is worth about 1.3 quiet-time
+    material pickups, although killing it drops a crate plus materials.
+  - `closed` measures approach toward its current position, so a fleeing target pays little.
+  - `LOOT_CHASE_MULT` (player_movement_behavior.gd:139) is declared but unused.
+  - Snapshots record no loot aliens, so how often one was in reach and escaped cannot be
+    measured yet. Next: add loot-alien telemetry (spawn, nearest distance, killed or escaped).
