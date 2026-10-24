@@ -9,3 +9,4 @@ tools/
 knowledge/cache/wiki-*.md
 knowledge/cache/character-*.md
 build/
+.ai/
