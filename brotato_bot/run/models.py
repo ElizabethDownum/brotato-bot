@@ -19,6 +19,21 @@ class WaveRow(BaseModel):
     damage_taken: int | None = None
     kills: int | None = None
     completed: bool = True
+    stats: dict[str, float] = Field(default_factory=dict)
+
+
+class OfferRow(BaseModel):
+    wave: int | None = None
+    view: int | None = None
+    gold: int | None = None
+    items: list[dict] = Field(default_factory=list)
+    bought: list[str] = Field(default_factory=list)
+
+
+class MaterialRow(BaseModel):
+    wave: int
+    floors: list[float] = Field(default_factory=list)
+    bag: float | None = None
 
 
 class ShopRow(BaseModel):
@@ -92,6 +107,13 @@ class RunSummary(BaseModel):
     targets_completed: list[str] = Field(default_factory=list)
     death: DeathRecord | None = None
     notes: list[str] = Field(default_factory=list)
+    target_waves: dict[str, int | None] = Field(default_factory=dict)
+    offers: list[OfferRow] = Field(default_factory=list)
+    crates: list[ShopRow] = Field(default_factory=list)
+    build: dict[str, list[str]] | None = None
+    materials: list[MaterialRow] = Field(default_factory=list)
+    launch: dict | None = None
+    goal_items: list[str] = Field(default_factory=list)
 
     @property
     def hp_end_last_wave(self) -> int | None:

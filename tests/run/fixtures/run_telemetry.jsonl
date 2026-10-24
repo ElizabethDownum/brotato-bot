@@ -1,0 +1,14 @@
+{"kind": "header", "run_id": "telemetry", "plan_id": "p"}
+{"kind": "launch", "character_id": "character_old", "starting_weapon": "weapon_rock", "danger": 0}
+{"kind": "snapshot", "wave": 1, "mats": {"floor": 2, "bag": 1}}
+{"kind": "snapshot", "wave": 1, "mats": {"floor": 6, "bag": 3}}
+{"kind": "wave_end", "wave": 1, "hp": 10, "stats": {"stat_speed": -21}}
+{"kind": "challenge", "id": "chal_slow", "is_target": true}
+{"kind": "offer", "wave": 1, "view": 1, "gold": 50, "items": [{"id": "item_goal", "tier": 1, "price": 20, "score": 30}, {"id": "item_bonus", "tier": 0, "price": 10, "score": 7}]}
+{"kind": "shop", "wave": 1, "action": "buy", "item_id": "item_goal"}
+{"kind": "shop", "wave": 1, "action": "reroll"}
+{"kind": "offer", "wave": 1, "view": 2, "gold": 25, "items": [{"id": "item_goal", "tier": 1, "price": 20, "score": 30}]}
+{"kind": "crate", "wave": 1, "item_id": "item_beanie", "action": "recycle", "score": -16}
+{"kind": "snapshot", "wave": 2, "mats": {"floor": 10, "bag": 4}}
+{"kind": "build", "weapons": ["weapon_rock_1", "weapon_rock_1"], "items": ["item_metal_plate", "item_metal_plate", "item_metal_plate"]}
+{"kind": "end", "outcome": "won"}

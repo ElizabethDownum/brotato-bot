@@ -4,6 +4,7 @@ checkpoint through ``templates/checkpoint.md.tmpl`` (both ``str.format``)."""
 from __future__ import annotations
 
 import json
+from collections import Counter
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
@@ -41,7 +42,11 @@ def _outcome_line(s: RunSummary) -> str:
         text = f"incomplete (end line: {s.end_outcome or 'missing'})"
     last = s.hp_end_last_wave
     hp = f"; HP {last} at the end of the last completed wave" if last is not None else ""
-    return f"**Outcome:** {text}{hp}."
+    targets = "".join(
+        f"; target {cid} fired on wave {wave if wave is not None else '?'}"
+        for cid, wave in s.target_waves.items()
+    )
+    return f"**Outcome:** {text}{hp}{targets}."
 
 
 def _death_section(s: RunSummary) -> str:
@@ -54,8 +59,9 @@ def _death_section(s: RunSummary) -> str:
         lines.append(f"- Damage taken that wave: {d.dmg_w}")
     if d.last_threats:
         lines.append(f"- Nearest threats: {', '.join(d.last_threats)}")
-    lines.append(f"- Weapons: {', '.join(d.weapons) or '-'}")
-    lines.append(f"- Items: {', '.join(d.items) or '-'}")
+    if s.build is None:
+        lines.append(f"- Weapons: {', '.join(d.weapons) or '-'}")
+        lines.append(f"- Items: {', '.join(d.items) or '-'}")
     if d.position is not None:
         lines.append(f"- Position: {d.position}")
     return "\n".join(lines)
@@ -86,9 +92,17 @@ def run_report(summary: RunSummary, outcomes: dict[str, str] | None = None) -> s
             f"- Target challenge: {s.target_challenge or 'none'}",
         ]
     )
+    if s.launch is not None:
+        plan_section += (
+            f"\n\nlaunched by the mod: {s.launch.get('character_id')}, "
+            f"{s.launch.get('starting_weapon')}, danger {s.launch.get('danger')}"
+        )
     waves = _table(
-        ["wave", "hp", "gold", "dmg", "kills"],
-        [(w.wave, w.hp_end, w.gold_end, w.damage_taken, w.kills) for w in s.waves],
+        ["wave", "hp", "gold", "dmg", "kills", "speed"],
+        [
+            (w.wave, w.hp_end, w.gold_end, w.damage_taken, w.kills, w.stats.get("stat_speed", ""))
+            for w in s.waves
+        ],
     )
     if any(not w.completed for w in s.waves):
         waves += "\n\nThe death wave has no wave_end line: hp is 0, kills unknown."
@@ -111,6 +125,73 @@ def run_report(summary: RunSummary, outcomes: dict[str, str] | None = None) -> s
         ],
     )
     notes = "".join(f"- {n}\n" for n in s.notes)
+    # Keep the established sections unchanged for recordings without the new events.
+    telemetry = []
+    if s.offers:
+        telemetry.append(
+            "## Offers\n\n"
+            + _table(
+                ["wave", "view", "gold", "items (id tier price score; * goal)", "bought"],
+                [
+                    (
+                        r.wave,
+                        r.view,
+                        r.gold,
+                        "; ".join(
+                            f"{i.get('id', '?')}{'*' if i.get('id') in s.goal_items else ''} "
+                            + " ".join(_cell(i.get(k)) for k in ("tier", "price", "score"))
+                            for i in r.items
+                        ),
+                        ", ".join(r.bought),
+                    )
+                    for r in s.offers
+                ],
+            )
+        )
+    if s.crates:
+        telemetry.append(
+            "## Crates\n\n"
+            + _table(
+                ["wave", "item", "action", "score"],
+                [(r.wave, r.item, r.action, r.score) for r in s.crates],
+            )
+        )
+    if s.build is not None:
+        telemetry.append(
+            "## Build\n\n"
+            + "\n".join(
+                f"- {key.capitalize()}: "
+                + (", ".join(f"{item} x{count}" for item, count in Counter(values).items()) or "-")
+                for key, values in s.build.items()
+            )
+        )
+    if s.materials:
+        floors = [v for r in s.materials for v in r.floors]
+        rows = [
+            (
+                r.wave,
+                sum(r.floors) / len(r.floors) if r.floors else None,
+                max(r.floors, default=None),
+                r.bag,
+            )
+            for r in s.materials
+        ]
+        rows.append(
+            (
+                "Run total",
+                sum(floors) / len(floors) if floors else None,
+                max(floors, default=None),
+                sum(r.bag or 0 for r in s.materials),
+            )
+        )
+        telemetry.append(
+            "## Materials\n\n"
+            + _table(
+                ["wave", "mean floor", "max floor", "bag (last snapshot)"],
+                rows,
+            )
+            + "\n\nRun total: snapshot-weighted floor mean, floor maximum, sum of last bags."
+        )
     return TEMPLATE.read_text(encoding="utf-8").format(
         run_id=s.run_id,
         outcome_line=_outcome_line(s),
@@ -122,7 +203,7 @@ def run_report(summary: RunSummary, outcomes: dict[str, str] | None = None) -> s
         decisions_table=decisions,
         death_section=_death_section(s),
         challenges_section=_challenges_section(s),
-    )
+    ) + ("\n" + "\n\n".join(telemetry) + "\n" if telemetry else "")
 
 
 def _list(values: list) -> str:

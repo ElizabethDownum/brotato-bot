@@ -11,6 +11,81 @@ FIXTURES = Path(__file__).parent / "fixtures"
 RUN_ID = "20261022-201500-well_rounded-d0"
 
 
+def test_report_renders_new_telemetry():
+    events = collect.parse_jsonl(FIXTURES / "run_telemetry.jsonl")
+    plan = {"plan": {"ask_on": ["item_goal"], "item_bonus": {"item_bonus": 3}}}
+    s = collect.summarize(events, plan)
+    md = render.run_report(s)
+    assert "target chal_slow fired on wave 1" in md
+    assert "launched by the mod: character_old, weapon_rock, danger 0" in md
+    assert "| wave | hp | gold | dmg | kills | speed |" in md
+    assert "| 1 | 10 | - | - | - | -21 |" in md
+    assert "## Offers" in md and len(s.offers) == 2
+    assert "item_goal* 1 20 30; item_bonus* 0 10 7 | item_goal |" in md
+    assert s.offers[0].bought == ["item_goal"] and s.offers[1].bought == []
+    assert "| 1 | item_beanie | recycle | -16 |" in md
+    assert "## Build" in md
+    assert "weapon_rock_1 x2" in md and "item_metal_plate x3" in md
+    assert "| 1 | 4 | 6 | 3 |" in md
+    assert "| 2 | 10 | 10 | 4 |" in md
+    assert "| Run total | 6 | 10 | 7 |" in md
+    assert collect.index_row(s)["target_fired"] is True
+
+
+def test_target_wave_override_and_unknown_wave():
+    events = [
+        {"kind": "challenge", "id": "unknown", "is_target": True},
+        {"kind": "wave_end", "wave": 2},
+        {"kind": "challenge", "id": "explicit", "is_target": True, "wave": 3},
+        {"kind": "challenge", "id": "explicit", "is_target": True, "wave": 4},
+    ]
+    s = collect.summarize(events)
+    assert s.target_waves == {"unknown": None, "explicit": 3}
+    assert "| 2 | - | - | - | - |  |" in render.run_report(s)
+
+
+def test_build_on_death_replaces_duplicate_dump():
+    s = collect.summarize(
+        [
+            {"kind": "death", "wave": 2, "build": {"items": ["item_plate"]}},
+            {"kind": "build", "items": ["item_plate", "item_plate"]},
+            {"kind": "end", "outcome": "death", "wave": 2},
+        ]
+    )
+    md = render.run_report(s)
+    assert md.count("item_plate") == 1
+    assert "item_plate x2" in md and "Died on wave 2" in md
+
+
+def test_offer_buys_do_not_leak_between_waves_or_after_go():
+    s = collect.summarize(
+        [
+            {"kind": "offer", "wave": 1, "items": [{"id": "item_goal"}]},
+            {"kind": "shop", "wave": 2, "action": "buy", "item_id": "item_goal"},
+            {"kind": "shop", "wave": 1, "action": "go"},
+            {"kind": "shop", "wave": 1, "action": "buy", "item_id": "item_goal"},
+        ]
+    )
+    assert s.offers[0].bought == []
+
+
+def test_collect_goal_markers_from_matching_plan_or_saved_proposal(tmp_paths):
+    p = tmp_paths
+    p.runs_in.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(FIXTURES / "run_telemetry.jsonl", p.runs_in / "telemetry.jsonl")
+    plan = {"plan_id": "p", "plan": {"ask_on": ["item_goal"]}}
+    p.plan_json.write_text(json.dumps(plan), encoding="utf-8")
+    md = collect.collect("telemetry", p).read_text(encoding="utf-8")
+    assert "item_goal*" in md
+    p.plan_json.write_text('{"plan_id":"other"}', encoding="utf-8")
+    p.proposals_dir.mkdir(parents=True, exist_ok=True)
+    (p.proposals_dir / "saved.md").write_text(
+        "## Plan\n```json\n" + json.dumps(plan) + "\n```\n", encoding="utf-8"
+    )
+    md = collect.collect("telemetry", p).read_text(encoding="utf-8")
+    assert "item_goal*" in md
+
+
 def test_collect_summarizes_fixture():
     s = collect.summarize(collect.parse_jsonl(FIXTURES / "run_small.jsonl"))
     assert s.run_id == RUN_ID

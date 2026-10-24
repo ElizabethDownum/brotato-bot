@@ -32,6 +32,8 @@ from brotato_bot.run.models import (
     DeathRecord,
     DecisionRow,
     LevelupRow,
+    MaterialRow,
+    OfferRow,
     RunSummary,
     ShopRow,
     WaveRow,
@@ -80,7 +82,7 @@ def _str(v: Any) -> str | None:
     return v if isinstance(v, str) else None
 
 
-def summarize(events: list[dict]) -> RunSummary:
+def summarize(events: list[dict], plan: dict | None = None) -> RunSummary:
     """Fold the run's events into a RunSummary."""
     header: dict = next((e for e in events if e.get("kind") == "header"), {})
     waves: dict[int, WaveRow] = {}
@@ -95,6 +97,13 @@ def summarize(events: list[dict]) -> RunSummary:
     end: dict | None = None
     complete: dict | None = None
     last_wave: int | None = None  # the last wave that ended: shops and level-ups follow it
+    target_waves: dict[str, int | None] = {}
+    offers: list[OfferRow] = []
+    board: OfferRow | None = None
+    crates: list[ShopRow] = []
+    materials: dict[int, MaterialRow] = {}
+    build = None
+    launch = None
 
     for e in events:
         kind = e.get("kind")
@@ -108,8 +117,43 @@ def summarize(events: list[dict]) -> RunSummary:
                 gold_end=_int(e.get("gold")),
                 damage_taken=_int(e.get("damage_taken")),
                 kills=_int(e.get("kills")),
+                stats={
+                    k: v
+                    for k, raw in (e.get("stats") or {}).items()
+                    if (v := _float(raw)) is not None
+                },
             )
             last_wave = w
+            board = None
+        elif kind == "offer":
+            board = OfferRow(
+                wave=_int(e.get("wave")),
+                view=_int(e.get("view")),
+                gold=_int(e.get("gold")),
+                items=[i for i in e.get("items") or [] if isinstance(i, dict)],
+            )
+            offers.append(board)
+        elif kind == "crate":
+            crates.append(
+                ShopRow(
+                    wave=_int(e.get("wave")),
+                    item=_str(e.get("item_id")),
+                    action=_str(e.get("action")) or "?",
+                    score=_float(e.get("score")),
+                )
+            )
+        elif kind == "build":
+            build = {k: [str(i) for i in e.get(k) or []] for k in ("weapons", "items")}
+        elif kind == "launch":
+            launch = {k: e.get(k) for k in ("character_id", "starting_weapon", "danger")}
+        elif kind == "snapshot" and isinstance(e.get("mats"), dict):
+            w = _int(e.get("wave"))
+            if w is not None:
+                row = materials.setdefault(w, MaterialRow(wave=w))
+                floor = _float(e["mats"].get("floor"))
+                if floor is not None:
+                    row.floors.append(floor)
+                row.bag = _float(e["mats"].get("bag"))
         elif kind == "decision":
             resp = e.get("response") if isinstance(e.get("response"), dict) else {}
             wave = _int(e.get("wave"))
@@ -126,6 +170,16 @@ def summarize(events: list[dict]) -> RunSummary:
             decisions.append(row)
         elif kind == "shop":
             wave = _int(e.get("wave"))
+            if board is not None and (wave is None or wave == board.wave):
+                item = _str(e.get("item_id"))
+                if (
+                    e.get("action") == "buy"
+                    and item
+                    and any(i.get("id") == item for i in board.items)
+                ):
+                    board.bought.append(item)
+                if e.get("action") in {"reroll", "go"}:
+                    board = None
             shop.append(
                 ShopRow(
                     wave=wave if wave is not None else last_wave,
@@ -168,15 +222,17 @@ def summarize(events: list[dict]) -> RunSummary:
                 challenges.append(cid)
             if cid and e.get("is_target") is True and cid not in targets:
                 targets.append(cid)
+                wave = _int(e.get("wave"))
+                target_waves[cid] = wave if wave is not None else last_wave
         elif kind == "death":
             if death is None:
-                build = e.get("build") if isinstance(e.get("build"), dict) else {}
+                death_build = e.get("build") if isinstance(e.get("build"), dict) else {}
                 death = DeathRecord(
                     wave=_int(e.get("wave")) or 0,
                     killer=_str(e.get("killer")) or "",
                     last_threats=[str(t) for t in e.get("last_threats") or []],
-                    weapons=[str(x) for x in build.get("weapons") or []],
-                    items=[str(x) for x in build.get("items") or []],
+                    weapons=[str(x) for x in death_build.get("weapons") or []],
+                    items=[str(x) for x in death_build.get("items") or []],
                     dmg_w=_int(e.get("dmg_w")),
                     position=e.get("position"),
                 )
@@ -233,6 +289,20 @@ def summarize(events: list[dict]) -> RunSummary:
         targets_completed=targets,
         death=death,
         notes=notes,
+        target_waves=target_waves,
+        offers=offers,
+        crates=crates,
+        build=build,
+        materials=[materials[w] for w in sorted(materials)],
+        launch=launch,
+        goal_items=list(
+            dict.fromkeys(
+                [
+                    *((plan or {}).get("plan", {}).get("ask_on") or []),
+                    *((plan or {}).get("plan", {}).get("item_bonus") or {}),
+                ]
+            )
+        ),
     )
 
 
@@ -296,6 +366,23 @@ def index_row(summary: RunSummary) -> dict:
     }
 
 
+def _report_plan(paths: Paths, plan_id: str) -> dict:
+    """Use the matching installed plan, or its saved proposal for historical runs."""
+    from brotato_bot.run.proposal import extract_plan
+
+    plan = read_json_or_empty(paths.plan_json)
+    if plan.get("plan_id") == plan_id:
+        return plan
+    for path in sorted(paths.proposals_dir.glob("*.md"), reverse=True):
+        try:
+            plan = extract_plan(path.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            continue
+        if plan.get("plan_id") == plan_id:
+            return plan
+    return {}
+
+
 def append_index(index_path: Path, row: dict) -> None:
     """Append ``row`` to the JSON list at ``index_path`` (created as ``[]``). A row with
     the same run_id (a re-collect) is replaced in place; other rows are left as they are."""
@@ -325,6 +412,7 @@ def collect(run_id: str, paths: Paths) -> Path:
         raise FileNotFoundError(f"no run recording at {src}")
     events = parse_jsonl(src)
     summary = summarize(events)
+    summary = summarize(events, _report_plan(paths, summary.plan_id))
     if summary.run_id and summary.run_id != run_id:
         summary.notes.append(
             f"warning: header run_id {summary.run_id!r} differs from the file name {run_id!r}"
