@@ -1,5 +1,7 @@
 extends Reference
 
+const Collectible = preload("collectible.gd")
+
 # Arbiter: picks ONE movement action per frame by scoring every candidate
 # direction under a single cost function, in a single unit (expected HP).
 #
@@ -418,13 +420,26 @@ var last_hop = false             # the chosen candidate is a half-speed hop (tel
 var _hop_wanted = false          # set by _prepare: a telegraph or dash is close enough
 var last_aoe_n = 0               # KIND_AOE threats priced this decision (telemetry)
 var _pickup_radius = 0.0         # profile pickup_radius: the attract area's rim
-var _target_on = false          # cached per tick: target mode while the quiet gate is open
+var _target_on = false          # cached per tick, independent of the draw/sweep quiet gates
 const TARGET_SWITCH_RATIO = 0.5
 const TARGET_GAIN = 1.0
+const TARGET_ENEMY_RADIUS = 260.0    # same reach as ROOM_CAP
+const TARGET_PATH_RADIUS = 220.0     # corridor warning band, like WALL_CAP
+const TARGET_DROP_RADIUS = 180.0     # abandon a target before contact
+const TARGET_DROP_PATH_RADIUS = 120.0
+const TARGET_PATH_LIMIT = 1.5        # pooled path risk, not one far-away body
+const TARGET_RISK_WEIGHT = 4.0
+const TARGET_DANGER_RADIUS = 280.0   # quiet draw boundary in WorldView
+const TARGET_PULL_FLOOR = 1.5        # full approach beats the standing bonus 1.2
+const TARGET_APPROACH_CAP = 3.0     # below W_ROOM=6 and ordinary contact costs
 var _drop_target_id = -1
 var _drop_target_pos = Vector2.ZERO
+var _target_reward = []
+var _target_danger = 1.0
 var last_target_dist = -1.0
+var last_target_kind = "none"
 var target_switches = 0          # acquisitions, including the first; clearing does not increment
+var target_threat_drops = 0      # committed targets invalidated by route/target danger
 var w_hyst = W_HYST
 var lethality = LETHALITY
 var lethality_override = -1.0    # --arb-lethality wins over the row's lethality key
@@ -634,8 +649,53 @@ func apply_overrides(d: Dictionary) -> void:
 			w_predict, predict_secs, w_tangent, wall_swerve, w_anchor])
 
 
-func _update_drop_target(p0: Vector2, rewards: Array):
+func _smooth_danger(distance: float, contact: float) -> float:
+	var x = clamp((distance - contact) / max(TARGET_DANGER_RADIUS - contact, 1.0), 0.0, 1.0)
+	return x * x * (3.0 - 2.0 * x)
+
+
+# One route evaluation per collectible per decision, never per movement candidate.
+# The player endpoint is exempt from hard path rejection when the body is behind
+# the route: a nearby enemy must still allow a target that leads AWAY from it.
+func _target_route(p0: Vector2, at: Vector2, enemies: Array, threats: Array,
+		body_radius: float) -> Array:
+	var near_risk = 0.0
+	var path_risk = 0.0
+	var blocked = false
+	var route = at - p0
+	for e in enemies:
+		var contact = float(e[1]) + body_radius
+		var target_distance = at.distance_to(e[0])
+		if target_distance <= max(contact, TARGET_DROP_RADIUS):
+			blocked = true
+		near_risk += pow(max(1.0 - target_distance / TARGET_ENEMY_RADIUS, 0.0), 2)
+		if (e[0] - p0).dot(route) <= 0.0:
+			continue
+		var closest = Geometry.get_closest_point_to_segment_2d(e[0], p0, at)
+		var distance = closest.distance_to(e[0])
+		if distance <= max(contact, TARGET_DROP_PATH_RADIUS):
+			blocked = true
+		path_risk += pow(max(1.0 - distance / TARGET_PATH_RADIUS, 0.0), 2)
+	for t in threats:
+		# Contact bodies are already represented in the all-map enemy view.
+		if t[T_KIND] == KIND_CONTACT or t[T_END] <= 0.0:
+			continue
+		var end = t[T_POS] + t[T_VEL] * max(min(horizon, t[T_END]) - t[T_START], 0.0)
+		# Crossing a moving threat's swept segment is risky even if both ends
+		# are clear. A crossed pair has zero segment distance in Godot 3.
+		var pair = Geometry.get_closest_points_between_segments_2d(p0, at, t[T_POS], end)
+		var gap = max(pair[0].distance_to(pair[1]) - t[T_RADIUS] - body_radius, 0.0)
+		path_risk += min(float(t[T_DAMAGE]) / 10.0, 2.0) \
+			* pow(max(1.0 - gap / TARGET_PATH_RADIUS, 0.0), 2)
+	return [1.0 + TARGET_RISK_WEIGHT * (near_risk + path_risk),
+		blocked or path_risk > TARGET_PATH_LIMIT]
+
+
+func _update_drop_target(p0: Vector2, rewards: Array, enemies: Array,
+		threats: Array, body_radius: float):
 	last_target_dist = -1.0
+	last_target_kind = "none"
+	_target_reward = []
 	if not _target_on:
 		_drop_target_id = -1
 		_drop_target_pos = Vector2.ZERO
@@ -643,20 +703,36 @@ func _update_drop_target(p0: Vector2, rewards: Array):
 	var current = null
 	var candidate = null
 	var best = INF
-	# Once per decision, before candidate scoring. Only live, unattracted drops
-	# in WorldView's pickup range are supplied; collected/attracted ids disappear.
+	var threatened = false
+	_target_danger = 1.0
+	for e in enemies:
+		_target_danger = min(_target_danger,
+			_smooth_danger(p0.distance_to(e[0]), float(e[1]) + body_radius))
+	for t in threats:
+		if t[T_END] > 0.0:
+			_target_danger = min(_target_danger,
+				_smooth_danger(p0.distance_to(t[T_POS]), t[T_RADIUS] + body_radius))
+	# Whole map, one selection pass. WorldView excludes attracted/collected ids.
 	for r in rewards:
-		if r.size() < 6 or r[4] != "floor_drop" or float(r[3]) > 0.0:
+		if not Collectible.marked(r):
 			continue
 		var distance = p0.distance_to(r[0])
-		if distance <= _pickup_radius or r[1] <= 0.0:
+		var rim = _pickup_radius if r[2] else 0.0
+		if distance <= rim or r[1] <= 0.0:
+			continue
+		var route = _target_route(p0, r[0], enemies, threats, body_radius)
+		if route[1]:
+			if r[5] == _drop_target_id:
+				threatened = true
 			continue
 		if r[5] == _drop_target_id:
 			current = r
-		var score = distance / r[1]
+		var score = distance / r[1] * route[0]
 		if score < best:
 			best = score
 			candidate = r
+	if threatened:
+		target_threat_drops += 1
 	var selected = current
 	if current == null or (candidate != null and p0.distance_to(candidate[0]) < \
 			TARGET_SWITCH_RATIO * p0.distance_to(current[0])):
@@ -669,7 +745,9 @@ func _update_drop_target(p0: Vector2, rewards: Array):
 		target_switches += 1
 	_drop_target_id = selected[5]
 	_drop_target_pos = selected[0]
+	_target_reward = selected
 	last_target_dist = p0.distance_to(_drop_target_pos)
+	last_target_kind = Collectible.kind(selected)
 
 
 # Returns the chosen unit direction, or ZERO to stand still.
@@ -718,10 +796,22 @@ func choose(p0: Vector2, speed: float, body_radius: float, far: Vector2,
 	_anchor_inner = float(profile.get("anchor_inner", 0.0))
 	_anchor_w = w_anchor * float(profile.get("anchor_w", 1.0))
 	_pickup_radius = float(profile.get("pickup_radius", 0.0))
-	# Contact time uses the existing linear endpoint pulls; quiet time commits
-	# to one floor drop. Cache this once, outside the candidate/reward loops.
-	_target_on = profile.get("drop_pull", "linear") == "target" and profile.get("drop_quiet", false)
-	_update_drop_target(p0, rewards)
+	_target_on = profile.get("drop_pull", "linear") == "target"
+	if _target_on:
+		_update_drop_target(p0, profile.get("target_collectibles", rewards),
+			profile.get("target_enemies", []), threats, body_radius)
+	else:
+		_update_drop_target(p0, [], [], [], body_radius)
+	var scoring_rewards = rewards
+	if _target_on and not _target_reward.empty():
+		var present = false
+		for r in rewards:
+			if Collectible.marked(r) and r[5] == _drop_target_id:
+				present = true
+				break
+		if not present:
+			scoring_rewards = rewards.duplicate()
+			scoring_rewards.append(_target_reward)
 	lethality = float(profile.get("lethality", LETHALITY))
 	if lethality_override >= 0.0:
 		lethality = lethality_override
@@ -799,7 +889,7 @@ func choose(p0: Vector2, speed: float, body_radius: float, far: Vector2,
 	var best_i = 0
 	var best_cost = 1e18
 	for i in range(cands.size()):
-		var c = _cost(cands[i], p0, speed, body_radius, far, rewards, targets,
+		var c = _cost(cands[i], p0, speed, body_radius, far, scoring_rewards, targets,
 				chargers, weapon_range, prefers_still, current_hp)
 		scores.push_back(c)
 		if c < best_cost:
@@ -813,7 +903,7 @@ func choose(p0: Vector2, speed: float, body_radius: float, far: Vector2,
 		for k in range(HOP_DIRS):
 			var a = k * TAU / HOP_DIRS + TAU / (2 * HOP_DIRS)   # offset from the full set
 			var hd = Vector2(cos(a), sin(a))
-			var c = _cost(hd, p0, speed * HOP_FRAC, body_radius, far, rewards, targets,
+			var c = _cost(hd, p0, speed * HOP_FRAC, body_radius, far, scoring_rewards, targets,
 					chargers, weapon_range, prefers_still, current_hp)
 			cands.push_back(hd)
 			scores.push_back(c)
@@ -833,7 +923,7 @@ func choose(p0: Vector2, speed: float, body_radius: float, far: Vector2,
 			var improved = best_dir
 			for s in [step, -step]:
 				var rc = best_dir.rotated(s)
-				var c = _cost(rc, p0, best_speed, body_radius, far, rewards, targets,
+				var c = _cost(rc, p0, best_speed, body_radius, far, scoring_rewards, targets,
 						chargers, weapon_range, prefers_still, current_hp)
 				cands.push_back(rc)
 				scores.push_back(c)
@@ -864,7 +954,7 @@ func choose(p0: Vector2, speed: float, body_radius: float, far: Vector2,
 	last_stutter_gap = 0.0
 	if _fire_still and best_dir != Vector2.ZERO:
 		last_stutter_gap = _cost(best_dir, p0, speed * STUTTER_SPEED_FRAC, body_radius,
-				far, rewards, targets, chargers, weapon_range, prefers_still,
+			far, scoring_rewards, targets, chargers, weapon_range, prefers_still,
 				current_hp) - best_cost
 
 	if scaled:
@@ -1396,9 +1486,7 @@ func _cost(d: Vector2, p0: Vector2, speed: float, body_radius: float, far: Vecto
 		var held = r.size() > 3 and float(r[3]) > 0.0
 		var rim = float(r[3]) if held else (_pickup_radius if (r.size() < 3 or r[2]) else 0.0)
 		var d0 = max(p0.distance_to(r[0]) - rim, 0.0)
-		# Field 4 marks only unattracted floor gold/materials. Fields 2/3
-		# retain their attract/held meanings for every existing size check.
-		var target_drop = _target_on and r.size() > 5 and r[4] == "floor_drop" and not held
+		var target_drop = _target_on and Collectible.marked(r) and r[1] > 0.0
 		# Non-targets only earn a taken bonus. Beyond this conservative bound
 		# the move cannot reach the rim, so their entire contribution is zero.
 		if target_drop and r[5] != _drop_target_id and d0 > speed * horizon + rim:
@@ -1413,6 +1501,12 @@ func _cost(d: Vector2, p0: Vector2, speed: float, body_radius: float, far: Vecto
 		if target_drop:
 			closed = max(closed, 0.0) * TARGET_GAIN if r[5] == _drop_target_id else 0.0
 		var gain = w_pickup * r[1] * closed / (1.0 + d0 / PICKUP_FALLOFF)
+		if target_drop and r[5] == _drop_target_id:
+			# A distant positive target must overcome the -1.2 standing bonus.
+			# Bound the approach separately from the unchanged pass-through bonus.
+			var pull = max(w_pickup * r[1] / (1.0 + d0 / PICKUP_FALLOFF),
+				w_pickup * TARGET_PULL_FLOOR)
+			gain = min(pull * closed, w_pickup * TARGET_APPROACH_CAP) * _target_danger
 		if held:
 			if d1 == 0.0:
 				gain += w_pickup * r[1]                      # inside the zone: keep earning

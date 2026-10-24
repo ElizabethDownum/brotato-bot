@@ -364,19 +364,28 @@ Common `plan` keys. This table is the full set. The header comment in
 | `weapon_set` (string), `deprioritize_weapons` (list of ids), `unique_weapons`, `stack_combine`, `hitrate_pref`, `spend_surplus` (booleans) | per-character shop tweaks read by `shop_advisor.gd` and `base_shop.gd` |
 
 `steering.drop_pull` accepts `"linear"` (default) or `"target"`. Target mode
-chooses the marked, unattracted floor gold/material drop with the lowest distance
-/ reward value and retains its instance id and position. It switches only when
-a candidate is less than half the current target's distance away, or the target
-is gone/collected or absent from the 900 px steering reward horizon. Only that
-target earns nonnegative approach gain (multiplier
-`TARGET_GAIN = 1.0`); every marked drop still earns the collection bonus when the
-projected segment enters its attract rim. The target clears whenever the quiet
-gate for draw/sweep is false; that tick uses the existing linear endpoint drop
-pulls (draw 1 during contact). A target is chosen afresh when quiet returns. Food, trees,
-loot aliens, held rewards and linear scoring keep their existing behavior.
+chooses from the whole map: unattracted materials, normal/legendary crates
+(values 6/12), food with a positive resolved food value, and positive-value trees.
+Rank is distance / value, penalized by live non-loot enemies near the target
+(260 px) and along its straight route (220 px), plus the existing threat tuples
+along that route. Contact reach always forbids selection. Commitment ends when
+the target disappears/is collected, an enemy comes within 180 px of it or 120 px
+of its route, or pooled path risk exceeds 1.5. A body behind the player does not
+block a route leading away from it. Otherwise a candidate must be less than half
+the current target's distance away to replace it.
+Only the selected target earns nonnegative approach gain. Its pull has a 1.5
+floor before normalization to overcome the standing bonus at long distance, a
+3-point approach cap, and a smooth danger factor from zero at contact to one
+at 280 px. Quiet draw/sweep multipliers still resolve as before; target mode
+also stays active near enemies. Every positive marked collectible crossed by
+the projected segment still earns its collection bonus. The 900 px horizon
+remains for linear mode and all other reward terms, including pass-through
+bonuses for non-targets. Loot aliens and held rewards keep their existing behavior.
 Snapshot `arb.dtg` is the current target distance in px (-1 when absent);
 `arb.tswitch` counts target acquisitions, including the first, over the arbiter's
-lifetime. Clearing alone does not increment it.
+lifetime. Clearing alone does not increment it. `arb.tkind` is `material`,
+`crate`, `food`, `tree` or `none`; `arb.tdrop` counts committed targets dropped
+because of threat (per arbiter lifetime, normally one wave).
 
 `ask_on` is matched against shop offers (item and weapon ids, e.g.
 `item_bag`, `item_scar`, `weapon_smg_1`) and level-up options (upgrade ids,

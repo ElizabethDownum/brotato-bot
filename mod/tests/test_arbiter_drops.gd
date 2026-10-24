@@ -38,6 +38,11 @@ func _choose(arb, pos, drops, profile = {}, threats = []) -> Vector2:
 	resolved.drop_quiet = threats.empty()
 	for key in profile:
 		resolved[key] = profile[key]
+	resolved.target_collectibles = _rewards(drops)
+	resolved.target_enemies = []
+	for t in threats:
+		if t[4] in [Arbiter.KIND_CONTACT, Arbiter.KIND_DASH]:
+			resolved.target_enemies.append([t[0], t[2]])
 	var in_range = []
 	for drop in drops:
 		if pos.distance_to(drop.position) < 900.0:
@@ -107,28 +112,25 @@ func test_linear_floor_tuple_scores_equal_legacy_ring_scores():
 	assert_eq(marked.last_scores, legacy.last_scores, "six-field floor tuples preserve legacy two-field ring totals")
 
 
-func test_non_quiet_target_scores_drops_exactly_as_linear():
+func test_non_quiet_target_keeps_committed_approach_without_linear_fallback():
 	var rewards = []
 	for drop in _drops():
 		# A contact-time WorldView tick disables draw/sweep: gold .8, draw 1.
 		rewards.append(FloorDrop.reward(drop.position, 0.8, 1.0, drop.id))
-	var threat = [ORIGIN + Vector2(70, 0), Vector2(-180, 0), 25.0, 40.0,
-		Arbiter.KIND_CONTACT, 0.0, 1.0, 1000.0]
 	var target = Arbiter.new()
 	var linear = Arbiter.new()
-	# Begin committed, so this also checks the per-tick switch back to linear.
+	# Closing the old quiet gate alone must neither clear nor change scoring.
 	_choose(target, ORIGIN, _drops(), {"drop_pull": "target"})
 	linear.last_dir = target.last_dir
 	for arb in [target, linear]:
 		var mode = "target" if arb == target else "linear"
-		arb.choose(ORIGIN, SPEED, 20.0, FAR, [threat], rewards, [], [],
+		arb.choose(ORIGIN, SPEED, 20.0, FAR, [], rewards, [], [],
 			300.0, false, 100.0, 1.0,
 			{"drop_pull": mode, "drop_quiet": false, "pickup_radius": PICKUP_RIM})
-	assert_eq(target._drop_target_id, -1, "contact clears commitment")
-	assert_eq(target.last_target_dist, -1.0)
-	assert_eq(target.last_dirs, linear.last_dirs)
-	assert_eq(target.last_scores, linear.last_scores, "contact tick uses linear endpoint scoring for every drop")
-	assert_eq(target.last_dir, linear.last_dir)
+	assert_eq(target._drop_target_id, 1)
+	assert_eq(target.last_target_kind, "material")
+	assert_true(target.last_scores != linear.last_scores, "closed quiet gate still uses target scoring")
+	assert_true(target._target_on)
 
 
 func test_quiet_target_scores_only_committed_approach():
@@ -269,18 +271,18 @@ func test_target_retains_identity_updates_position_and_requires_half_distance_to
 	assert_eq(arb.target_switches, 3)
 
 
-func test_target_clears_in_danger_and_reacquires_when_quiet():
+func test_target_ignores_quiet_gate_and_clears_when_leaving_mode():
 	var arb = Arbiter.new()
 	_choose(arb, ORIGIN, _drops(), {"drop_pull": "target"})
 	_choose(arb, ORIGIN, _drops(), {"drop_pull": "target", "drop_quiet": false})
-	assert_eq(arb._drop_target_id, -1)
-	assert_eq(arb.last_target_dist, -1.0)
-	assert_eq(arb.target_switches, 1, "clearing does not count as acquisition")
+	assert_eq(arb._drop_target_id, 1)
+	assert_eq(arb.target_switches, 1, "quiet gate does not change commitment")
 	_choose(arb, ORIGIN, _drops(), {"drop_pull": "target"})
 	assert_eq(arb._drop_target_id, 1)
-	assert_eq(arb.target_switches, 2)
+	assert_eq(arb.target_switches, 1)
 	_choose(arb, ORIGIN, _drops(), {"drop_pull": "linear"})
 	assert_eq(arb.last_target_dist, -1.0, "leaving target mode clears telemetry")
+	assert_eq(arb.last_target_kind, "none")
 
 
 func test_target_collected_inside_rim_and_no_remaining_drops_clear():
@@ -295,19 +297,19 @@ func test_target_collected_inside_rim_and_no_remaining_drops_clear():
 	assert_eq(arb.last_target_dist, -1.0)
 
 
-func test_target_outside_steering_range_retargets_and_keeps_moving():
+func test_target_outside_steering_range_remains_scored_and_keeps_moving():
 	var arb = Arbiter.new()
 	var drops = [{"id": 1, "position": ORIGIN + Vector2(150, 0)},
 		{"id": 2, "position": ORIGIN + Vector2(600, 0)}]
 	_choose(arb, ORIGIN, drops, {"drop_pull": "target"})
 	assert_eq(arb._drop_target_id, 1)
-	# Still live, but now outside the reward list's 900 px horizon. Drop 2 is
-	# farther than half its distance, so ordinary switch hysteresis cannot help.
+	# All-map selection retains this target; its approach remains scored even
+	# though only the other drop is in the local pass-through reward list.
 	drops[0].position = ORIGIN + Vector2(1000, 0)
 	var choice = _choose(arb, ORIGIN, drops, {"drop_pull": "target"})
-	assert_eq(arb._drop_target_id, 2, "target missing from rewards counts as gone")
-	assert_eq(arb.last_target_dist, 600.0)
-	assert_eq(arb.target_switches, 2)
+	assert_eq(arb._drop_target_id, 1, "whole-map commitment survives leaving the local horizon")
+	assert_eq(arb.last_target_dist, 1000.0)
+	assert_eq(arb.target_switches, 1)
 	assert_true(choice != Vector2.ZERO, "in-range replacement keeps the bot moving")
 	assert_true(choice.x > 0.0, "moves toward the replacement drop")
 
@@ -324,8 +326,15 @@ func test_target_uses_reward_value_and_only_target_approaches_but_all_can_be_tak
 	solo.choose(ORIGIN, SPEED, 20.0, FAR, [], [rewards[1]], [], [], 300.0, false, 100.0, 1.0, profile)
 	assert_eq(both, solo.last_scores, "non-target outside projected rim adds no approach")
 	# Establish a right-side target, then add a left-side pass-through drop.
+	# Give both comparisons the same continuity state so only collection differs.
 	var pass_through = FloorDrop.reward(ORIGIN + Vector2(-260, 0), 1.0, 1.0, 3)
 	rewards.append(pass_through)
+	arb.last_dir = Vector2.ZERO
 	arb.choose(ORIGIN, SPEED, 20.0, FAR, [], rewards, [], [], 300.0, false, 100.0, 1.0, profile)
 	assert_eq(arb._drop_target_id, 2, "260 is not less than half of 500")
 	assert_true(arb.last_scores[12] < solo.last_scores[12], "non-target crossing still earns taken bonus")
+	var taken = solo.last_scores[12] - arb.last_scores[12]
+	assert_true(abs(taken - pass_through[1] * arb.pickup_taken) < 0.000001,
+		"crossing earns exactly the collection bonus with equal last_dir")
+	print("PASS_THROUGH last_dir=(0, 0) solo_left=%.6f crossed_left=%.6f taken=%.6f target=%d" %
+		[solo.last_scores[12], arb.last_scores[12], taken, arb._drop_target_id])

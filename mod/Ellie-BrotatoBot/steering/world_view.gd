@@ -3,6 +3,7 @@ extends Reference
 const PlanFile = preload("res://mods-unpacked/Ellie-BrotatoBot/core/plan_file.gd")
 const SteeringOverrides = preload("res://mods-unpacked/Ellie-BrotatoBot/core/steering_overrides.gd")
 const FloorDrop = preload("floor_drop.gd")
+const Collectible = preload("collectible.gd")
 
 # Turns live game state into the plain arrays the arbiter scores.
 #
@@ -600,6 +601,9 @@ const TICKS_ONCE = 1.0           # bullets, pillars and dashes connect at most o
 
 var threats = []
 var rewards = []
+var _target_collectibles = []
+var _target_enemies = []         # all-map [position, body radius], before threat-range culling
+var _target_mode = false
 var targets = []
 var chargers = []                # idle chargers whose cooldown may expire soon
 var mitigation = 1.0             # share of incoming damage that actually lands
@@ -904,6 +908,8 @@ func steering_event(character_id, player) -> Dictionary:
 func gather(main, player) -> void:
 	threats = []
 	rewards = []
+	_target_collectibles = []
+	_target_enemies = []
 	targets = []
 	chargers = []
 	far_corner = ZoneService.current_zone_max_position
@@ -928,6 +934,7 @@ func gather(main, player) -> void:
 	_refresh_kill_ref(player)
 	var character_id = RunData.get_player_character(player.player_index).my_id
 	var row = steering_row(character_id, player)
+	_target_mode = row.drop_pull == "target"
 	prefers_still = row.get("still", "") == "prefer"
 	_loot_value = float(row.get("loot_value", LOOT_VALUE))
 	if row.has("kill_ref"):
@@ -983,7 +990,16 @@ func gather(main, player) -> void:
 	var missing_hp = max_hp - current_hp
 	var food_mode = row.get("food", "")
 	for c in main._consumables:
-		if c.position.distance_squared_to(pos) < pickup_sq:
+		if _target_mode:
+			if not is_instance_valid(c) or c.already_picked_up or c.attracted_by != null:
+				continue
+			var r = Collectible.consumable(c.position, c.consumable_data.my_id,
+				_food_value(food_mode, c.position, missing_hp, spawner), c.get_instance_id())
+			if r[1] > 0.0:
+				_target_collectibles.append(r)
+			if c.position.distance_squared_to(pos) < pickup_sq:
+				rewards.append(r)
+		elif c.position.distance_squared_to(pos) < pickup_sq:
 			rewards.push_back([c.position,
 					_food_value(food_mode, c.position, missing_hp, spawner)])
 	# Drops are collected by the attract area, not by contact: the arbiter
@@ -1025,8 +1041,11 @@ func gather(main, player) -> void:
 			continue
 		if "attracted_by" in g and g.attracted_by != null:
 			continue
+		var r = FloorDrop.reward(g.position, gold_value, draw, g.get_instance_id())
+		if _target_mode and r[1] > 0.0:
+			_target_collectibles.append(r)
 		if g.position.distance_squared_to(pos) < pickup_sq:
-			rewards.push_back(FloorDrop.reward(g.position, gold_value, draw, g.get_instance_id()))
+			rewards.push_back(r)
 
 	# Scapegoat revive (see REVIVE_VALUE): a dead goat's zone is a held reward.
 	if revive_mult > 0.0 and ("pets" in spawner):
@@ -1053,8 +1072,14 @@ func gather(main, player) -> void:
 	var tree_value = float(row.get("tree_value", 0.0))
 	if tree_value != 0.0 and ("neutrals" in spawner):
 		for n in spawner.neutrals:
-			if is_instance_valid(n) and not n.dead and not n._pending_die \
-					and n.position.distance_squared_to(pos) < pickup_sq:
+			if not is_instance_valid(n) or n.dead or n._pending_die:
+				continue
+			if _target_mode and tree_value > 0.0:
+				var r = Collectible.reward(n.position, tree_value, false, "tree", n.get_instance_id())
+				_target_collectibles.append(r)
+				if n.position.distance_squared_to(pos) < pickup_sq:
+					rewards.append(r)
+			elif n.position.distance_squared_to(pos) < pickup_sq:
 				rewards.push_back([n.position, tree_value, false])   # felled, not attracted
 
 	# Enemy spawn markers (the red X). EntityBirth nodes are pooled under
@@ -1076,6 +1101,9 @@ func gather(main, player) -> void:
 	profile["stand_continuity"] = row.stand_continuity
 	profile["drop_pull"] = row.drop_pull
 	profile["drop_quiet"] = drop_quiet
+	if _target_mode:
+		profile["target_collectibles"] = _target_collectibles
+		profile["target_enemies"] = _target_enemies
 	profile["pickup_radius"] = pickup_radius   # every row: the attract rim prices drops
 	if row.get("stand_income", false):
 		# The not-moving material tick, in the pickup unit (gold_value per
@@ -1449,6 +1477,8 @@ func _add_unit(unit, pos: Vector2, range_sq: float, target_range_sq: float, pick
 		return
 
 	var radius = _body_radius(unit)
+	if _target_mode:
+		_target_enemies.append([unit.position, radius])
 	var damage = DEFAULT_CONTACT_DAMAGE
 	if unit.current_stats and unit.current_stats.damage > 0:
 		damage = float(unit.current_stats.damage)

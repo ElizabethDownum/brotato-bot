@@ -342,9 +342,13 @@ func _tick():
 			anc = int(arb.last_anchor_dist)   # px to the profile anchor (-1 = none)
 		var dtg = -1
 		var tswitch = 0
+		var tkind = "none"
+		var tdrop = 0
 		if arb and arb.get("last_target_dist") != null:
-			dtg = int(arb.last_target_dist)    # px to committed floor drop (-1 = none)
+			dtg = int(arb.last_target_dist)    # px to committed collectible (-1 = none)
 			tswitch = int(arb.target_switches)
+			tkind = str(arb.last_target_kind)
+			tdrop = int(arb.target_threat_drops)
 		var us = -1
 		if move_behavior.get("last_arb_us") != null:
 			us = int(move_behavior.last_arb_us)   # steering cost this tick, microseconds
@@ -364,6 +368,7 @@ func _tick():
 			"eff": hs[0], "turn": hs[1], "flips": hs[2], "frames": hs[3], "still": hs[4],
 			"pesc": pesc, "pfire": pfire, "sok": sok, "eng": int(eng), "eblk": eblk,
 			"anc": anc, "dtg": dtg, "tswitch": tswitch, "us": us, "hop": hop, "stand": stand,
+			"tkind": tkind, "tdrop": tdrop,
 			"ticks": hs[5], "breaks": hs[6]}
 
 	snap.mats = materials(player.position)
