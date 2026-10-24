@@ -88,6 +88,16 @@ func test_shop_dead_board_never_asks():
 	assert_eq(_shop([30.0, 29.0], [0, 1], ["a", "b"], [], 50, [10, 10]), "ask", "same board with scores up is a tie")
 
 
+func test_shop_dead_board_beats_pivot():
+	assert_eq(_shop([5.0, 40.0], [0], ["a", "goal"], ["goal"], 50, [10, 90]), "",
+		"goal offered but unaffordable, the rest below min_buy")
+	assert_eq(_shop([30.0, 40.0], [], ["a", "goal"], ["goal"], 20, [90, 90]), "", "nothing affordable")
+	assert_eq(_shop([7.0, 40.0], [0], ["a", "goal"], ["goal"], 50, [10, 90]), "pivot",
+		"goal unaffordable but another option reaches min_buy")
+	assert_eq(DecisionClient.should_ask([1.0, 2.0], [0, 1], CFG, ["a", "goal"], ["goal"]), "pivot",
+		"level-up keeps pivoting below the floor")
+
+
 func test_shop_tie_needs_floor_and_margin():
 	assert_eq(_shop([10.0, 8.5], [0, 1], ["a", "b"], [], 50, [10, 10]), "ask", "tie above floor")
 	assert_eq(_shop([10.0, 5.0], [0, 1], ["a", "b"], [], 50, [10, 10]), "", "clear winner")

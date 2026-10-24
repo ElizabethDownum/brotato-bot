@@ -90,8 +90,9 @@ func discard_response(id: String) -> void:
 # Shop (min_buy given; gold, prices parallel to scores, asked_this_visit asks so
 # far this visit), checked in this order:
 #   ""       asked_this_visit has reached ask_per_visit
-#   "pivot"  an offered id is in ask_on (on every board of the visit)
 #   ""       a dead board: no affordable option scores at or above min_buy
+#            (even with an ask_on id offered: an unaffordable goal never asks)
+#   "pivot"  an offered id is in ask_on (on every board of the visit)
 #   "ask"    a tie: best >= ask_floor and best - second < ask_tie_margin
 #   "ask"    a big purchase: gold >= ask_gold_floor and the best affordable
 #            option costs at least ask_big_share of gold (it cannot be an ask_on
@@ -103,9 +104,6 @@ static func should_ask(scores: Array, affordable: Array, cfg: Dictionary,
 	var shop = min_buy != null
 	if shop and asked_this_visit >= int(cfg.get("ask_per_visit", DEFAULT_PER_VISIT)):
 		return ""
-	for id in offered_ids:
-		if ask_on.has(id):
-			return "pivot"
 	var vals = []
 	var best_i = -1
 	for i in affordable:
@@ -118,6 +116,11 @@ static func should_ask(scores: Array, affordable: Array, cfg: Dictionary,
 	var margin = float(cfg.get("ask_tie_margin", DEFAULT_TIE_MARGIN))
 	var floor_v = float(cfg.get("ask_floor", DEFAULT_FLOOR))
 	vals.sort()
+	if shop and (best_i < 0 or float(scores[best_i]) < float(min_buy)):
+		return ""
+	for id in offered_ids:
+		if ask_on.has(id):
+			return "pivot"
 	if not shop:
 		if vals.size() < 2:
 			return ""
@@ -125,12 +128,12 @@ static func should_ask(scores: Array, affordable: Array, cfg: Dictionary,
 		if top - vals[vals.size() - 2] < margin or top < floor_v:
 			return "ask"
 		return ""
-	if best_i < 0 or float(scores[best_i]) < float(min_buy):
-		return ""
 	var best = vals[vals.size() - 1]
 	if vals.size() >= 2 and best >= floor_v and best - vals[vals.size() - 2] < margin:
 		return "ask"
-	if best_i < prices.size() and gold >= int(cfg.get("ask_gold_floor", DEFAULT_GOLD_FLOOR)) 			and float(prices[best_i]) >= float(cfg.get("ask_big_share", DEFAULT_BIG_SHARE)) * float(gold):
+	if best_i < prices.size() \
+			and gold >= int(cfg.get("ask_gold_floor", DEFAULT_GOLD_FLOOR)) \
+			and float(prices[best_i]) >= float(cfg.get("ask_big_share", DEFAULT_BIG_SHARE)) * float(gold):
 		return "ask"
 	return ""
 
