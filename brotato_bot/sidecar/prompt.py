@@ -55,11 +55,12 @@ _DROP_KEYS = frozenset({"source", "name"})
 __all__ = ["SCHEMA_PATH", "build", "challenge_texts", "system_prompt"]
 
 
-def system_prompt(kind: str) -> str:
+def system_prompt(kind: str, *, schema_text: str | None = None) -> str:
     """The system prompt for a request ``kind``, with the decision schema inlined."""
     name = "checkpoint.md" if kind == "checkpoint" else "decide.md"
     text = (PROMPTS_DIR / name).read_text(encoding="utf-8")
-    schema_text = SCHEMA_PATH.read_text(encoding="utf-8").strip()
+    if schema_text is None:
+        schema_text = SCHEMA_PATH.read_text(encoding="utf-8").strip()
     return text.replace(SCHEMA_PLACEHOLDER, schema_text)
 
 
@@ -397,8 +398,11 @@ ANSWER_FORMAT = (
     "`option_index` indexes the Options list above (the request's `options[]`), never the "
     "shop slot `index` in the State section. On the crate screen, answer `take` or "
     "`recycle` without `option_index`."
-    " Shop answers may include `decline: [option_index, ...]` alongside any action; "
-    "use Options indices for every item your reasoning rejects."
+    " Every shop or shop-pivot answer requires `rulings`: one "
+    '`{"option_index": i, "verdict": "approve" | "decline"}` per offered option. '
+    "Judge each against the goal, held items and weapons, and survival. "
+    "The rules may buy anything you approve this turn and none of what you decline. "
+    "Omit rulings on level-ups, crates and checkpoints."
 )
 
 

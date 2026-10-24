@@ -457,9 +457,9 @@ def test_collect_appends_experience(tmp_paths):
     assert records[0]["chosen"] == "weapon_smg_1"
     assert records[0]["kept_to_end"] is True
     md = report.read_text(encoding="utf-8")
-    assert "| kind | action | source | confidence | rationale | outcome |" in md
-    assert "| shop | buy | haiku | 0.8 | cheap ranged damage | death |" in md
-    assert "| shop | buy | haiku | 0.6 | armor for wave 3 |  |" in md
+    assert "| kind | action | source | confidence | rulings | rationale | outcome |" in md
+    assert "| shop | buy | haiku | 0.8 | - | cheap ranged damage | death |" in md
+    assert "| shop | buy | haiku | 0.6 | - | armor for wave 3 |  |" in md
 
 
 def test_collect_twice_does_not_duplicate_experience(tmp_paths):
@@ -497,7 +497,7 @@ def test_collect_missing_decisions_leaves_experience_absent(tmp_paths):
     report = collect.collect(RUN_ID, tmp_paths)
     assert not (tmp_paths.decisions_dir / "experience.jsonl").exists()
     md = report.read_text(encoding="utf-8")
-    assert "| kind | action | source | confidence | rationale | outcome |" in md
+    assert "| kind | action | source | confidence | rulings | rationale | outcome |" in md
     assert "| cheap ranged damage |  |" in md
 
 
@@ -709,36 +709,54 @@ def test_reused_crates_keep_every_action_with_the_original_decision_id():
     assert md.count("| 7 | item_weird_ghost | recycle | 2 | haiku |") == 2
 
 
-def test_collect_accepts_decline_and_reports_each_pass_without_counting_a_buy():
+def test_collect_joins_rulings_missing_and_reports_pass_without_counting_a_buy():
+    rulings = [{"option_index": 0, "verdict": "approve"}, {"option_index": 1, "verdict": "decline"}]
     events = [
         {
             "kind": "decision",
+            "id": "d-1",
             "request_kind": "pivot",
             "source": "haiku",
-            "response": {"action": "buy", "option_index": 0, "decline": [1, 2]},
+            "response": {"action": "buy", "option_index": 0, "rulings": rulings},
         },
         {"kind": "offer", "wave": 15, "items": [{"id": "fresh"}, {"id": "ghost"}]},
         {"kind": "shop", "wave": 15, "action": "buy", "item_id": "fresh", "source": "haiku"},
         {"kind": "shop", "wave": 15, "action": "pass", "item_id": "ghost", "source": "haiku"},
+        {"kind": "decision_applied", "id": "d-1", "applied": "buy", "rulings_missing": 1},
     ]
     summary = collect.summarize(events)
-    assert summary.decisions[0].decline == [1, 2]
+    assert summary.decisions[0].rulings == rulings
+    assert summary.decisions[0].rulings_missing == 1
     assert summary.offers[0].bought == ["fresh"]
     assert summary.shop[1].action == "pass" and summary.shop[1].source == "haiku"
-    assert RunSummary.model_validate_json(summary.model_dump_json()).decisions[0].decline == [1, 2]
+    row = RunSummary.model_validate_json(summary.model_dump_json()).decisions[0]
+    assert row.rulings == rulings and row.rulings_missing == 1
     assert "| 15 | pass | ghost | - | - | haiku |" in render.run_report(summary)
+    assert "approve 1, decline 1, missing 1" in render.run_report(summary)
 
 
-@pytest.mark.parametrize("decline", [None, "1", 1, {}, [None, True, "bad", 1.5]])
-def test_invalid_decline_response_does_not_break_collection(decline):
+@pytest.mark.parametrize("rulings", [None, "1", 1, {}, [None, True, "bad", 1.5]])
+def test_invalid_rulings_response_does_not_break_collection(rulings):
     summary = collect.summarize(
         [
             {
                 "kind": "decision",
                 "request_kind": "shop",
                 "source": "invalid",
-                "response": {"action": "skip", "decline": decline},
+                "response": {"action": "skip", "rulings": rulings},
             },
         ]
     )
-    assert summary.decisions[0].decline == []
+    assert summary.decisions[0].rulings == []
+    assert summary.decisions[0].rulings_missing is None
+
+
+@pytest.mark.parametrize("malformed_id", [None, [], {}])
+def test_rulings_missing_join_tolerates_malformed_record_ids(malformed_id):
+    summary = collect.summarize(
+        [
+            {"kind": "decision", "id": malformed_id, "request_kind": "shop", "source": "haiku"},
+            {"kind": "decision_applied", "id": malformed_id, "rulings_missing": 2},
+        ]
+    )
+    assert summary.decisions[0].rulings_missing is None

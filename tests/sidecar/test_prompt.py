@@ -12,12 +12,12 @@ FIXTURES = Path(__file__).parent / "fixtures"
 def test_shop_prompt_requires_binding_vetoes_for_rejected_items():
     text = (Path(prompt.__file__).parent / "prompts" / "decide.md").read_text("utf-8")
     shop = text.split("# Shop\n", 1)[1].split("# Crates", 1)[0]
-    assert "decline: [option_index, ...]" in shop
-    assert "Anything you do not decline may be bought by the" in shop
-    assert "If your reasoning argues against an offered item, put it in `decline`." in shop
-    assert "(`ask_on`) items you do not buy are declined automatically." in shop
-    assert "`lock` target records no verdict" in shop
-    assert "decline: [option_index, ...]" in prompt.ANSWER_FORMAT
+    assert "must include `rulings`, one entry per offered option" in shop
+    assert '"verdict": "approve" | "decline"' in shop
+    assert "goal, held items and weapons, and survival" in shop
+    assert "The rules may buy anything you approve this turn and none of what you decline" in shop
+    assert "A `lock` target\nalso needs a ruling" in shop
+    assert "requires `rulings`" in prompt.ANSWER_FORMAT
 
 
 RUN_ID = "20261022-201500-well_rounded-d0"

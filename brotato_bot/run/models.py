@@ -64,7 +64,8 @@ class DecisionRow(BaseModel):
     kind: str
     action: str | None = None
     option_index: int | None = None
-    decline: list[int] = Field(default_factory=list)
+    rulings: list[dict[str, Any]] = Field(default_factory=list)
+    rulings_missing: int | None = None
     source: str
     confidence: float | None = None
     rationale: str | None = None

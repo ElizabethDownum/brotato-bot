@@ -331,22 +331,32 @@ func test_validate_response_coerces_float_index():
 	assert_eq(c.get("confidence"), 1.0, "confidence coerced to float")
 
 
-func test_validate_decline_defaults_and_normalizes_json_integers():
+func test_validate_rulings_defaults_and_normalizes_json_integers():
 	var r = {"action": "skip", "confidence": 0.5}
-	assert_true(DecisionClient.validate_response(r), "absent decline accepted")
-	assert_eq(r.decline, [], "absent means empty")
-	r = JSON.parse('{"action":"buy","option_index":0,"decline":[0,1,-1,99,1],"confidence":0.8}').result
-	assert_true(DecisionClient.validate_response(r), "integer array survives JSON parsing")
-	assert_eq(r.decline, [0, 1, -1, 99, 1], "range and target checked when applying")
-	for index in r.decline:
-		assert_eq(typeof(index), TYPE_INT, "whole JSON float normalized")
+	assert_true(DecisionClient.validate_response(r), "missing rulings do not invalidate the action")
+	assert_false(r.has("rulings"), "no field synthesized for nonshop answers")
+	r = JSON.parse('{"action":"buy","option_index":0,"rulings":[{"option_index":0,"verdict":"decline"},{"option_index":1,"verdict":"approve"}],"confidence":0.8}').result
+	assert_true(DecisionClient.validate_response(r), "contradictory ruling is not an invalid action")
+	assert_eq(r.rulings.size(), 2, "complete board survives JSON parsing")
+	assert_eq(r.rulings[0].verdict, "decline", "action override happens after application")
+	for entry in r.rulings:
+		assert_eq(typeof(entry.option_index), TYPE_INT, "whole JSON float normalized")
 
 
-func test_validate_decline_rejects_wrong_container_or_member_types():
+func test_validate_rulings_tolerates_wrong_container_or_member_types():
 	for value in [null, "1", 1, {}, [true], [null], ["1"], [1.5], [{}], [[]]]:
-		assert_false(DecisionClient.validate_response({"action": "skip", "confidence": 0.8, "decline": value}),
-			"invalid decline: " + str(value))
-	assert_true(DecisionClient.validate_response({"action": "reroll", "confidence": 0.8, "decline": []}), "empty array accepted")
+		var r = {"action": "skip", "confidence": 0.8, "rulings": value}
+		assert_true(DecisionClient.validate_response(r), "rulings cannot invalidate action: " + str(value))
+		assert_eq(r.rulings, [], "malformed means no valid entries")
+	var raw = [
+		{"option_index": 0, "verdict": "approve"}, {"option_index": 0, "verdict": "bad"},
+		{"option_index": 1, "verdict": "decline"}, {"option_index": 2, "verdict": "bad"},
+		{"option_index": true, "verdict": "approve"}, {"option_index": 1.5, "verdict": "approve"},
+		{"option_index": -1, "verdict": "approve"}, {"option_index": 99, "verdict": "decline"}]
+	var normalized = DecisionClient.normalize_rulings(raw, 3)
+	assert_eq(normalized.size(), 1, "duplicate, invalid and out-of-range entries ignored")
+	assert_eq(normalized[0].option_index, 1, "only unique valid index remains")
+	assert_eq(normalized[0].verdict, "decline", "valid verdict retained")
 
 
 func test_validate_pass_requires_a_nonnegative_whole_index():

@@ -266,14 +266,15 @@ of a visit (the first view and each board after a reroll; a lock, buy or pass
 leaves the same board), only while a sidecar heartbeat is fresh (section 4).
 BotRuntime keeps one ruling store per turn and player, shared by the end-of-wave
 crates and the full shop visit that follows. Entries are keyed by item id and keep
-`verdict`, `decision_id` and the originating `screen`: applied `buy`/`take` approve,
-and `pass`/`recycle` decline. Declined ids are omitted from shop asks and all triggers
+`verdict`, `decision_id` and the originating `screen`: shop board `rulings` approve
+or decline every offered option, with applied `buy`/`pass` taking precedence for
+their target id; crate `take` approves and `recycle` declines. Declined ids are omitted from shop asks and all triggers
 below. Approved ids stay visible with their scores but cannot trigger a pivot;
 when the best affordable option is approved, the rules buy first under their usual
 score/gold checks. A later pass can ask about the remaining board. Declined ids are
 excluded from buying, saving and preferred-weapon hunting, and their carried locks
 are released at shop entry.
-Locks retain their existing behavior and record no verdict. Rulings clear at
+Shop locks follow their target's ruling; a decline unlocks them. Rulings clear at
 run start and each wave start (including a repeated wave number), with automatic
 invalidation if the wave stamp changes. Crates and their following shop see the
 same `RunData.current_wave`; GO updates it before loading the next wave.
@@ -484,7 +485,7 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    | `halt` | `reason` (`human input`, `wrong profile`) | the bot halts |
    | `export` | `export_kind`, `path`, `seq` | every state export (F9 or a decision) |
    | `decision` | `request_kind`, `id`, `wave`, `source`, `response` | every decision request. `source` is `haiku` (valid answer), `invalid`, `timeout`, `interrupted` or `busy`. |
-   | `decision_applied` | `id`, `action`, `option_index`, `applied` | shop only, after a decision. `applied` is `buy`, `lock`, `pass`, `reroll`, `skip`, `revise_plan` or `rule`. |
+   | `decision_applied` | `id`, `action`, `option_index`, `applied`, `rulings_missing` | shop only, after a decision. `applied` is `buy`, `lock`, `pass`, `reroll`, `skip`, `revise_plan` or `rule`. `rulings_missing` counts options without a valid ruling before action overrides (0 on timeout). |
    | `shop` | `wave`, `action` (`buy`, `reroll`, `lock`, `pass`, `ban`, `go`), `item_id`, `price`, `score`, `source` (`rule`, `haiku`), `gold_after` | every bot shop action. `item_id` is null for `reroll` and `go`; `price` is the reroll's cost (0 when free) and null for `go`; `score` is null for `reroll`, `ban` and `go` |
    | `levelup` | `wave`, `id` (the decision's id, `""` when not asked), `picked`, `alternatives`, `source` (`haiku`, `rule`, `timeout`) | every bot level-up pick that landed |
    | `challenge` | `id`, `is_target` | a challenge completes for the first time on this profile |
@@ -605,7 +606,7 @@ All files are under `%APPDATA%\Brotato\brotato-bot\` (`user://brotato-bot`).
   |---|---|
   | `action` | `buy`, `lock`, `pass`, `reroll`, `skip` (shop); `pick` (level-up); `take`, `recycle` (crate); `revise_plan` (shop and `checkpoint` only); `skip` (`checkpoint`) |
   | `option_index` | int >= 0, required for `buy`, `lock`, `pass` and `pick`; omitted for `take` and `recycle` |
-  | `decline` | optional array of integer Options indices on shop/pivot answers; absent means `[]`; out-of-range indices and the answer's own `buy`/`lock` target are ignored with `BOTLOG` lines |
+  | `rulings` | required on shop and shop-pivot answers, omitted on other screens; one `{"option_index": i, "verdict": "approve" \| "decline"}` per offered option |
   | `confidence` | number in 0..1, required |
   | `rationale` | string, optional |
   | `plan_patch` | object of section 3.5 plan keys, required for `revise_plan` (merged into `plan.json`; unknown or wrong-typed keys are dropped) |
@@ -617,27 +618,37 @@ All files are under `%APPDATA%\Brotato\brotato-bot\` (`user://brotato-bot`).
   may judge the item again. `skip` ends the whole visit. Prefer `pass` when only
   the option in question is wrong.
 
-  Shop and shop-pivot answers may also carry `decline: [option_index, ...]`
-  alongside any action. Each valid index is a turn-long decline of that item id,
-  handled like `pass`: unlock all its copies, release a matching saved-gold reserve,
-  and write a `shop` event with `action: "pass", source: "haiku"`. Repeated indices
-  or copies of an id produce one pass event per answer. Protection of a buy/lock
-  target applies to all copies of its id, because verdicts are keyed by item id.
-  Explicit declines apply even if the main action cannot land. A fresh veto
-  supersedes an earlier approval; reusing a decline retains its original decision id.
+  Rule on every offered option against the goal, held equipment and survival.
+  Approve permits the rules to buy under their normal score/gold checks; decline
+  bars the id for the turn, unlocks every active copy, releases a matching saved-gold
+  reserve, and writes one `shop` event per id with `action: "pass", source: "haiku"`.
+  Every fresh verdict records this decision id, replacing older verdict provenance.
+  Rulings refer to the original board even after a reroll. Applied `buy` and `pass`
+  force approve and decline for their target id respectively, logging contradictions
+  in BOTLOG. Lock has no exemption: a declined lock target is unlocked and released.
+  When copies of one id have conflicting verdicts, decline wins except for the
+  applied buy/pass target id, whose action wins for every copy.
 
-  After a valid **applied** shop answer, every offered `ask_on` id except the
-  bought id is declined automatically, with that decision id. A `lock` target is
-  also exempt: locking records no verdict and keeps today's lock/reserve behavior.
-  A carried locked copy needs approval again next wave; its lock bonus cannot
-  bypass review. Timeout, invalid/missing answers and failed primary actions
-  create no automatic declines, so a later board may ask again.
+  Missing/malformed `rulings` never invalidate an otherwise usable shop action.
+  Bad entries, out-of-range indices and bad verdicts are ignored; duplicate indices
+  invalidate every entry for that option. After an applied answer, unruled `ask_on`
+  options default to decline; other unruled options get no fresh verdict and stay
+  with the rules. Explicit valid rulings apply even if the primary action fails.
+  Timeout, invalid/missing answers and failed primary actions create no automatic
+  declines. The BOTLOG `rulings_missing` count and the same field on `decision_applied`
+  count all unruled options before action overrides or automatic review declines.
+  The Decisions table reports response approve/decline counts and this missing count.
+  Complete well-formed rulings remain required by the published schema and prompts;
+  sidecar runtime normalization implements this tolerance rather than retrying a
+  usable action solely for bad rulings. The sidecar specializes the structured-output
+  schema per request screen (shop pivots use shop); checkpoint skip/revise_plan
+  omit rulings despite sharing action names. Level-ups and crates are unchanged.
 
   Rules may buy, lock or save for an `ask_on` id only while the turn store holds
   `approve`. This also gates carried locks, preferred-weapon hunting and weapon
   savings used by reroll-keep. It holds when the sidecar is unavailable or the
   ask budget is spent. Other unruled items may still be bought by the rules:
-  anything Haiku argues against must be listed in `decline`.
+  anything Haiku argues against must receive a decline verdict in `rulings`.
   If a plan patch newly adds an existing saving target to `ask_on` without an
   approval, its old lock and reserve are released before the rules continue.
 

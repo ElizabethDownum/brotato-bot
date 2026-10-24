@@ -39,6 +39,7 @@ from brotato_bot.run.models import (
 )
 from brotato_bot.run.prepare import bot_profile_id
 from brotato_bot.sidecar import experience
+from brotato_bot.sidecar.schema import normalize_rulings
 
 END_OUTCOMES = {"won": "win", "death": "death"}  # abandoned / quit / no end line: incomplete
 
@@ -110,6 +111,11 @@ def summarize(events: list[dict], plan: dict | None = None) -> render.ReportSumm
     bag_peaks: dict[int, float] = {}
     build = None
     launch = None
+    rulings_missing = {
+        _str(e.get("id")): _int(e.get("rulings_missing"))
+        for e in events
+        if e.get("kind") == "decision_applied" and _str(e.get("id")) is not None
+    }
 
     for e in events:
         kind = e.get("kind")
@@ -182,7 +188,6 @@ def summarize(events: list[dict], plan: dict | None = None) -> render.ReportSumm
                     bag_peaks[w] = max(bag_peaks.get(w, bag), bag)
         elif kind == "decision":
             resp = e.get("response") if isinstance(e.get("response"), dict) else {}
-            declines = resp.get("decline")
             wave = _int(e.get("wave"))
             row = DecisionRow(
                 wave=wave if wave is not None else last_wave,
@@ -191,9 +196,8 @@ def summarize(events: list[dict], plan: dict | None = None) -> render.ReportSumm
                 source=_str(e.get("source")) or "?",
                 action=_str(resp.get("action")),
                 option_index=_int(resp.get("option_index")),
-                decline=[index for raw in declines if (index := _int(raw)) is not None]
-                if isinstance(declines, list)
-                else [],
+                rulings=normalize_rulings(resp.get("rulings")),
+                rulings_missing=rulings_missing.get(_str(e.get("id"))),
                 confidence=_float(resp.get("confidence")),
                 rationale=_str(resp.get("rationale")),
             )

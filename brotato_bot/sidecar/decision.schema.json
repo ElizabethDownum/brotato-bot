@@ -8,7 +8,19 @@
       "enum": ["buy", "reroll", "lock", "pass", "skip", "pick", "take", "recycle", "revise_plan"]
     },
     "option_index": {"type": "integer", "minimum": 0},
-    "decline": {"type": "array", "items": {"type": "integer"}},
+    "rulings": {
+      "description": "Required on shop (including shop pivots), omitted on other screens. Specialize against the request before structured output.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "option_index": {"type": "integer", "minimum": 0},
+          "verdict": {"type": "string", "enum": ["approve", "decline"]}
+        },
+        "required": ["option_index", "verdict"],
+        "additionalProperties": false
+      }
+    },
     "plan_patch": {
       "type": "object",
       "description": "Plan keys to merge into plan.json; only these keys, with these types.",
@@ -61,6 +73,14 @@
   "required": ["action", "confidence", "rationale", "tags"],
   "additionalProperties": false,
   "allOf": [
+    {
+      "if": {"properties": {"action": {"enum": ["buy", "lock", "pass", "reroll"]}}, "required": ["action"]},
+      "then": {"required": ["rulings"]}
+    },
+    {
+      "if": {"properties": {"action": {"enum": ["pick", "take", "recycle"]}}, "required": ["action"]},
+      "then": {"not": {"required": ["rulings"]}}
+    },
     {
       "if": {
         "properties": {"action": {"enum": ["take", "recycle"]}},

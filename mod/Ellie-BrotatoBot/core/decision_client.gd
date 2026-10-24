@@ -14,7 +14,7 @@ extends Reference
 #                        id = "<run_id>-<seq:03>" (seq is the state export's,
 #                        so state/<id>.json is the matching state file);
 #                        deadline_ms is absolute epoch ms (OS.get_system_time_msecs)
-#   responses/<id>.json  {action, option_index?, decline?, plan_patch?, confidence,
+#   responses/<id>.json  {action, option_index?, rulings?, plan_patch?, confidence,
 #                        rationale?, tags?} -- see validate_response
 #
 #   sidecar.alive        touched by the sidecar while it runs; the mod asks only
@@ -276,7 +276,7 @@ func poll_response(id):
 # becomes a float.
 #   action        one of ACTIONS
 #   option_index  int >= 0, required for buy / lock / pass / pick
-#   decline       optional array of ints (range checked against shop options later)
+#   rulings       malformed/missing entries are ignored, never invalidate the action
 #   confidence    number in 0..1
 #   rationale     String when present
 #   plan_patch    Dictionary, required for revise_plan
@@ -296,19 +296,8 @@ static func validate_response(r) -> bool:
 		if typeof(idx) != TYPE_INT or idx < 0:
 			return false
 		r["option_index"] = idx
-	var declines = r.get("decline", [])
-	if typeof(declines) != TYPE_ARRAY:
-		return false
-	var normalized = []
-	for index in declines:
-		if typeof(index) == TYPE_REAL:
-			if index != floor(index):
-				return false
-			index = int(index)
-		if typeof(index) != TYPE_INT:
-			return false
-		normalized.append(index)
-	r["decline"] = normalized
+	if r.has("rulings"):
+		r["rulings"] = normalize_rulings(r.rulings)
 	var c = r.get("confidence")
 	if typeof(c) != TYPE_REAL and typeof(c) != TYPE_INT:
 		return false
@@ -321,3 +310,30 @@ static func validate_response(r) -> bool:
 	if r.action == "revise_plan" and typeof(r.get("plan_patch")) != TYPE_DICTIONARY:
 		return false
 	return true
+
+
+# Duplicate indices invalidate ALL entries for that option, even if one verdict
+# is malformed. Range checking waits until the original board is available.
+static func normalize_rulings(raw, option_count = -1) -> Array:
+	if typeof(raw) != TYPE_ARRAY:
+		return []
+	var counts = {}
+	var candidates = []
+	for entry in raw:
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		var index = entry.get("option_index")
+		if typeof(index) == TYPE_REAL and index == floor(index):
+			index = int(index)
+		if typeof(index) != TYPE_INT:
+			continue
+		counts[index] = int(counts.get(index, 0)) + 1
+		if index < 0 or (option_count >= 0 and index >= option_count):
+			continue
+		if entry.get("verdict") in ["approve", "decline"]:
+			candidates.append({"option_index": index, "verdict": entry.verdict})
+	var normalized = []
+	for entry in candidates:
+		if counts[entry.option_index] == 1:
+			normalized.append(entry)
+	return normalized

@@ -37,14 +37,15 @@ choice close or the offer unusual.
 
 # Shop
 
-You may add `decline: [option_index, ...]` alongside any shop or shop-pivot action.
-Each index declines that item's id for the rest of the turn, unlocks its copies and
-releases any gold reserved for it. Anything you do not decline may be bought by the
-rules this turn. If your reasoning argues against an offered item, put it in `decline`.
-A plan's review-list (`ask_on`) items you do not buy are declined automatically.
-A `lock` target records no verdict, so it remains eligible for review next wave;
-the rules cannot buy it without approval. Do not put your own `buy` or `lock` target
-in `decline`. All indices refer to the Options list.
+Every shop or shop-pivot answer must include `rulings`, one entry per offered option:
+`{"option_index": i, "verdict": "approve" | "decline"}`. Use every Options index
+exactly once. Judge each option against the goal, held items and weapons, and survival.
+The rules may buy anything you approve this turn and none of what you decline,
+subject to their normal score and gold checks. Decline unlocks all copies and releases
+any gold reserved for that item. Your `buy` target must be approved and your `pass`
+target declined; if they contradict the rulings, the action wins. A `lock` target
+also needs a ruling; a decline releases its lock and reserve. All rulings expire
+next wave. Omit `rulings` on level-ups, crates and checkpoints.
 
 # Crates
 

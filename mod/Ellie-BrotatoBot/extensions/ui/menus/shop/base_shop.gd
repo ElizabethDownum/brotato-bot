@@ -515,6 +515,7 @@ func _auto_shop_player(pi) -> void:
 					target = null
 				var target_score = ask.scores[oi] if target != null else null
 				var applied = "rule"
+				var rulings_missing = 0
 				if act == "buy" and target != null and int(target.value) <= gold:
 					tried[target.get_instance_id()] = true
 					if target.locked:
@@ -529,7 +530,6 @@ func _auto_shop_player(pi) -> void:
 						bought.push_back("%s@%d(ai)" % [t_id, t_price])
 						buys += 1
 						_record_shop(pi, "buy", t_id, t_price, target_score, "haiku")
-						rt.turn_rulings.remember(turn_wave, pi, t_id, "approve", str(rt.last_decision.get("id", "")), "shop")
 						applied = "buy"
 				elif act == "pass" and target != null:
 					applied = "pass"
@@ -573,9 +573,10 @@ func _auto_shop_player(pi) -> void:
 							saved_note = ""
 						applied = "revise_plan"
 				if r != null and act in ["buy", "lock", "pass", "reroll", "skip", "revise_plan"]:
-					var declined = rt.turn_rulings.shop_declines(turn_wave, pi, ask.ids,
+					var ruling_result = rt.turn_rulings.shop_rulings(turn_wave, pi, ask.ids,
 						review_ids, r, str(rt.last_decision.get("id", "")), applied)
-					for di in declined:
+					rulings_missing = ruling_result.missing
+					for di in ruling_result.declined:
 						var declined_id = ask.ids[di]
 						# A reroll may reuse nodes: match the original id, not the old node.
 						for node in container._shop_items:
@@ -586,7 +587,7 @@ func _auto_shop_player(pi) -> void:
 							saved_id = ""
 							saved_note = ""
 						_record_shop(pi, "pass", declined_id, ask.options[di].price, ask.scores[di], "haiku")
-				_record_applied(rt, r, applied)
+				_record_applied(rt, r, applied, rulings_missing)
 				if applied == "skip":
 					break
 				if applied == "buy":
@@ -754,7 +755,7 @@ func _record_offer(view, gold, nodes, plan, pi) -> void:
 # Follow-up to BotRuntime's decision event: what the shop actually did.
 # {id, action (the response's, or null), option_index (or null), applied:
 # "buy"|"pass"|"lock"|"reroll"|"skip"|"revise_plan"|"rule"}.
-func _record_applied(rt, r, applied) -> void:
+func _record_applied(rt, r, applied, rulings_missing) -> void:
 	if rt.recorder == null or not rt.recorder.is_open():
 		return
 	rt.recorder.event("decision_applied", {
@@ -762,6 +763,7 @@ func _record_applied(rt, r, applied) -> void:
 		"action": r.action if r != null else null,
 		"option_index": r.get("option_index") if r != null else null,
 		"applied": applied,
+		"rulings_missing": rulings_missing,
 	})
 
 # The weapon on offer worth saving for: a strong weapon (tier 2+ / combine) we

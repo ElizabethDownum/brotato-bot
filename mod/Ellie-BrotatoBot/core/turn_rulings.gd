@@ -1,4 +1,5 @@
 extends Reference
+const DecisionClient = preload("decision_client.gd")
 # Applied Haiku verdicts for one turn: crates and the following shop visit.
 # BotRuntime owns this pure store across scene changes, resetting at wave/run start.
 
@@ -35,47 +36,51 @@ static func crate_fallback(item_id, ask_on: Array, score: float) -> String:
 
 
 # Record a fresh shop answer against the ORIGINAL board, even after a reroll.
-# Explicit declines apply independently of the main action; automatic review-list
-# declines and pass require an applied action. Call only with a validated response.
-# Return one original option index per declined id for unlock/reserve/event handling.
-func shop_declines(wave, pi, ids: Array, ask_on: Array, response: Dictionary,
-		decision_id: String, applied: String) -> Array:
-	var act = response.action
+# Explicit rulings apply even if the primary action cannot land. Missing review
+# verdicts default to decline only after an applied answer. Missing counts are
+# measured before action overrides. Return original indices for decline effects.
+func shop_rulings(wave, pi, ids: Array, ask_on: Array, response: Dictionary,
+		decision_id: String, applied: String) -> Dictionary:
 	var oi = int(response.get("option_index", -1))
-	var protected_id = ""
-	if act in ["buy", "lock"] and oi >= 0 and oi < ids.size():
-		protected_id = ids[oi]
-	var indices = []
-	for index in response.get("decline", []):
-		if index < 0 or index >= ids.size():
-			print("BOTLOG SHOP decline index=%s ignored=invalid decision=%s" % [str(index), decision_id])
-		elif ids[index] == protected_id:
-			print("BOTLOG SHOP decline index=%d ignored=%s-target decision=%s" % [index, act, decision_id])
-		else:
-			indices.append(index)
-			print("BOTLOG SHOP decline index=%d item=%s decision=%s" % [index, ids[index], decision_id])
-	if applied != "rule":
-		for i in ids.size():
-			if ids[i] != protected_id and (ask_on.has(ids[i]) or (act == "pass" and i == oi)):
-				indices.append(i)
+	var by_index = {}
+	for entry in DecisionClient.normalize_rulings(response.get("rulings", []), ids.size()):
+		by_index[entry.option_index] = entry.verdict
+	var missing = ids.size() - by_index.size()
+	print("BOTLOG SHOP rulings_missing=%d decision=%s" % [missing, decision_id])
+	# The store is keyed by id: for conflicting copies decline wins, except
+	# that an applied buy/pass wins for every copy of its target id.
+	var verdicts = {}
+	var indices = {}
+	for i in ids.size():
+		var verdict = by_index.get(i, "")
+		if verdict == "" and applied != "rule" and ask_on.has(ids[i]):
+			verdict = "decline"
+		if verdict == "":
+			continue
+		var id = ids[i]
+		if not verdicts.has(id) or (verdict == "decline" and verdicts[id] == "approve"):
+			verdicts[id] = verdict
+			indices[id] = i
+	if applied in ["buy", "pass"] and oi >= 0 and oi < ids.size():
+		var target_id = ids[oi]
+		var action_verdict = "approve" if applied == "buy" else "decline"
+		if (by_index.has(oi) and by_index[oi] != action_verdict) \
+				or (verdicts.has(target_id) and verdicts[target_id] != action_verdict):
+			print("BOTLOG SHOP ruling contradiction item=%s action=%s wins decision=%s" % [target_id, applied, decision_id])
+		verdicts[target_id] = action_verdict
+		indices[target_id] = oi
 	var ruled = for_player(wave, pi)
 	var declined = []
-	var seen = {}
-	for i in indices:
-		var id = ids[i]
-		if seen.has(id):
-			continue
-		seen[id] = true
-		# A fresh veto is binding even if an earlier answer approved this id.
-		# Reuse of an existing decline preserves its original provenance.
-		if ruled.get(id, {}).get("verdict", "") != "decline":
-			ruled[id] = {"verdict": "decline", "decision_id": decision_id, "screen": "shop"}
-		declined.append(i)
-	return declined
+	for id in verdicts:
+		ruled[id] = {"verdict": verdicts[id], "decision_id": decision_id, "screen": "shop"}
+		if verdicts[id] == "decline":
+			declined.append(indices[id])
+	return {"declined": declined, "missing": missing}
 
 
-# Call only after an applied buy/pass/take/recycle. Locks have no verdict.
-# Preserve the first decision's provenance when either screen reuses it.
+# Single-choice acquisition record (crate take/recycle); shop boards instead use
+# shop_rulings, including the explicit verdict on a lock target. Pure cache reuse
+# preserves the first decision's provenance.
 func remember(wave, pi, item_id, verdict, decision_id, screen) -> void:
 	var ruled = for_player(wave, pi)
 	if verdict in ["approve", "decline"] and not ruled.has(item_id):

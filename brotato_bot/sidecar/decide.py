@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from brotato_bot.sidecar import claude_cli, prompt
-from brotato_bot.sidecar.schema import SCHEMA_PATH, validate
+from brotato_bot.sidecar.schema import normalize_response, schema_for, validate
 
 DEFAULTS: dict[str, Any] = {
     "model": "claude-haiku-5-5",
@@ -98,8 +98,7 @@ def _deterministic_error(raw: str) -> bool:
     return status in _DETERMINISTIC_STATUS
 
 
-def _repair_system() -> str:
-    schema_text = SCHEMA_PATH.read_text(encoding="utf-8").strip()
+def _repair_system(schema_text: str) -> str:
     return REPAIR_PROMPT.read_text(encoding="utf-8").replace(prompt.SCHEMA_PLACEHOLDER, schema_text)
 
 
@@ -134,11 +133,17 @@ def decide(
     attempts: list[Attempt] = []
 
     with tempfile.TemporaryDirectory(prefix="brotato-bot-") as tmp:
+        schema_text = json.dumps(schema_for(request), indent=2)
+        schema_file = Path(tmp) / "decision.schema.json"
+        schema_file.write_text(schema_text, encoding="utf-8")
         system_name = "checkpoint.md" if checkpoint else "decide.md"
         system_file = Path(tmp) / system_name
-        system_file.write_text(prompt.system_prompt(request.get("kind") or ""), encoding="utf-8")
+        system_file.write_text(
+            prompt.system_prompt(request.get("kind") or "", schema_text=schema_text),
+            encoding="utf-8",
+        )
         repair_file = Path(tmp) / "repair.md"
-        repair_file.write_text(_repair_system(), encoding="utf-8")
+        repair_file.write_text(_repair_system(schema_text), encoding="utf-8")
 
         def attempt(label: str, text: str, use_model: str, sys_file: Path):
             call_timeout_s = timeout_s
@@ -152,7 +157,7 @@ def decide(
                     text,
                     system_prompt_file=sys_file,
                     model=use_model,
-                    schema_path=SCHEMA_PATH,
+                    schema_path=schema_file,
                     timeout_s=call_timeout_s,
                 )
             except subprocess.TimeoutExpired:
@@ -183,15 +188,15 @@ def decide(
         try:
             res, errors = attempt("haiku", user, model, system_file)
             if not errors:
-                return Outcome(res.parsed, "haiku", attempts)
+                return Outcome(normalize_response(res.parsed, request), "haiku", attempts)
             retry = user + "\n\n## Previous answer was invalid\n" + "\n".join(errors)
             res, errors = attempt("haiku-retry", retry, model, system_file)
             if not errors:
-                return Outcome(res.parsed, "haiku-retry", attempts)
+                return Outcome(normalize_response(res.parsed, request), "haiku-retry", attempts)
             fix = _repair_message(user, claude_cli.answer_text(res.raw), errors)
             res, errors = attempt("repair", fix, s["repair_model"], repair_file)
             if not errors:
-                return Outcome(res.parsed, "repair", attempts)
+                return Outcome(normalize_response(res.parsed, request), "repair", attempts)
         except _CliFailed:
             pass
     return Outcome(None, "fallback", attempts)

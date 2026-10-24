@@ -22,22 +22,105 @@ def test_valid_buy():
     decision = schema.Decision.model_validate(_buy())
     assert decision.action == "buy"
     assert decision.option_index == 2
-    assert decision.decline == []
+    assert decision.rulings is None
 
 
 @pytest.mark.parametrize("action", ["buy", "lock", "pass", "reroll", "skip", "revise_plan"])
-def test_shop_decline_is_optional_integer_array_alongside_any_action(action):
-    obj = _buy(action=action, option_index=0, decline=[0, 1, -1, 99, 1])
+def test_shop_rulings_accompany_any_action_and_do_not_invalidate_it(action):
+    obj = _buy(
+        action=action,
+        option_index=0,
+        rulings=[
+            {"option_index": 0, "verdict": "approve"},
+            {"option_index": 1, "verdict": "decline"},
+        ],
+    )
     if action == "revise_plan":
         obj["plan_patch"] = {}
-    # Invalid option indices in decline are ignored by the mod, not rejected here.
     assert schema.validate(obj, SHOP) == []
-    assert schema.Decision.model_validate(obj).decline == [0, 1, -1, 99, 1]
+    assert schema.ShopDecision.model_validate(obj).rulings[1].verdict == "decline"
 
 
 @pytest.mark.parametrize("value", [None, "1", 1, {}, [True], [None], ["1"], [1.5], [[]]])
-def test_decline_rejects_non_array_or_non_integer_members(value):
-    assert any(e.startswith("decline") for e in schema.validate(_buy(decline=value)))
+def test_rulings_runtime_fallback_tolerates_non_array_or_malformed_entries(value):
+    obj = _buy(option_index=0, rulings=value)
+    assert schema.validate(obj, SHOP) == []
+    assert schema.normalize_response(obj, SHOP)["rulings"] == []
+    with pytest.raises(ValueError):
+        schema.ShopDecision.model_validate(obj)
+
+
+def test_rulings_partial_duplicate_bad_range_and_contradiction_normalization():
+    obj = _buy(
+        option_index=0,
+        rulings=[
+            {"option_index": 0.0, "verdict": "decline"},
+            {"option_index": 1, "verdict": "approve"},
+            {"option_index": 1, "verdict": "bad"},
+            {"option_index": -1, "verdict": "approve"},
+            {"option_index": 99, "verdict": "decline"},
+            {"option_index": True, "verdict": "approve"},
+        ],
+    )
+    assert schema.validate(obj, SHOP) == []
+    normalized = schema.normalize_response(obj, SHOP)
+    assert normalized["rulings"] == [{"option_index": 0, "verdict": "decline"}]
+    assert normalized["action"] == "buy"  # the mod overrides after a successful buy
+    assert schema.normalize_response(_buy(option_index=0), SHOP)["rulings"] == []
+
+
+def test_strict_shop_model_requires_rulings_and_other_screens_forbid_them():
+    with pytest.raises(ValueError, match="rulings"):
+        schema.ShopDecision.model_validate(_buy())
+    assert schema.validate(_buy(action="pick", rulings=[]), LEVELUP)[0].startswith("rulings")
+    assert schema.validate({**_revise({}), "rulings": []}, CHECKPOINT)[0].startswith("rulings")
+
+
+def test_published_contract_requires_complete_unique_in_range_rulings():
+    obj = _buy(
+        option_index=0,
+        rulings=[
+            {"option_index": 0, "verdict": "decline"},
+            {"option_index": 1, "verdict": "approve"},
+        ],
+    )
+    # Buy/pass contradictions are tolerated even by the strict shape contract.
+    assert schema.validate(obj, SHOP, tolerate_rulings=False) == []
+    for bad in (
+        [],
+        obj["rulings"][:1],
+        [obj["rulings"][0]] * 2,
+        [{"option_index": 99, "verdict": "decline"}],
+        [{"option_index": 0, "verdict": "bad"}],
+    ):
+        assert schema.validate({**obj, "rulings": bad}, SHOP, tolerate_rulings=False)
+        assert schema.validate({**obj, "rulings": bad}, SHOP) == []
+    missing = {k: v for k, v in obj.items() if k != "rulings"}
+    assert schema.validate(missing, SHOP, tolerate_rulings=False)[0].startswith("rulings")
+    assert schema.validate(missing, SHOP) == []
+
+
+@pytest.mark.parametrize("kind,screen", [("shop", "shop"), ("pivot", "shop"), ("pivot", None)])
+def test_shop_structured_schema_requires_complete_unique_board(kind, screen):
+    request = {**SHOP, "kind": kind}
+    if screen:
+        request["screen"] = screen
+    else:
+        request.pop("screen")
+    data = schema.schema_for(request)
+    assert "rulings" in data["required"]
+    field = data["properties"]["rulings"]
+    assert field["minItems"] == field["maxItems"] == 2
+    assert field["items"]["properties"]["option_index"]["enum"] == [0, 1]
+    assert [r["contains"]["properties"]["option_index"]["const"] for r in field["allOf"]] == [0, 1]
+    assert data["properties"]["action"]["enum"] == list(schema.SCREEN_ACTIONS["shop"])
+
+
+@pytest.mark.parametrize("screen", ["crate", "levelup", "checkpoint"])
+def test_nonshop_structured_schema_has_no_rulings_even_for_pivots(screen):
+    data = schema.schema_for({"screen": screen, "kind": "pivot", "options": []})
+    assert "rulings" not in data["properties"]
+    assert "rulings" not in data["required"]
 
 
 def test_valid_skip_and_reroll_without_index():
@@ -118,7 +201,10 @@ def test_schema_json_matches_model():
     ]
     assert set(props) == set(schema.Decision.model_fields)
     assert props["option_index"]["minimum"] == 0
-    assert props["decline"] == {"type": "array", "items": {"type": "integer"}}
+    ruling = props["rulings"]["items"]
+    assert ruling["required"] == ["option_index", "verdict"]
+    assert ruling["additionalProperties"] is False
+    assert ruling["properties"]["verdict"]["enum"] == ["approve", "decline"]
     assert props["confidence"]["minimum"] == 0
     assert props["confidence"]["maximum"] == 1
     assert props["rationale"]["maxLength"] == 300
@@ -127,6 +213,8 @@ def test_schema_json_matches_model():
     conditionals = {}
     for rule in data["allOf"]:
         actions = rule["if"]["properties"]["action"]["enum"]
+        if rule["then"] in ({"required": ["rulings"]}, {"not": {"required": ["rulings"]}}):
+            continue
         if actions == ["take", "recycle"]:
             assert rule["then"] == {"not": {"required": ["option_index"]}}
             continue
