@@ -332,3 +332,26 @@ objective text.
 - Division of labour recommended: rules decide clear boards and dead boards; Haiku is
   asked when a goal item is on the board or affordable soon, and otherwise sets parameters
   (keep, hunt, min_buy) that the rules apply on every later board of the visit.
+
+## 2026-10-23 owner insight: the character must be chosen for the goal
+
+- Owner, after audits A and B: some characters are better or worse at a given goal. Well
+  Rounded starts at +5 speed, so chal_slow (-20) needs -25 of reductions from items and
+  sets; the character choice itself was working against the target.
+- Measured from `data/brotato.json` and `data/unlock_state.json`: among the 22 unlocked
+  characters only Old starts below zero speed (-10, plus +10 harvesting, a smaller map,
+  fewer and slower enemies, and a BOTato row in `build_plans.gd`). Old needs -10 more,
+  about one Statue or three to four tier-1 items. Explorer starts at +10, Well Rounded at
+  +5. Chunky looks neutral at 0 but bans the `speed` item group and has a -100% gain
+  modifier on speed, so it cannot reach the goal at all.
+- Where the choice is made today: `brotato-next` step 4 takes `requires_character` when
+  the target names one, otherwise "an unlocked character that the guides support", with
+  no goal-fit criterion. `proposal validate` does not check fit either.
+- Proposed harness item (new, about 1-2 h): a goal-fit ranking of unlocked characters for
+  a stat-goal target, used by `brotato-next` in step 4 and printed by `proposal shape`:
+  sign-aware base bonus on the goal stat, gain modifiers on it (a -100% is a veto),
+  banned item groups that cover the goal items (veto), whether a BOTato row exists, DLC,
+  and the guide's survival notes. A character switch also satisfies the stagnation rule's
+  "material change", so it fits the next proposal naturally.
+- Consequence: run 4 on chal_slow should be Old, not Well Rounded v3, once the step 5
+  changes land; that run tests the pipeline with a character that can actually get there.
