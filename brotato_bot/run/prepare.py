@@ -50,6 +50,9 @@ def validate_plan(plan: Any) -> None:
         if key == "tree_policy":
             if not isinstance(value, str) or value not in ("auto", "seek", "preserve"):
                 raise ValueError("plan steering tree_policy must be auto, seek or preserve")
+        elif key == "drop_pull":
+            if not isinstance(value, str) or value not in ("linear", "target"):
+                raise ValueError("plan steering drop_pull must be linear or target")
         elif key in ("tree_value", "sweep", "sweep_radius", "gold_value", "stand_continuity"):
             if isinstance(value, bool) or not isinstance(value, int | float):
                 raise ValueError(f"plan steering {key} must be a number")

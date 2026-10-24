@@ -22,6 +22,7 @@ def test_validate_plan_accepts_steering(policy):
         "sweep_radius": 420,
         "gold_value": 0.8,
         "stand_continuity": -0.2,
+        "drop_pull": "target",
     }
     prepare.validate_plan({**PLAN, "plan": {"steering": steering}})
     prepare.validate_plan({**PLAN, "plan": {"steering": {}}})
@@ -38,7 +39,16 @@ def test_validate_plan_rejects_wrong_steering_number(key, value):
 
 @pytest.mark.parametrize(
     "steering",
-    [None, [], "seek", {"unknown": 1}, {"tree_policy": "avoid"}, {"tree_policy": True}],
+    [
+        None,
+        [],
+        "seek",
+        {"unknown": 1},
+        {"tree_policy": "avoid"},
+        {"tree_policy": True},
+        {"drop_pull": "positive"},
+        {"drop_pull": 1},
+    ],
 )
 def test_prepare_rejects_bad_steering_before_writing(tmp_paths, steering):
     with pytest.raises(ValueError, match="steering"):
