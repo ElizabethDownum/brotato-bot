@@ -31,11 +31,13 @@ var _last_damage_src = ""
 var _last_killer = ""
 var _boss_state_cache = {}
 var _loot = LootTracker.new()
+# main.tscn and this child are recreated at each wave start. Keep a monotonic
+# origin: the final boss kill resets _wave_timer to 0.1 s (main.gd:520-521).
+var _wave_start_msec = OS.get_ticks_msec()
 
 
 func _loot_time() -> float:
-	var timer = get_parent()._wave_timer
-	return float(timer.wait_time - timer.time_left)
+	return float(OS.get_ticks_msec() - _wave_start_msec) / 1000.0
 
 
 func record_loot_spawn(enemy):

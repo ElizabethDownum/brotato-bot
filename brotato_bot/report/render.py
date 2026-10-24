@@ -169,6 +169,7 @@ def run_report(summary: RunSummary, outcomes: dict[str, str] | None = None) -> s
                 [(r.wave, r.outcome, r.closest, r.lifetime) for r in s.looters],
             )
             + f"\n\nRun total (killed/seen): {killed}/{len(s.looters)}"
+            + "\n\nCulled: enemy-cap removal, or a missing-entity fallback. Looters have no flee timer."
         )
     if s.offers:
         telemetry.append(

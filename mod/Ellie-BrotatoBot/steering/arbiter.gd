@@ -418,7 +418,7 @@ var last_hop = false             # the chosen candidate is a half-speed hop (tel
 var _hop_wanted = false          # set by _prepare: a telegraph or dash is close enough
 var last_aoe_n = 0               # KIND_AOE threats priced this decision (telemetry)
 var _pickup_radius = 0.0         # profile pickup_radius: the attract area's rim
-var _drop_pull = "linear"        # target commits to one marked floor drop
+var _target_on = false          # cached per tick: target mode while the quiet gate is open
 const TARGET_SWITCH_RATIO = 0.5
 const TARGET_GAIN = 1.0
 var _drop_target_id = -1
@@ -634,17 +634,13 @@ func apply_overrides(d: Dictionary) -> void:
 			w_predict, predict_secs, w_tangent, wall_swerve, w_anchor])
 
 
-func _update_drop_target(p0: Vector2, rewards: Array, quiet: bool, live_positions: Dictionary):
+func _update_drop_target(p0: Vector2, rewards: Array):
 	last_target_dist = -1.0
-	if _drop_pull != "target" or not quiet:
+	if not _target_on:
 		_drop_target_id = -1
 		_drop_target_pos = Vector2.ZERO
 		return
 	var current = null
-	if live_positions.has(_drop_target_id):
-		var pos = live_positions[_drop_target_id]
-		if p0.distance_to(pos) > _pickup_radius:
-			current = [pos, 1.0, true, 0.0, "floor_drop", _drop_target_id]
 	var candidate = null
 	var best = INF
 	# Once per decision, before candidate scoring. Only live, unattracted drops
@@ -722,9 +718,10 @@ func choose(p0: Vector2, speed: float, body_radius: float, far: Vector2,
 	_anchor_inner = float(profile.get("anchor_inner", 0.0))
 	_anchor_w = w_anchor * float(profile.get("anchor_w", 1.0))
 	_pickup_radius = float(profile.get("pickup_radius", 0.0))
-	_drop_pull = profile.get("drop_pull", "linear")
-	_update_drop_target(p0, rewards, profile.get("drop_quiet", false),
-		profile.get("drop_live_positions", {}))
+	# Contact time uses the existing linear endpoint pulls; quiet time commits
+	# to one floor drop. Cache this once, outside the candidate/reward loops.
+	_target_on = profile.get("drop_pull", "linear") == "target" and profile.get("drop_quiet", false)
+	_update_drop_target(p0, rewards)
 	lethality = float(profile.get("lethality", LETHALITY))
 	if lethality_override >= 0.0:
 		lethality = lethality_override
@@ -1399,10 +1396,14 @@ func _cost(d: Vector2, p0: Vector2, speed: float, body_radius: float, far: Vecto
 		var held = r.size() > 3 and float(r[3]) > 0.0
 		var rim = float(r[3]) if held else (_pickup_radius if (r.size() < 3 or r[2]) else 0.0)
 		var d0 = max(p0.distance_to(r[0]) - rim, 0.0)
-		var d1 = max(p_end.distance_to(r[0]) - rim, 0.0)
 		# Field 4 marks only unattracted floor gold/materials. Fields 2/3
 		# retain their attract/held meanings for every existing size check.
-		var target_drop = _drop_pull == "target" and r.size() > 5 and r[4] == "floor_drop" and not held
+		var target_drop = _target_on and r.size() > 5 and r[4] == "floor_drop" and not held
+		# Non-targets only earn a taken bonus. Beyond this conservative bound
+		# the move cannot reach the rim, so their entire contribution is zero.
+		if target_drop and r[5] != _drop_target_id and d0 > speed * horizon + rim:
+			continue
+		var d1 = max(p_end.distance_to(r[0]) - rim, 0.0)
 		if target_drop:
 			# Entering the attract rim anywhere along the wall-clamped move
 			# collects the drop, even when the endpoint would overshoot it.

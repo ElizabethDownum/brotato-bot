@@ -1020,14 +1020,11 @@ func gather(main, player) -> void:
 		if quiet:
 			gold_value *= sweep
 		drop_quiet = drop_quiet and quiet
-	var drop_live_positions = {}
 	for g in main._active_golds:
 		if not is_instance_valid(g):
 			continue
 		if "attracted_by" in g and g.attracted_by != null:
 			continue
-		if row.drop_pull == "target":
-			drop_live_positions[g.get_instance_id()] = g.position
 		if g.position.distance_squared_to(pos) < pickup_sq:
 			rewards.push_back(FloorDrop.reward(g.position, gold_value, draw, g.get_instance_id()))
 
@@ -1079,7 +1076,6 @@ func gather(main, player) -> void:
 	profile["stand_continuity"] = row.stand_continuity
 	profile["drop_pull"] = row.drop_pull
 	profile["drop_quiet"] = drop_quiet
-	profile["drop_live_positions"] = drop_live_positions
 	profile["pickup_radius"] = pickup_radius   # every row: the attract rim prices drops
 	if row.get("stand_income", false):
 		# The not-moving material tick, in the pickup unit (gold_value per

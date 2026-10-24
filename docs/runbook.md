@@ -367,10 +367,12 @@ Common `plan` keys. This table is the full set. The header comment in
 chooses the marked, unattracted floor gold/material drop with the lowest distance
 / reward value and retains its instance id and position. It switches only when
 a candidate is less than half the current target's distance away, or the target
-is gone/collected. Only that target earns nonnegative approach gain (multiplier
+is gone/collected or absent from the 900 px steering reward horizon. Only that
+target earns nonnegative approach gain (multiplier
 `TARGET_GAIN = 1.0`); every marked drop still earns the collection bonus when the
 projected segment enters its attract rim. The target clears whenever the quiet
-gate for draw/sweep is false and is chosen afresh when quiet returns. Food, trees,
+gate for draw/sweep is false; that tick uses the existing linear endpoint drop
+pulls (draw 1 during contact). A target is chosen afresh when quiet returns. Food, trees,
 loot aliens, held rewards and linear scoring keep their existing behavior.
 Snapshot `arb.dtg` is the current target distance in px (-1 when absent);
 `arb.tswitch` counts target acquisitions, including the first, over the arbiter's
@@ -487,8 +489,8 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    | `steering` | `character_id` (source character), `overrides` (applied plan entries), `resolved` (`tree_value`, `sweep`, `sweep_radius`, `gold_value`, `stand_continuity`, `tree_policy`, `drop_pull`, `material_value`, `caution`) | once per run, immediately after `header`; initial values, with material value and caution evaluated at that wave's starting state; later patches are recorded in decision events |
    | `bot_state` | `state` (`acting`, `idle`, `halted`, `complete`), `reason` (`enabled`, `toggle_off`, `main_menu`, `run_start`, or the halt reason) | Shift+Space on or off, a halt, the main menu, and right after the header (the bot's state when the file opened) |
    | `launch` | `token`, `character_id`, `starting_weapon`, `danger`, `zone` (requested zone) | wave 1 of a launched run, before the bot is enabled |
-   | `snapshot` | position, heading, threats, `mats`, `loot`, ... (`mats`: `floor` = material pickup count, `floor_value` = sum of their material values, `unattached` = count not yet attracted, `bag` = `RunData.bonus_gold`, `nearest` = distance to the nearest floor pickup, -1 when none; floor/value/nearest include attracted pickups). `loot`: `alive` = live loot aliens, `nearest` = nearest distance in px (-1 if none), `in_range` = nearest is strictly inside WorldView's 900 px `PICKUP_RANGE`. | about 1 Hz, only while the bot is enabled |
-   | `loot_alien` | `alien_id` (pooled instance id; a respawn starts another life), `wave`, `spawn_t`, `end_t` (wave seconds), `closest` (player 0 distance in px), `outcome` (`killed`, `escaped`, `wave_end`) | once per departing life while a run is recorded; closest sampled each physics tick and at death/cleanup. Player kills count as killed; enemy-cap culls and unexplained disappearances as escaped; room cleanup, including player death, as wave_end. The collect report's Looters table totals killed/seen among these completed lives; a truncated run can still have live aliens absent from that total. |
+   | `snapshot` | position, heading, threats, `mats`, `loot`, ... (`mats`: `floor` = material pickup count, `floor_value` = sum of their material values, `unattached` = count not yet attracted, `bag` = `RunData.bonus_gold`, `nearest` = distance to the nearest floor pickup, -1 when none; floor/value/nearest include attracted pickups). `loot`: `alive` = live loot aliens, `nearest` = nearest distance in px (-1 if none), `in_steer_range` = nearest is strictly inside WorldView's 900 px `PICKUP_RANGE` steering horizon, not the player's attract radius. | about 1 Hz, only while the bot is enabled |
+   | `loot_alien` | `alien_id` (pooled instance id; a respawn starts another life), `wave`, `spawn_t`, `end_t` (monotonic seconds since wave telemetry creation), `closest` (player 0 distance in px), `outcome` (`killed`, `culled`, `wave_end`) | once per departing life while a run is recorded; closest sampled each physics tick and at death/cleanup. Player kills count as killed; enemy-cap culls and the defensive missing-entity fallback as culled; room cleanup, including player death, as wave_end. Looters have no flee timer. The collect report's Looters table totals killed/seen among these completed lives; a truncated run can still have live aliens absent from that total. |
    | `damage`, `dash`, `bullet_hell` | — | only while the bot is enabled |
    | `death` | `wave`, `position`, `killer`, `last_threats`, `build`, `dmg_w` | player 0 dies |
    | `wave_end` | `wave`, `hp`, `gold`, `damage_taken`, `kills`, `stats` (the state export's `stat_*` map), `materials: {floor_count, floor_value, bag_before, bag_after, collected_value}` (`collected_value`: wallet at wave end minus wallet at wave start, before harvesting), `trees: {spawned, felled, alive}` (initial living trees plus subsequent spawns, combat deaths, living at wave end; cleanup deaths excluded) | every completed wave; emitted when `bag_after` is observed (see below) |
@@ -506,6 +508,19 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    | `checkpoint` | `wave`, `id`, `action`, `applied`, `reason` | the target checkpoint; wave at write time, even before its delayed `wave_end` |
    | `complete` | `outcome` (`win`, `death`), `wave`, `extra` (`killer` on death) | the run ends while the bot plays |
    | `end` | `outcome` (`won`, `death`, `abandoned`, `quit`), `wave`, `hp`, `gold` | always the last line (`abandoned`: the main menu, or a new run started over an open file) |
+
+   Loot times use `OS.get_ticks_msec()` relative to this wave's telemetry creation,
+   independent of `_wave_timer`: the final boss kill restarts that timer at 0.1 s
+   (`.decompiled/main.gd:520-521`). These elapsed times include paused wall time.
+   Looters have no flee timer: the recovered looter scene uses random-position
+   movement (`.decompiled/entities/units/enemies/looter/looter.tscn:6`,
+   `.decompiled/entities/units/movement_behaviors/target_rand_pos_movement_behavior.gd:7-25`),
+   and neither the looter nor its enemy script defines a flee/despawn timer
+   (`.decompiled/entities/units/enemies/looter/looter.gd:1-30`,
+   `.decompiled/entities/units/enemies/enemy.gd`). Enemy-cap culling disables loot
+   before calling `die()` (`.decompiled/global/entity_spawner.gd:155-166`), which
+   emits `died` synchronously (`.decompiled/entities/entity.gd:69-77`). Normal
+   culls therefore close via the death hook; missing entities are a defensive fallback.
 
    `wave_end` captures all fields except `materials.bag_after` in the wave-end
    signal handler, before harvesting and cleanup. Optimized cleanup supplies the

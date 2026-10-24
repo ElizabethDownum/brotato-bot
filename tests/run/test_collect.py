@@ -19,9 +19,11 @@ def test_looters_fixture_table_total_and_summary_round_trip():
     md = render.run_report(summary)
     assert "## Looters\n\n| wave | outcome | closest px | lifetime s |" in md
     assert "| 1 | killed | 120.5 | 7.5 |" in md
-    assert "| 1 | escaped | 650 | 8 |" in md
+    assert "| 1 | culled | 650 | 8 |" in md
     assert "| 2 | wave_end | 910 | 54 |" in md
     assert "Run total (killed/seen): 1/3" in md
+    assert "Culled: enemy-cap removal, or a missing-entity fallback." in md
+    assert "Looters have no flee timer." in md
     assert len(summary.looters) == 3  # pooled instance 42 has two distinct lives
     assert render.run_report(RunSummary.model_validate(summary.model_dump())) == md
 

@@ -1,5 +1,6 @@
 extends Reference
-# One entry per live pooled life, keyed by instance id. Times are wave seconds;
+# One entry per live pooled life, keyed by instance id. Times are monotonic seconds
+# since the wave's telemetry started, independent of the game's resettable timer;
 # the run recorder adds its usual run-relative millisecond t to emitted records.
 
 var _live = {}
@@ -21,7 +22,7 @@ static func outcome(cleaning_up: bool, killed_by_player: bool, can_drop_loot: bo
 		return "wave_end"
 	# The enemy-cap cull calls die() with the default killed-by-player=true,
 	# but sets can_drop_loot=false first (entity_spawner.gd:164-165).
-	return "killed" if killed_by_player and can_drop_loot else "escaped"
+	return "killed" if killed_by_player and can_drop_loot else "culled"
 
 
 func finish(id, t, result):
@@ -39,7 +40,8 @@ func missing(ids: Array, t) -> Array:
 	var events = []
 	for id in _live.keys():
 		if not id in ids:
-			events.append(finish(id, t, "escaped"))
+			# Defensive fallback; normal cap culls emit died synchronously.
+			events.append(finish(id, t, "culled"))
 	return events
 
 
@@ -50,11 +52,11 @@ func finish_wave(t) -> Array:
 	return events
 
 
-static func snapshot(positions: Array, origin: Vector2, pickup_range: float) -> Dictionary:
+static func snapshot(positions: Array, origin: Vector2, steer_range: float) -> Dictionary:
 	var nearest = -1.0
 	for position in positions:
 		var distance = origin.distance_to(position)
 		if nearest < 0.0 or distance < nearest:
 			nearest = distance
 	return {"alive": positions.size(), "nearest": nearest,
-		"in_range": nearest >= 0.0 and nearest < pickup_range}
+		"in_steer_range": nearest >= 0.0 and nearest < steer_range}

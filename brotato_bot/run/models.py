@@ -38,7 +38,7 @@ class MaterialRow(BaseModel):
 
 class LooterRow(BaseModel):
     wave: int | None = None
-    outcome: Literal["killed", "escaped", "wave_end"]
+    outcome: Literal["killed", "culled", "wave_end"]
     closest: float | None = None
     lifetime: float | None = None
 

@@ -167,7 +167,7 @@ def summarize(events: list[dict], plan: dict | None = None) -> render.ReportSumm
                     source=_str(e.get("source")),
                 )
             )
-        elif kind == "loot_alien" and e.get("outcome") in ("killed", "escaped", "wave_end"):
+        elif kind == "loot_alien" and e.get("outcome") in ("killed", "culled", "wave_end"):
             spawn_t, end_t = _float(e.get("spawn_t")), _float(e.get("end_t"))
             looters.append(
                 LooterRow(

@@ -4,16 +4,16 @@ const Tracker = preload("res://mod/Ellie-BrotatoBot/core/loot_tracker.gd")
 const Recorder = preload("res://mod/Ellie-BrotatoBot/core/run_recorder.gd")
 
 
-func test_loot_snapshot_empty_nearest_and_strict_pickup_range():
+func test_loot_snapshot_empty_nearest_and_strict_steering_horizon():
 	var empty = Tracker.snapshot([], Vector2.ZERO, 900.0)
 	assert_eq(empty.alive, 0)
 	assert_eq(empty.nearest, -1.0)
-	assert_false(empty.in_range)
+	assert_false(empty.in_steer_range)
 	var near = Tracker.snapshot([Vector2(1000, 0), Vector2(300, 400)], Vector2.ZERO, 900.0)
 	assert_eq(near.alive, 2)
 	assert_eq(near.nearest, 500.0)
-	assert_true(near.in_range)
-	assert_false(Tracker.snapshot([Vector2(900, 0)], Vector2.ZERO, 900.0).in_range)
+	assert_true(near.in_steer_range)
+	assert_false(Tracker.snapshot([Vector2(900, 0)], Vector2.ZERO, 900.0).in_steer_range)
 
 
 func test_loot_life_closest_once_and_pooled_respawn():
@@ -26,15 +26,15 @@ func test_loot_life_closest_once_and_pooled_respawn():
 		"closest": 240.5, "outcome": "killed"}
 	for key in expected:
 		assert_eq(event[key], expected[key], key)
-	assert_eq(tracker.finish(42, 13.0, "escaped"), null, "no duplicate event")
+	assert_eq(tracker.finish(42, 13.0, "culled"), null, "no duplicate event")
 	tracker.spawn(42, 3, 15.0, 800.0)
-	assert_eq(tracker.finish(42, 18.0, "escaped").spawn_t, 15.0, "pooled life starts fresh")
+	assert_eq(tracker.finish(42, 18.0, "culled").spawn_t, 15.0, "pooled life starts fresh")
 
 
 func test_loot_outcome_distinguishes_enemy_cap_cull_from_kill():
 	assert_eq(Tracker.outcome(false, true, true), "killed")
-	assert_eq(Tracker.outcome(false, true, false), "escaped", "cap cull default die args")
-	assert_eq(Tracker.outcome(false, false, true), "escaped")
+	assert_eq(Tracker.outcome(false, true, false), "culled", "cap cull default die args")
+	assert_eq(Tracker.outcome(false, false, true), "culled")
 	assert_eq(Tracker.outcome(true, true, true), "wave_end")
 
 
@@ -44,7 +44,7 @@ func test_loot_missing_and_wave_cleanup_emit_once():
 	tracker.spawn(2, 8, 2.0, 400.0)
 	var missing = tracker.missing([2], 4.0)
 	assert_eq(missing.size(), 1)
-	assert_eq(missing[0].outcome, "escaped")
+	assert_eq(missing[0].outcome, "culled")
 	var cleanup = tracker.finish_wave(60.0)
 	assert_eq(cleanup.size(), 1)
 	assert_eq(cleanup[0].outcome, "wave_end")

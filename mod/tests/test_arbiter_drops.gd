@@ -36,12 +36,13 @@ func _choose(arb, pos, drops, profile = {}, threats = []) -> Vector2:
 	var resolved = Steering.resolve({"gold": 0.8}, {"sweep": 2.5})
 	resolved.pickup_radius = PICKUP_RIM
 	resolved.drop_quiet = threats.empty()
-	resolved.drop_live_positions = {}
-	for drop in drops:
-		resolved.drop_live_positions[drop.id] = drop.position
 	for key in profile:
 		resolved[key] = profile[key]
-	return arb.choose(pos, SPEED, 20.0, FAR, threats, _rewards(drops), [], [],
+	var in_range = []
+	for drop in drops:
+		if pos.distance_to(drop.position) < 900.0:
+			in_range.append(drop)
+	return arb.choose(pos, SPEED, 20.0, FAR, threats, _rewards(in_range), [], [],
 		300.0, false, 100.0, 1.0, resolved)
 
 
@@ -90,6 +91,76 @@ func test_target_moves_and_explicit_linear_matches_default_scores():
 	var choice = _choose(target, ORIGIN, _drops(), {"drop_pull": "target"})
 	assert_true(choice != Vector2.ZERO, "target escapes the ring")
 	print("RING_TARGET dir=%s total=%.6f" % [str(choice), target.last_scores[target.last_best_index]])
+	print("RING_TARGET_SCORES dirs=%s totals=%s" % [str(target.last_dirs), str(target.last_scores)])
+
+
+func test_linear_floor_tuple_scores_equal_legacy_ring_scores():
+	var marked = Arbiter.new()
+	_choose(marked, ORIGIN, _drops(), {"drop_pull": "linear"})
+	var legacy = Arbiter.new()
+	var rewards = []
+	for r in _rewards(_drops()):
+		rewards.append([r[0], r[1]])
+	legacy.choose(ORIGIN, SPEED, 20.0, FAR, [], rewards, [], [],
+		300.0, false, 100.0, 1.0, {"drop_pull": "linear", "pickup_radius": PICKUP_RIM})
+	assert_eq(marked.last_dirs, legacy.last_dirs)
+	assert_eq(marked.last_scores, legacy.last_scores, "six-field floor tuples preserve legacy two-field ring totals")
+
+
+func test_non_quiet_target_scores_drops_exactly_as_linear():
+	var rewards = []
+	for drop in _drops():
+		# A contact-time WorldView tick disables draw/sweep: gold .8, draw 1.
+		rewards.append(FloorDrop.reward(drop.position, 0.8, 1.0, drop.id))
+	var threat = [ORIGIN + Vector2(70, 0), Vector2(-180, 0), 25.0, 40.0,
+		Arbiter.KIND_CONTACT, 0.0, 1.0, 1000.0]
+	var target = Arbiter.new()
+	var linear = Arbiter.new()
+	# Begin committed, so this also checks the per-tick switch back to linear.
+	_choose(target, ORIGIN, _drops(), {"drop_pull": "target"})
+	linear.last_dir = target.last_dir
+	for arb in [target, linear]:
+		var mode = "target" if arb == target else "linear"
+		arb.choose(ORIGIN, SPEED, 20.0, FAR, [threat], rewards, [], [],
+			300.0, false, 100.0, 1.0,
+			{"drop_pull": mode, "drop_quiet": false, "pickup_radius": PICKUP_RIM})
+	assert_eq(target._drop_target_id, -1, "contact clears commitment")
+	assert_eq(target.last_target_dist, -1.0)
+	assert_eq(target.last_dirs, linear.last_dirs)
+	assert_eq(target.last_scores, linear.last_scores, "contact tick uses linear endpoint scoring for every drop")
+	assert_eq(target.last_dir, linear.last_dir)
+
+
+func test_quiet_target_scores_only_committed_approach():
+	var rewards = [FloorDrop.reward(ORIGIN + Vector2(400, 0), 3.0, 1.0, 1),
+		FloorDrop.reward(ORIGIN + Vector2(-420, 0), 3.0, 1.0, 2)]
+	var target = Arbiter.new()
+	var solo = Arbiter.new()
+	var linear = Arbiter.new()
+	var profile = {"drop_pull": "target", "drop_quiet": true, "pickup_radius": PICKUP_RIM}
+	target.choose(ORIGIN, SPEED, 20.0, FAR, [], rewards, [], [], 300.0, false, 100.0, 1.0, profile)
+	solo.choose(ORIGIN, SPEED, 20.0, FAR, [], [rewards[0]], [], [], 300.0, false, 100.0, 1.0, profile)
+	profile.drop_pull = "linear"
+	linear.choose(ORIGIN, SPEED, 20.0, FAR, [], rewards, [], [], 300.0, false, 100.0, 1.0, profile)
+	assert_eq(target._drop_target_id, 1)
+	assert_eq(target.last_target_dist, 400.0)
+	assert_eq(target.last_scores, solo.last_scores, "quiet non-target outside reach contributes no approach")
+	assert_true(target.last_scores != linear.last_scores, "quiet tick keeps target scoring")
+
+
+func test_unreachable_non_target_drops_preserve_ring_scores():
+	var ring = Arbiter.new()
+	_choose(ring, ORIGIN, _drops(), {"drop_pull": "target"})
+	var drops = _drops()
+	# These non-targets cannot be crossed within the 240 px projected move
+	# plus rim. Skipping their geometry must leave every ring score unchanged.
+	for distance in [361.0, 500.0, 899.0]:
+		drops.append({"id": drops.size() + 1, "position": ORIGIN + Vector2(0, distance)})
+	var distant = Arbiter.new()
+	_choose(distant, ORIGIN, drops, {"drop_pull": "target"})
+	assert_eq(distant._drop_target_id, ring._drop_target_id)
+	assert_eq(distant.last_dirs, ring.last_dirs)
+	assert_eq(distant.last_scores, ring.last_scores, "unreachable non-targets contribute exactly zero")
 
 
 func _simulate(ticks: int, delta: float, label: String) -> Dictionary:
@@ -130,7 +201,8 @@ func _simulate(ticks: int, delta: float, label: String) -> Dictionary:
 		previous = direction
 	print("%s_SUMMARY collected=%d reversals_between_collections=%d distant_reversals=%d pos=%s collections=%s" % [
 		label, 24 - drops.size(), reversals, distant_reversals, str(pos), str(collections)])
-	return {"collected": 24 - drops.size(), "distant_reversals": distant_reversals, "collections": collections}
+	return {"collected": 24 - drops.size(), "distant_reversals": distant_reversals,
+		"reversals": reversals, "collections": collections, "position": pos}
 
 
 func test_target_collects_with_only_final_approach_reversals_16_ticks():
@@ -138,6 +210,11 @@ func test_target_collects_with_only_final_approach_reversals_16_ticks():
 	assert_eq(result.distant_reversals, 0, "between collections, reversals require target dtg <= rim + 24 px")
 	assert_true(result.collections.size() >= 3, "collects at multiple times, not just once")
 	assert_true(result.collected >= 3, "steady collection during the simulation")
+	assert_eq(result.collections, [[4, 1], [6, 2], [7, 3], [10, 4], [12, 5], [15, 6]],
+		"collection timeline unchanged by linear fallback and segment pruning")
+	assert_eq(result.reversals, 0)
+	assert_true(result.position.distance_to(Vector2(1574.672607, 1319.999023)) < 0.001,
+		"final position unchanged")
 
 
 func test_target_collects_with_only_final_approach_reversals_60_hz():
@@ -146,6 +223,12 @@ func test_target_collects_with_only_final_approach_reversals_60_hz():
 	assert_true(result.collections.size() >= 6, "collects at multiple times over four seconds")
 	assert_true(result.collected >= 6, "steady collection at physics frequency")
 	assert_true(not result.collections.empty() and result.collections[0][0] <= 60, "first collection within one second")
+	assert_eq(result.collections, [[24, 1], [33, 2], [50, 3], [52, 4], [86, 5], [91, 6],
+		[125, 7], [130, 8], [131, 9], [151, 10], [154, 11], [189, 12], [194, 13],
+		[222, 14], [223, 15], [237, 16]], "60 Hz collection timeline unchanged")
+	assert_eq(result.reversals, 1, "the accepted final-approach sidestep is unchanged")
+	assert_true(result.position.distance_to(Vector2(1328.112549, 1362.269897)) < 0.001,
+		"60 Hz final position unchanged")
 
 
 func test_other_reward_layouts_keep_linear_costs_under_target():
@@ -157,7 +240,7 @@ func test_other_reward_layouts_keep_linear_costs_under_target():
 		for mode in ["linear", "target"]:
 			var arb = Arbiter.new()
 			arb.choose(ORIGIN, SPEED, 20.0, FAR, [], [reward], [], [],
-				300.0, false, 100.0, 1.0, {"drop_pull": mode, "pickup_radius": 60.0})
+				300.0, false, 100.0, 1.0, {"drop_pull": mode, "drop_quiet": true, "pickup_radius": 60.0})
 			scores.append(arb.last_scores)
 		assert_eq(scores[0], scores[1], "food/loot, tree, held reward unchanged")
 
@@ -212,14 +295,21 @@ func test_target_collected_inside_rim_and_no_remaining_drops_clear():
 	assert_eq(arb.last_target_dist, -1.0)
 
 
-func test_target_retains_live_drop_outside_candidate_range():
+func test_target_outside_steering_range_retargets_and_keeps_moving():
 	var arb = Arbiter.new()
-	var drops = [{"id": 1, "position": ORIGIN + Vector2(150, 0)}]
+	var drops = [{"id": 1, "position": ORIGIN + Vector2(150, 0)},
+		{"id": 2, "position": ORIGIN + Vector2(600, 0)}]
 	_choose(arb, ORIGIN, drops, {"drop_pull": "target"})
-	_choose(arb, ORIGIN, [], {"drop_pull": "target",
-		"drop_live_positions": {1: ORIGIN + Vector2(1000, 0)}})
-	assert_eq(arb._drop_target_id, 1, "out of range does not mean gone")
-	assert_eq(arb.last_target_dist, 1000.0)
+	assert_eq(arb._drop_target_id, 1)
+	# Still live, but now outside the reward list's 900 px horizon. Drop 2 is
+	# farther than half its distance, so ordinary switch hysteresis cannot help.
+	drops[0].position = ORIGIN + Vector2(1000, 0)
+	var choice = _choose(arb, ORIGIN, drops, {"drop_pull": "target"})
+	assert_eq(arb._drop_target_id, 2, "target missing from rewards counts as gone")
+	assert_eq(arb.last_target_dist, 600.0)
+	assert_eq(arb.target_switches, 2)
+	assert_true(choice != Vector2.ZERO, "in-range replacement keeps the bot moving")
+	assert_true(choice.x > 0.0, "moves toward the replacement drop")
 
 
 func test_target_uses_reward_value_and_only_target_approaches_but_all_can_be_taken():
