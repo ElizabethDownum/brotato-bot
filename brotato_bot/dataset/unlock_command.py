@@ -52,6 +52,8 @@ def _run(args: argparse.Namespace) -> int:
     dataset_file = p.data_dir / "brotato.json"
     dataset = fsutil.read_json(dataset_file) if dataset_file.is_file() else None
     state["challenges"] = unlocks.challenge_texts(graph, dataset)
+    if dataset is not None:
+        state.update(unlocks.item_weapon_state(dataset, save))
     fsutil.atomic_write_json(out, state)
     chars = state["characters"]
     n_unlocked = sum(1 for c in chars.values() if c["unlocked"])
@@ -62,6 +64,13 @@ def _run(args: argparse.Namespace) -> int:
         f"characters unlocked {n_unlocked}/{len(chars)}, "
         f"unknown character hashes {len(state['unknown_characters'])}"
     )
+    if "items_unlocked" in state:
+        print(
+            f"items unlocked {len(state['items_unlocked'])}/"
+            f"{len(state['items_unlocked']) + len(state['items_locked'])}, "
+            f"weapons unlocked {len(state['weapons_unlocked'])}/"
+            f"{len(state['weapons_unlocked']) + len(state['weapons_locked'])}"
+        )
     print(f"wrote {out}")
     return 0
 

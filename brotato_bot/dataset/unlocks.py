@@ -186,6 +186,23 @@ def unlock_state(graph: list[Challenge], save: dict, profile_id: int) -> dict:
     }
 
 
+def item_weapon_state(dataset: dict, save: dict) -> dict:
+    """``items_unlocked``/``items_locked`` and ``weapons_unlocked``/``weapons_locked``: the
+    dataset ids (sorted, weapons once, no tier suffix) whose ``Keys.generate_hash`` is in
+    the save's ``items_unlocked`` / ``weapons_unlocked``. The save hashes the base weapon id
+    (``weapon_rock``), which the dataset repeats once per tier; checked 2026-10-23: all 197
+    item hashes and all 56 weapon hashes matched, none matched a ``_<tier>`` form."""
+    out: dict[str, list[str]] = {}
+    for kind in ("items", "weapons"):
+        have = {int(h) for h in save.get(f"{kind}_unlocked", [])}
+        ids = sorted(
+            {r["id"] for r in dataset.get(kind) or [] if isinstance(r, dict) and r.get("id")}
+        )
+        out[f"{kind}_unlocked"] = [i for i in ids if generate_hash(i) in have]
+        out[f"{kind}_locked"] = [i for i in ids if generate_hash(i) not in have]
+    return out
+
+
 _FORMAT_ARG = re.compile(r"\{(\d+)\}")
 
 

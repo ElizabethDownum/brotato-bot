@@ -200,3 +200,57 @@ def test_build_graph_includes_dlc_challenges(tmp_path):
     }
     assert "chal_test_diver" in state["open"]
     assert state["unknown"] == []
+
+
+def test_generate_hash_known_value():
+    assert generate_hash("item_bag") == 932863485
+
+
+def _dataset():
+    return {
+        "items": [{"id": "item_bag"}, {"id": "item_fin"}, {"id": "item_acid"}],
+        "weapons": [  # one record per tier, as in the real dataset
+            {"id": "weapon_rock", "tier": 1},
+            {"id": "weapon_rock", "tier": 2},
+            {"id": "weapon_knife", "tier": 1},
+        ],
+    }
+
+
+def test_item_weapon_state_splits_by_hash_without_tier_suffix():
+    save = _save()
+    save["items_unlocked"] = [generate_hash("item_bag"), 12345]
+    save["weapons_unlocked"] = [generate_hash("weapon_rock")]
+    state = unlocks.item_weapon_state(_dataset(), save)
+    assert state["items_unlocked"] == ["item_bag"]
+    assert state["items_locked"] == ["item_acid", "item_fin"]
+    assert state["weapons_unlocked"] == ["weapon_rock"]
+    assert state["weapons_locked"] == ["weapon_knife"]
+    # the per-tier hash form is not what the save stores
+    save["weapons_unlocked"] = [generate_hash("weapon_rock_1")]
+    assert unlocks.item_weapon_state(_dataset(), save)["weapons_unlocked"] == []
+
+
+def test_unlock_state_command_writes_item_and_weapon_lists(tmp_path, monkeypatch):
+    import shutil
+
+    data_dir = tmp_path / "data"
+    (data_dir / "extracted").mkdir(parents=True)
+    shutil.copytree(FIXTURES / "challenges", data_dir / "extracted" / "challenges")
+    shutil.copy(FIXTURES / "translations.csv", data_dir / "translations.csv")
+    (data_dir / "brotato.json").write_text(json.dumps(_dataset()), encoding="utf-8")
+    save_dir = tmp_path / "save"
+    save_dir.mkdir()
+    save = _save()
+    save["items_unlocked"] = [generate_hash("item_bag"), generate_hash("item_fin")]
+    save["weapons_unlocked"] = [generate_hash("weapon_knife")]
+    (save_dir / "save_v3_1.json").write_text(json.dumps(save), encoding="utf-8")
+    monkeypatch.setenv("BROTATO_BOT_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("BROTATO_BOT_SAVE_DIR", str(save_dir))
+
+    assert cli.main(["unlock-state"]) == 0
+    out = json.loads((data_dir / "unlock_state.json").read_text(encoding="utf-8"))
+    assert out["items_unlocked"] == ["item_bag", "item_fin"]
+    assert len(out["items_unlocked"]) == 2  # the unlocked count
+    assert out["weapons_unlocked"] == ["weapon_knife"]
+    assert out["weapons_locked"] == ["weapon_rock"]
