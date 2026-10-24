@@ -31,7 +31,10 @@ extends Node
 #                  callers ask only while sidecar_ready()
 #   pending_launch the launch.json dictionary while the run-start screens are being
 #                  pressed through (null otherwise; reset_for_menu leaves it alone)
-#   launch_used    launch.json was taken in this process; it is never read again
+#   launch_request launch.json as read (null until a valid file is found); read
+#                  at most once per process and kept across profile refusals
+#   launch_used    the request was spent: the launcher pressed Start, or it was
+#                  cancelled; it never launches again in this process
 
 const BotConfig = preload("res://mods-unpacked/Ellie-BrotatoBot/core/bot_config.gd")
 const Guards = preload("res://mods-unpacked/Ellie-BrotatoBot/core/guards.gd")
@@ -64,6 +67,7 @@ var deciding_deadline_ms = 0
 var human_paused = false
 var ask_policy = AskPolicy.new()
 var pending_launch = null
+var launch_request = null
 var launch_used = false
 var _halt_after_decide = false   # a move key during a decision: halt once it ends
 var _pause_menu_ref = null       # weakref to the shop's PauseMenu (on_human_pause)
@@ -361,23 +365,35 @@ func may_act() -> bool:
 	return true
 
 
-# Main menu: take launch.json as the pending launch. A launch is read at most once
-# per process (launch_used, set once a valid file is found), and a pending launch
-# found here means the owner came back to the menu mid-launch: that cancels it.
-# Returns true when the main menu should press Start. The profile check refuses
-# the launch and keeps the file.
+# Main menu, each time it is shown: take launch.json as the pending launch. The
+# file is read until a valid one is found, then cached (launch_request); a
+# pending launch found here means the owner came back to the menu mid-launch:
+# that cancels it. Returns true when the main menu should press Start. The
+# profile check refuses without spending the request, so the next evaluation
+# (after the owner loads the bot profile) can still launch.
 func launch_begin() -> bool:
 	if pending_launch != null:
 		launch_cancel("Launch cancelled: back at the main menu")
 		return false
 	if launch_used:
 		return false
-	var d = LaunchFile.load_from(LaunchFile.DEFAULT_PATH)
-	if d == null:
-		return false
-	launch_used = true
-	pending_launch = d
+	if launch_request == null:
+		launch_request = LaunchFile.load_from(LaunchFile.DEFAULT_PATH)
+		if launch_request == null:
+			return false
+	pending_launch = launch_request
 	return launch_step() != null
+
+
+# The main menu is about to press Start for the pending launch: it is spent.
+func launch_consume():
+	launch_used = true
+
+
+# The main menu will not press Start after all (no longer the active page): drop
+# the pending launch without spending the request.
+func launch_release():
+	pending_launch = null
 
 
 # The pending launch for the screen about to press something, or null. Every
