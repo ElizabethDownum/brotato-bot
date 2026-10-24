@@ -1,4 +1,5 @@
 import json
+import re
 
 import pytest
 
@@ -213,3 +214,83 @@ def test_prepare_plan_and_from_proposal_are_exclusive(tmp_paths, tmp_path, propo
         cli.main(["prepare", "--plan", path, "--from-proposal", path])
     with pytest.raises(SystemExit):
         cli.main(["prepare"])
+
+
+def _launch(p):
+    return json.loads(p.plan_json.with_name("launch.json").read_text(encoding="utf-8"))
+
+
+def test_prepare_from_proposal_writes_the_launch_contract(tmp_paths, tmp_path, proposal_md, capsys):
+    _settings(tmp_paths, 1, False)
+    _unlock_state(tmp_paths, True)
+    text = proposal_md(starting_weapon="weapon_rock").replace("- danger: 0", "- danger: 2")
+    assert cli.main(["prepare", "--from-proposal", _proposal_file(tmp_path, text)]) == 0
+    out = capsys.readouterr().out
+    assert "launch token written" in out
+    assert "load the bot profile by hand" in out
+    plan = json.loads(tmp_paths.plan_json.read_text(encoding="utf-8"))
+    assert (plan["danger"], plan["starting_weapon"]) == (2, "weapon_rock")
+    assert plan["target_challenge"] == "chal_gatherer_1"
+    launch = _launch(tmp_paths)
+    assert launch["token"].startswith("2026-10-22-001-")
+    assert re.fullmatch(r"2026-10-22-001-\d{8}T\d{6}Z", launch["token"])
+    assert {k: v for k, v in launch.items() if k not in ("token", "created_at")} == {
+        "character_id": "character_well_rounded",
+        "starting_weapon": "weapon_rock",
+        "danger": 2,
+        "target_challenge": "chal_gatherer_1",
+    }
+    assert launch["created_at"].endswith("+00:00")
+
+
+def test_prepare_overwrites_a_stale_launch_token(tmp_paths, tmp_path, proposal_md):
+    _settings(tmp_paths, 1, False)
+    _unlock_state(tmp_paths, True)
+    stale = tmp_paths.plan_json.with_name("launch.json")
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_text(json.dumps({"token": "stale"}), encoding="utf-8")
+    assert cli.main(["prepare", "--from-proposal", _proposal_file(tmp_path, proposal_md())]) == 0
+    assert _launch(tmp_paths)["token"] != "stale"
+    assert _launch(tmp_paths)["starting_weapon"] == "any"
+
+
+def test_prepare_plan_with_flags_writes_the_contract_and_without_removes_a_stale_one(
+    tmp_paths, tmp_path, capsys
+):
+    plan_file = tmp_path / "plan_in.json"
+    plan_file.write_text(
+        json.dumps({"plan_id": "old-v1", "character_id": "character_old", "plan": {}}),
+        encoding="utf-8",
+    )
+    args = ["prepare", "--plan", str(plan_file), "--target", "chal_slow"]
+    assert cli.main([*args, "--danger", "1", "--starting-weapon", "weapon_rock"]) == 0
+    launch = _launch(tmp_paths)
+    assert launch["token"].startswith("old-v1-")
+    assert (launch["danger"], launch["starting_weapon"]) == (1, "weapon_rock")
+    assert launch["target_challenge"] == ""  # the plan file's own key, which is unset here
+    assert cli.main(args) == 0
+    assert not tmp_paths.plan_json.with_name("launch.json").exists()
+    assert "launch token written" not in capsys.readouterr().out.split("Wrote", 2)[-1]
+
+
+def test_prepare_from_proposal_refuses_the_plan_only_flags(tmp_paths, tmp_path, proposal_md):
+    path = _proposal_file(tmp_path, proposal_md())
+    assert cli.main(["prepare", "--from-proposal", path, "--danger", "1"]) == 1
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"danger": "2"},
+        {"danger": True},
+        {"starting_weapon": ""},
+        {"prefer_sets": {"set_blunt": "x"}},
+    ],
+)
+def test_validate_plan_checks_the_launch_keys(extra):
+    base = {"plan_id": "x", "character_id": "c", "plan": {}}
+    with pytest.raises(ValueError):
+        prepare.validate_plan({**base, **extra})
+    prepare.validate_plan(
+        {**base, "danger": 2, "starting_weapon": "any", "prefer_sets": {"set_blunt": 12.5}}
+    )

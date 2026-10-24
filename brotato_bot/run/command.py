@@ -12,14 +12,22 @@ from brotato_bot.fsutil import plain_name, read_json
 from brotato_bot.run import collect, prepare, proposal
 
 
-def _install(plan: dict, target: str | None, p: paths.Paths) -> int:
+def _install(
+    plan: dict, target: str | None, p: paths.Paths, launch_label: str | None = None
+) -> int:
     try:
-        warnings = prepare.prepare(plan, target, p)
+        warnings = prepare.prepare(plan, target, p, launch_label)
     except ValueError as exc:
         print(f"prepare: {exc}")
         return 1
     print(f"Wrote {p.plan_json} (plan_id {plan['plan_id']})")
     print(f"target_challenge {target or '(none)'} -> {p.config_json}")
+    if launch_label is not None:
+        print(f"launch token written -> {prepare.launch_path(p)}")
+        print(
+            "Reminder: load the bot profile by hand on the title screen; "
+            "the mod refuses to start the run on any other profile."
+        )
     for w in warnings:
         print(f"WARNING: {w}")
     return 0
@@ -33,22 +41,26 @@ def _from_proposal(path: str, p: paths.Paths) -> int:
     except (OSError, ValueError) as exc:
         print(f"prepare: {exc}")
         return 1
-    errors = proposal.validate(markdown, unlock_state, Path(path).name, rows)
+    dataset = proposal.load_dataset_optional(p.data_dir / "brotato.json")
+    errors = proposal.validate(markdown, unlock_state, Path(path).name, rows, dataset)
     if errors:
         for e in errors:
             print(f"prepare: {e}")
         return 1
     plan = proposal.extract_plan(markdown)
-    target = proposal.next_run(markdown)["target"]
+    run = proposal.next_run(markdown)
+    target = run["target"]
     plan["target_challenge"] = target or ""  # the mod prefers the plan's target; pin it
-    return _install(plan, target, p)
+    plan["danger"] = run["danger"]
+    plan["starting_weapon"] = run["starting_weapon"]
+    return _install(plan, target, p, Path(path).stem)
 
 
 def _prepare(args: argparse.Namespace) -> int:
     p = paths.load()
     if args.from_proposal:
-        if args.target:
-            print("prepare: --target comes from the proposal's ## Next run")
+        if args.target or args.danger is not None or args.starting_weapon is not None:
+            print("prepare: --target, --danger and --starting-weapon come from the proposal")
             return 1
         return _from_proposal(args.from_proposal, p)
     try:
@@ -56,7 +68,19 @@ def _prepare(args: argparse.Namespace) -> int:
     except (OSError, json.JSONDecodeError) as exc:
         print(f"prepare: cannot read {args.plan}: {exc}")
         return 1
-    return _install(plan, args.target, p)
+    launch_label = None
+    if args.danger is not None or args.starting_weapon is not None:
+        if not isinstance(plan, dict):
+            print("prepare: plan must be a JSON object")
+            return 1
+        if args.danger is not None:
+            plan["danger"] = args.danger
+        if args.starting_weapon is not None:
+            plan["starting_weapon"] = args.starting_weapon
+        plan.setdefault("danger", 0)
+        plan.setdefault("starting_weapon", "any")
+        launch_label = str(plan.get("plan_id", "plan"))
+    return _install(plan, args.target, p, launch_label)
 
 
 def _collect(args: argparse.Namespace) -> int:
@@ -87,6 +111,10 @@ def _register_prepare(subparsers: argparse._SubParsersAction) -> None:
         "--from-proposal", metavar="FILE", help="proposal whose plan and ## Next run to install"
     )
     parser.add_argument("--target", default=None, metavar="ID", help="target challenge id")
+    parser.add_argument("--danger", type=int, default=None, metavar="N", help="with --plan")
+    parser.add_argument(
+        "--starting-weapon", default=None, metavar="ID", help="weapon id or any, with --plan"
+    )
     parser.set_defaults(func=_prepare)
 
 

@@ -1,4 +1,11 @@
-"""Write the mod's inputs for the next bot run: ``plan.json`` and ``target_challenge``.
+"""Write the mod's inputs for the next bot run: ``plan.json``, ``target_challenge`` and the
+launch token ``launch.json``.
+
+``plan.json`` also carries ``danger`` and ``starting_weapon`` (a dataset weapon id or
+``any``) next to ``target_challenge``. ``launch.json`` (beside ``plan.json``) is the one-shot
+launch contract the mod consumes and deletes when it starts a run: ``token``,
+``character_id``, ``starting_weapon``, ``danger``, ``target_challenge``, ``created_at``.
+The owner still loads the bot profile by hand; the mod refuses on any other profile.
 
 ``settings.json`` (in the save dir) holds ``current_profile_id`` at the top level and
 ``pause_on_focus_lost`` under ``settings``; ``save_v3_0.json`` does not hold the profile id.
@@ -9,6 +16,7 @@ from __future__ import annotations
 
 import json
 import math
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +25,7 @@ from brotato_bot.paths import Paths
 
 REQUIRED_PLAN_KEYS = ("plan_id", "character_id", "plan")
 DEFAULT_BOT_PROFILE_ID = 1
+LAUNCH_NAME = "launch.json"
 
 
 def validate_plan(plan: Any) -> None:
@@ -35,6 +44,17 @@ def validate_plan(plan: Any) -> None:
     tc = plan.get("target_challenge", "")
     if not isinstance(tc, str):
         raise ValueError("plan target_challenge must be a string")  # noqa: TRY004
+    danger = plan.get("danger", 0)
+    if isinstance(danger, bool) or not isinstance(danger, int):
+        raise ValueError("plan danger must be an integer")  # noqa: TRY004
+    weapon = plan.get("starting_weapon", "any")
+    if not isinstance(weapon, str) or not weapon:
+        raise ValueError("plan starting_weapon must be a non-empty string")
+    sets = plan.get("prefer_sets", {})
+    if not isinstance(sets, dict) or any(
+        isinstance(v, bool) or not isinstance(v, int | float) for v in sets.values()
+    ):
+        raise ValueError("plan prefer_sets must map set ids to numbers")
 
 
 def _read_object(path: Path) -> dict | None:
@@ -82,9 +102,31 @@ def settings_warnings(settings_path: Path, bot_profile_id: int) -> list[str]:
     return out
 
 
-def prepare(plan: dict, target: str | None, paths: Paths) -> list[str]:
+def launch_path(paths: Paths) -> Path:
+    return paths.plan_json.with_name(LAUNCH_NAME)
+
+
+def launch_contract(plan: dict, label: str, now: datetime | None = None) -> dict:
+    """The ``launch.json`` object for ``plan``; ``label`` (the proposal file stem or the
+    plan_id) prefixes the token, which carries the UTC creation time."""
+    now = now or datetime.now(UTC)
+    return {
+        "token": f"{label}-{now:%Y%m%dT%H%M%SZ}",
+        "character_id": plan["character_id"],
+        "starting_weapon": plan.get("starting_weapon", "any"),
+        "danger": plan.get("danger", 0),
+        "target_challenge": plan.get("target_challenge", ""),
+        "created_at": now.isoformat(timespec="seconds"),
+    }
+
+
+def prepare(
+    plan: dict, target: str | None, paths: Paths, launch_label: str | None = None
+) -> list[str]:
     """Write ``plan.json`` and merge ``target_challenge`` (``target`` or ``""``) into
-    ``config.json``, keeping its other keys. Returns warnings for the operator."""
+    ``config.json``, keeping its other keys. With ``launch_label`` also write ``launch.json``
+    (overwriting a stale one); without it a stale ``launch.json`` is removed, so an old token
+    never starts a run for a plan it was not written with. Returns warnings."""
     validate_plan(plan)
     config = _read_object(paths.config_json) or {}
     old_target = config.get("target_challenge", "")
@@ -101,6 +143,10 @@ def prepare(plan: dict, target: str | None, paths: Paths) -> list[str]:
         warnings.append("config.json changed: restart Brotato, the mod reads it once at start")
 
     atomic_write_json(paths.plan_json, plan)
+    if launch_label is not None:
+        atomic_write_json(launch_path(paths), launch_contract(plan, launch_label))
+    else:
+        launch_path(paths).unlink(missing_ok=True)
     config["target_challenge"] = new_target
     atomic_write_json(paths.config_json, config)
     return warnings
