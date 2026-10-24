@@ -34,9 +34,11 @@ The three rules:
    "Profile 1", "Profile 2" and "Profile 3", so the bot's id 1 is the button
    labelled **"Profile 2"** (`menu_profile.gd:195-197` maps ProfileButton2 to
    `active_profile_button(1)`). Step 3.1 still has you confirm it in game.
-2. **You launch the game and start every run by hand.** The bot never starts
-   a run, never survives a return to the main menu, and never starts a game
-   session enabled. Each run you press Shift+Space yourself.
+2. **You launch the game and load the bot profile by hand.** The bot never
+   survives a return to the main menu and never starts a game session
+   enabled. Either you start the run and press Shift+Space yourself, or the
+   launcher does both from `launch.json` (section 4), and only on the bot
+   profile.
 3. **Any bot action on another profile, or during your own play, halts the
    bot.** If the bot tries to act on a non-bot profile, it halts with
    "wrong profile". A move key, an arrow key, IJKL, any gamepad button or a
@@ -251,14 +253,29 @@ it while idle (`BOT idle` plus the plan line), turn on AI visuals. This also dra
 | `bot_profile_id` | int | `1` | The only profile the bot may act on. |
 | `request_timeout_ms` | int | `45000` | How long a `shop`, `levelup` or `pivot` decision waits for a response. |
 | `checkpoint_timeout_ms` | int | `120000` | How long a `checkpoint` decision waits. |
-| `ask_tie_margin` | float | `3.0` | The bot asks when the best two affordable scores are closer than this. |
-| `ask_floor` | float | `4.0` | The bot asks when the best affordable score is below this. |
+| `ask_tie_margin` | float | `3.0` | A shop tie: the bot asks when the best two affordable scores are closer than this (and the best is at least `ask_floor`). Level-ups ask on a tie or a best below `ask_floor`. |
+| `ask_floor` | float | `6.0` | The lowest best score a shop tie is worth asking about (the magnitude scale's `min_buy`). |
+| `ask_gold_floor` | int | `200` | A big purchase is asked about only when the gold held is at least this. |
+| `ask_big_share` | float | `0.25` | ... and the best affordable option costs at least this share of the gold. |
+| `ask_per_visit` | int | `2` | At most this many asks (pivots included) per shop visit. |
 | `target_challenge` | string | `""` | The challenge id to watch for, e.g. `chal_gatherer_1`. A non-empty `target_challenge` in `plan.json` overrides it. |
 | `export_hotkey` | string | `"F9"` | Key name for the advisor export, as Godot names keys (`OS.find_scancode_from_string`). An unknown name falls back to F9. |
 
-The ask rule needs at least two affordable options. Every level-up option
-counts as affordable. The rule applies only while a sidecar heartbeat is
-fresh (section 4).
+Shop ask rules, in order (`DecisionClient.should_ask`), on every board of a
+visit (the first view and after each reroll or buy), only while a sidecar
+heartbeat is fresh (section 4):
+
+1. `ask_per_visit` asks already made this visit: no ask.
+2. An `ask_on` id is on the board: `pivot`.
+3. A dead board, where no affordable option scores at or above the plan's
+   `min_buy`: no ask (the rules reroll or leave).
+4. A genuine tie (best affordable `>= ask_floor`, and best minus second
+   `< ask_tie_margin`): `ask`.
+5. A big purchase (gold `>= ask_gold_floor`, and the best affordable option's
+   price `>= ask_big_share` of the gold): `ask`.
+
+A level-up asks on a pivot, or on a tie or a best below `ask_floor`; every
+level-up option counts as affordable.
 
 Copy-pasteable, all defaults:
 
@@ -268,7 +285,10 @@ Copy-pasteable, all defaults:
   "request_timeout_ms": 45000,
   "checkpoint_timeout_ms": 120000,
   "ask_tie_margin": 3.0,
-  "ask_floor": 4.0,
+  "ask_floor": 6.0,
+  "ask_gold_floor": 200,
+  "ask_big_share": 0.25,
+  "ask_per_visit": 2,
   "target_challenge": "",
   "export_hotkey": "F9"
 }
@@ -286,9 +306,9 @@ Copy-pasteable, all defaults:
   non-empty it wins over `config.json`'s.
 - **Launch keys written by `prepare`** (top level, next to `target_challenge`;
   the mod's `plan_file.gd` reads only the required keys and `target_challenge`
-  and ignores the rest until the launcher lands): `danger` (int, the danger
-  to start at) and `starting_weapon` (a dataset weapon id such as
-  `weapon_rock`, or `any` when the owner picks it).
+  and ignores the rest; the launcher reads `launch.json`, section 4):
+  `danger` (int, the danger to start at) and `starting_weapon` (a dataset
+  weapon id such as `weapon_rock`, or `any` when the owner picks it).
 - **Wrong character:** a plan written for another character never applies.
   The bot then uses its built-in plan for the character you picked, and
   `plan_id` reads `builtin` in the run header, state exports and overlay.
@@ -323,7 +343,7 @@ Common `plan` keys. This table is the full set. The header comment in
 | `prefer_weapons`, `ban_items` | lists of weapon / item ids |
 | `ask_on` | ids that always trigger a `pivot` decision when offered |
 | `phase_boost` | `{"until_wave": N, "stats": {stat key → multiplier}}`; before wave N the named stats' weights are multiplied (`build_plans.gd:40-42`); `{}` disables |
-| `prefer_sets` | `{set id → bonus}`, written by `proposal shape` when a weapon set's full bonus covers at least a quarter of what the character still needs toward the goal stat (bonus = goal units × 1.5, at most 30); a soft score term the mod does not read yet (a later mod change adds it to `score_weapon`). Shaping then sets `weapon_type` to `"any"`. It is not the hard `weapon_set` gate |
+| `prefer_sets` | `{set id → bonus}`, written by `proposal shape` when a weapon set's full bonus covers at least a quarter of what the character still needs toward the goal stat (bonus = goal units × 1.5, at most 30). `score_weapon` adds `bonus / 6` for each of a weapon's sets (a new weapon and a combine alike), so the term grows as the board fills. Merged one level deep like `item_bonus`; accepted in a sidecar `plan_patch`. Shaping then sets `weapon_type` to `"any"`. It is not the hard `weapon_set` gate |
 | `weapon_set` (string), `deprioritize_weapons` (list of ids), `unique_weapons`, `stack_combine`, `hitrate_pref`, `spend_surplus` (booleans) | per-character shop tweaks read by `shop_advisor.gd` and `base_shop.gd` |
 
 `ask_on` is matched against shop offers (item and weapon ids, e.g.
@@ -356,16 +376,39 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    bot profile by hand: `prepare` cannot, and the mod refuses on any other
    profile (step 4).
 2. Check that `%APPDATA%\Brotato\brotato-bot\plan.json` exists and names the
-   character you will pick. `prepare` also writes `launch.json` beside it
-   (token, character, starting weapon, danger, target); the launcher in a later
-   mod change consumes and deletes it, and until then it is only a record. The
-   proposal's `## Next run` names the starting weapon (`- starting_weapon:`;
-   `any` means you choose).
-3. Start a run as usual: pick the character, the weapon the proposal names
-   and the danger. To navigate
+   character the run will use. `prepare` also writes `launch.json` beside it
+   (token, character, starting weapon, danger, target). The proposal's
+   `## Next run` names the starting weapon (`- starting_weapon:`; `any` means
+   you choose).
+3. **The launcher.** With a valid `launch.json` present, the mod does the run
+   start for you, on the main menu you land on after loading the profile:
+   - It presses Start, picks the character, picks the starting weapon, picks
+     the danger and starts the run. Each step first checks that the game's
+     profile is the bot's; a wrong profile cancels the launch, deletes
+     nothing, and line 1 reads `Launch refused: wrong profile (<id>)`.
+   - `starting_weapon: any` leaves the weapon pick to you (line 1 reads
+     `Launch: pick the starting weapon`); the launch carries on from the next
+     screen. The weapon is looked up as the tier-1 id (`weapon_rock_1`, the
+     form the starting-weapon list carries), then as the bare id.
+   - A character that is missing or locked, a weapon that is not offered, or
+     a danger above the character's maximum cancels the launch, deletes
+     `launch.json`, and line 1 reads `Launch refused: character <id> not
+     available`, `... weapon <id> not available` or `... danger <n> not
+     available`. You finish from that screen by hand.
+   - Pressing Back, or reaching the main menu, mid-launch cancels it. A launch
+     file is read at most once per game process, and `launch.json` is deleted
+     when the run starts (a stale file from an older `prepare` is deleted
+     then too, without enabling the bot).
+   - When wave 1 starts, the mod records a `launch` event and switches the bot
+     on through the same guarded path as Shift+Space, so the profile and plan
+     checks and the human-pause rules apply unchanged. Do not touch the move
+     keys.
+   Skip step 4 after a launch; the bot is already on.
+4. Without a launch file, start a run as usual: pick the character, the
+   weapon the proposal names and the danger. To navigate
    the menus, use the mouse rather than WASD or the arrows. Navigating with
    keys while the bot is on halts it.
-4. When wave 1 has started, take your hands off the move keys and the
+   When wave 1 has started, take your hands off the move keys and the
    gamepad, then press **Shift+Space**. A held move key repeats and halts the
    bot at once.
    - If the bot refuses, line 1 reads
@@ -401,10 +444,14 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    |---|---|---|
    | `header` | `character_id`, `danger`, `plan_id`, `profile_id`, `game_version`, `mod_version`, `start_wave`, `run_id` | first line |
    | `bot_state` | `state` (`acting`, `idle`, `halted`, `complete`), `reason` (`enabled`, `toggle_off`, `main_menu`, `run_start`, or the halt reason) | Shift+Space on or off, a halt, the main menu, and right after the header (the bot's state when the file opened) |
-   | `snapshot` | position, heading, threats, ... | about 1 Hz, only while the bot is enabled |
+   | `launch` | `token`, `character_id`, `starting_weapon`, `danger` | wave 1 of a launched run, before the bot is enabled |
+   | `snapshot` | position, heading, threats, `mats`, ... (`mats`: `{floor` = material pickups on the floor, `bag` = `RunData.bonus_gold`, `nearest` = distance from the potato to the nearest pickup, -1 when none`}`) | about 1 Hz, only while the bot is enabled |
    | `damage`, `dash`, `bullet_hell` | — | only while the bot is enabled |
    | `death` | `wave`, `position`, `killer`, `last_threats`, `build`, `dmg_w` | player 0 dies |
-   | `wave_end` | `wave`, `hp`, `gold`, `damage_taken`, `kills` | every wave end |
+   | `wave_end` | `wave`, `hp`, `gold`, `damage_taken`, `kills`, `stats` (the `stat_*` map the state export carries) | every wave end |
+   | `offer` | `wave`, `view` (1-based per shop visit; a reroll starts the next), `gold`, `items` (`id`, `tier`, `price`, `score`, `locked`) | every shop board the bot sees: the first view and after each reroll |
+   | `crate` | `wave`, `item_id`, `action` (`take`, `recycle`), `score` | the bot takes or recycles a crate item (telemetry only; the rule is unchanged) |
+   | `build` | `weapons` (ids), `items` (ids) | the run ends, win or death, just before `end` |
    | `warning` | `reason`, or `message` | `reason`: refused enable; `pause_on_focus_lost is true`. `message`: `sidecar timeouts; asking disabled for this run` |
    | `halt` | `reason` (`human input`, `wrong profile`) | the bot halts |
    | `export` | `export_kind`, `path`, `seq` | every state export (F9 or a decision) |
@@ -425,7 +472,8 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    - The bot asks only when `%APPDATA%\Brotato\brotato-bot\sidecar.alive`
      was modified within the last **10 s**. Otherwise the rules decide at
      once: no request, no pause and no `decision` line.
-   - A shop asks at most once per visit, before its first buy.
+   - A shop asks up to `ask_per_visit` times per visit, on whichever boards
+     `should_ask` flags (section 3.4); never on a dead board.
    - After two decisions in a row time out, the bot stops asking for the rest
      of the run: a `warning` line (`message`), line 4 `sidecar: off`, and a
      checkpoint then logs `"reason":"asking_disabled"`. Any answer (valid or
@@ -674,8 +722,9 @@ Setup:
 - Bot profile, bot on, `plan.json` present.
 - To make a shop ask reliably, put an item you expect to see into the plan's
   `ask_on`, e.g. `"ask_on": ["item_scar"]`. Otherwise a shop asks only on a
-  near-tie (within `ask_tie_margin`, 3.0) or a weak offer (best score under
-  `ask_floor`, 4.0).
+  genuine tie (best at least `ask_floor` 6.0 and within `ask_tie_margin` 3.0 of
+  the second) or a big purchase (section 3.4); a board where nothing scores at
+  `min_buy` is never asked.
 - Optional: to shorten the waits, set `"request_timeout_ms": 20000` in
   `config.json` and restart the game.
 

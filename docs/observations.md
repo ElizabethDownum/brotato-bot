@@ -451,3 +451,37 @@ The harness side of the owner's rulings above is in. The mod side (consuming
   character's `need`, `proposal shape` writes `prefer_sets: {set_id: goal units x 1.5,
   at most 30}` and sets `weapon_type` to `any`; it never sets `weapon_set`. The mod
   ignores `prefer_sets` until its `score_weapon` change.
+
+## 2026-10-23 implemented: mod sync (launcher, prefer_sets, telemetry, ask retarget)
+
+The mod side of the owner's rulings is in (mod 0.1.1). Nothing here was run in the game;
+the headless tests cover the pure logic and the scene extensions are read-checked only.
+
+- **`prefer_sets`.** A plan key (number map, merged one level deep, accepted in a
+  `plan_patch`). `shop_advisor.score_weapon` adds `bonus / 6` per set of the weapon
+  (`shopping/set_score.gd`) to both a new weapon and a combine; `weapon_set` stays the
+  hard gate. No other weapon constant moved.
+- **Launcher.** `launch.json` (read once per process by the main menu) drives Start,
+  character, weapon and danger through the screens' own press handlers on deferred
+  frames; each step re-checks `Guards.profile_ok` and a failure cancels the launch,
+  deletes nothing and sets `Launch refused: wrong profile (<id>)`. A missing or locked
+  character, an unoffered weapon or a danger above the character's maximum cancels with
+  its own status and deletes the file. `any` leaves the weapon to the owner. At wave 1
+  `main.gd` deletes the file, records a `launch` event and enables the bot through
+  `AutobattlerOptions.enable_bot()`, the same guarded path as Shift+Space. Starting
+  weapons are the tier-1 resources: element `my_id` is `weapon_rock_1`, `weapon_id` is
+  `weapon_rock`; the launcher tries the `_1` form first, then the bare id.
+- **Telemetry.** New events `offer` (every board: first view and after each reroll),
+  `crate` (take or recycle, with the score), `build` (both outcomes); `wave_end.stats`;
+  snapshot `mats` (floor count from `main._active_golds`, bag = `bonus_gold`, nearest
+  distance). Field list in the runbook's event table. The harness `collect.py` does not
+  read them yet.
+- **Ask retarget.** Defaults: `ask_floor` 6.0, `ask_tie_margin` 3.0, `ask_gold_floor` 200,
+  `ask_big_share` 0.25, `ask_per_visit` 2. On every shop board, in order: the per-visit
+  cap; a pivot (an `ask_on` id on the board); a dead board (nothing affordable at or
+  above `min_buy`) never asks; a tie (best at least `ask_floor` and within
+  `ask_tie_margin` of the second); a big purchase (gold at least `ask_gold_floor` and the
+  best affordable option costs at least `ask_big_share` of the gold). Level-ups keep the
+  old tie-or-below-floor rule (now with the 6.0 floor).
+- **Not changed:** the crate take/recycle rule, `MIN_BUY_UNDER_GOAL`, the sidecar,
+  `effect_score.gd`, the steering.
