@@ -54,3 +54,25 @@ source; "audit" means the claim is the auditor's and was not re-checked.
   loot telemetry; `ban_items` outside ban mode (F03); objective context for Haiku (F10, F12).
 - Per-tick cost is not a problem today: run 10 wave 19 gather+choose median 1.5 ms, p95 3.0 ms
   (1 Hz samples).
+
+## Owner rulings, 2026-10-24 (batch 2 spec: stat value model)
+
+- One shared baseline covers **every** stat and effect in the game, positive and negative.
+  Per-character changes only where they change how the character plays (Demon pays in max
+  HP, weapon class) or for its special attributes. Speed is always weighted.
+- Every stat has a **curve, not a flat multiplier**, with diminishing returns: +100 speed makes
+  more speed worth little. This applies to every stat, not only those with a game formula;
+  where the game has none, we author the curve (shape, falloff, cap, negative-side slope,
+  documented reason) in one data table.
+- The curve is evaluated **at the run's current stats**: value = curve(current + delta) −
+  curve(current), using live player stats, held items, current weapon stats and the wave.
+- Interactions come from game formulas where they exist: damage taken = 15/(15+armor)
+  (`run_data.gd:1429`), so effective HP ≈ HP·(15+armor)/15 and at 100 armor / 20 HP one max HP
+  is worth about 6 armor; dodge is capped at 60% (`player_run_data.gd:434`).
+- Negative effects are priced on the same curves, so trade-offs such as "-1 HP regen vs +8%
+  damage" are decided against the current build.
+- Any effect key without a curve is caught by a dataset check and routed to review, never
+  scored zero.
+- Bans: tier 1 `exclude_items` (mod-enforced never-acquire, all profiles) and tier 2
+  `ban_items` (per run, set by the planner; spends the game's 8 ban tokens). Tier 2 waits
+  until chal_banned_items (a danger-3 win) is unlocked; until then it acts as tier 1.
