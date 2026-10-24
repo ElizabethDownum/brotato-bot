@@ -512,3 +512,38 @@ the headless tests cover the pure logic and the scene extensions are read-checke
 - Accepted debt: `collect.py` does not render the new `offer`, `crate`, `build`, `mats`
   and `wave_end.stats` fields yet; the fit layer's duplicate pool-name helper; stale
   launch-file cleanup at every wave start (owner: keep, `prepare` is never run mid-run).
+
+## 2026-10-23 run 4 (20261023-210533-old-d0): chal_slow FIRED at wave 10; died wave 18
+
+- First run through the whole new chain: mod 0.1.2 compiled on launch, the launcher
+  refused on the owner's profile, then picked Old, Rock and danger 0 after profile 2 was
+  loaded, and switched the bot on 11 s into wave 1 (`launch` event, token consumed).
+- **Target achieved.** Speed went -10 (start) to -13 (Ugly Tooth, wave 3) to -21 at wave
+  10 (Ball and Chain -3 and Warrior Helmet -5, both wave 9); chal_slow fired at wave 10
+  (`challenge` event, `is_target` true). Streamer is now unlocked. Side unlocks:
+  chal_experimentation, chal_bonk_dog, chal_gatherer_4.
+- **`ask_on` pivots did the work.** 5 goal-item sightings on 77 boards; 4 were bought,
+  every one through a `pivot` ask answered `buy` (Ugly Tooth 35g w3, Ball and Chain 151g
+  and Warrior Helmet 161g w9, Barricade 219g w17). The fifth, Bag at 52g with 23 gold on
+  hand, was correctly not asked (dead-board rule). 22 asks in all (4 pivots, 1
+  checkpoint, 9 shop, 8 level-up) against 11 in run 3; sidecar cost $0.089.
+- **The post-target checkpoint ran** for the first time (wave 10): `revise_plan` moved
+  weight to max HP 8, armour 7, dodge 5, harvesting 3, set `spend_surplus` and
+  `harvest_cap` 30, rationale "target done, shift to survival". Later haiku buys (Acid x2,
+  Metal Plate x3, Gentle Alien) followed that patch.
+- **Death at wave 18** (junkie; six tier-3 melee weapons, 57 HP, damage per wave rising
+  from 35 at w8 to 65 at w17). Old at danger 0 with a melee kit is fragile; the goal was
+  met so this does not block the unlock loop, but Old's row is tuned for ranged.
+- **`prefer_sets` did not steer.** 15 / 6 = 2.5 per Blunt weapon against a 22 base for
+  any weapon, so the board filled with Primitive, Ethereal and Fire; Rock was the only
+  Blunt weapon all run. To matter, the per-weapon term must be on the goal-item scale
+  (Blunt is -1.67 speed per weapon, about 6.7 at weight 12 plus a bonus): tune in shaping
+  (full set value per weapon, not a sixth) or in the mod's divisor. Measure-first done.
+- **Crate rule, now with data:** Beanie (+speed) was taken from a crate at wave 10 with
+  score -16 (speed -21 to -17 the next wave; the target had already fired). The step 7
+  crate rule (recycle below 0) is justified. Six other crate takes scored 0 to 6.2.
+- **Materials, first numbers:** mean 10.1 pickups on the floor per snapshot, bag up to 47
+  gold swept at a wave end. The step 5 steering audit now has a baseline.
+- Follow-ups: `collect.py` still renders none of the new events (offers, crates, build,
+  mats, wave_end stats were read by hand); the run-4 report's Outcome line does not
+  mention the fired target.

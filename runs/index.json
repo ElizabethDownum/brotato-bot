@@ -37,5 +37,18 @@
     "proposal_n": null,
     "profile_id": 1,
     "target_fired": false
+  },
+  {
+    "run_id": "20261023-210533-old-d0",
+    "character_id": "character_old",
+    "danger": 0,
+    "plan_id": "old-slow-v1",
+    "target_challenge": "chal_slow",
+    "outcome": "death",
+    "death_wave": 18,
+    "hp_end_last_wave": 57,
+    "proposal_n": null,
+    "profile_id": 1,
+    "target_fired": true
   }
 ]
