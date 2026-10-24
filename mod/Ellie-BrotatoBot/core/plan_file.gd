@@ -10,6 +10,8 @@ extends Reference
 # load_from(path) returns that dictionary (target_challenge defaulted to "") or
 # null when the file is missing, unreadable, invalid JSON, not an object, or
 # lacks plan_id / character_id / plan. Reasons are logged with push_warning.
+# Other top-level keys (the harness's "danger" and "starting_weapon") are left
+# untouched and ignored here; the launcher reads them from launch.json instead.
 
 # Relative preload: resolves in the game (res://mods-unpacked/...) and in the
 # headless test project (res://mod/...) alike.
@@ -18,7 +20,7 @@ const BotPaths = preload("bot_paths.gd")
 const DEFAULT_PATH = BotPaths.ROOT + "/plan.json"
 
 # Keys merged one level deep by merge(); every other key is replaced wholesale.
-const DEEP_KEYS = ["stats", "item_bonus"]
+const DEEP_KEYS = ["stats", "item_bonus", "prefer_sets"]
 
 # BOTato plan keys whose built-in values are ints. JSON numbers parse as floats,
 # so load_from converts these back with int() (e.g. for range()/%d use).
@@ -31,7 +33,8 @@ const INT_PLAN_KEYS = ["harvest_cap", "max_weapons", "reroll_keep", "max_rerolls
 # a whole-number float such as 4.0 passes, 2.5 does not (load_from truncates).
 const KEY_TYPES = {
 	"weapon_type": "weapon_type", "weapon_set": "string",
-	"stats": "number_map", "item_bonus": "number_map", "phase_boost": "phase_boost",
+	"stats": "number_map", "item_bonus": "number_map", "prefer_sets": "number_map",
+	"phase_boost": "phase_boost",
 	"harvest_cap": "integer", "max_weapons": "integer", "reroll_keep": "integer",
 	"max_rerolls": "integer", "gold_floor": "integer", "min_buy": "number",
 	"prefer_weapons": "string_list", "ban_items": "string_list",
@@ -201,7 +204,7 @@ static func _type_ok(kind, v) -> bool:
 	return false
 
 
-# base.duplicate(true) overlaid with override: stats and item_bonus merge one
+# base.duplicate(true) overlaid with override: stats, item_bonus and prefer_sets merge one
 # level deep when both sides are dictionaries; any other key replaces wholesale.
 # Neither input is mutated and the result shares no containers with them.
 static func merge(base, override):

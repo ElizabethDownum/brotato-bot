@@ -6,6 +6,7 @@ extends Reference
 # Preload this script -- no class_name (see build_plans.gd).
 
 const BuildPlans = preload("res://mods-unpacked/Ellie-BrotatoBot/shopping/build_plans.gd")
+const SetScore = preload("res://mods-unpacked/Ellie-BrotatoBot/shopping/set_score.gd")
 const EffectScore = preload("res://mods-unpacked/Ellie-BrotatoBot/shopping/effect_score.gd")
 
 const COMBINE_SCORE = 100.0   # combining upgrades a weapon's tier -- almost always take it
@@ -101,6 +102,14 @@ static func score_weapon(wdata, plan, player_index):
 		if pref in wdata.my_id:
 			prefer = PRIORITIZE_BONUS
 			break
+	# prefer_sets: a soft bonus per held-set share (see set_score.gd). A combine keeps
+	# the set count, so the term applies to both returns below.
+	var set_ids = []
+	if wdata.sets != null:
+		for ws in wdata.sets:
+			if ws != null:
+				set_ids.append(ws.my_id)
+	var set_bonus = SetScore.bonus(set_ids, plan.get("prefer_sets", {}))
 	# Gladiator: +attack speed per UNIQUE weapon family, so it wants 6 DIFFERENT
 	# weapons. Combines still tier a family up WITHOUT losing uniqueness (3 -> 1
 	# of the same family) so they stay valuable; but a NON-combining duplicate of
@@ -112,18 +121,18 @@ static func score_weapon(wdata, plan, player_index):
 	if would_combine(wdata, player_index):
 		# Among several combinable weapons, prefer the one whose damage scales on
 		# stats the plan invests in (half weight -- combines are already top priority).
-		return COMBINE_SCORE + float(wdata.tier) * 5.0 + scaling_score(wdata, plan) * 0.5 - deprio + prefer
+		return COMBINE_SCORE + float(wdata.tier) * 5.0 + scaling_score(wdata, plan) * 0.5 - deprio + prefer + set_bonus
 	var has_slot = RunData.has_weapon_slot_available(wdata, player_index)
 	if not has_slot:
 		return -1.0   # board full and it will not combine -> not buyable/useful
 	if RunData.get_player_weapons(player_index).size() >= plan["max_weapons"]:
 		return -1.0
 	if want_set != "":
-		return NEW_WEAPON_MATCH + float(wdata.tier) * 3.0 + hitrate_bonus(wdata, plan) + scaling_score(wdata, plan) + stack_bonus(wdata, plan, player_index) - deprio + prefer  # in-set verified
+		return NEW_WEAPON_MATCH + float(wdata.tier) * 3.0 + hitrate_bonus(wdata, plan) + scaling_score(wdata, plan) + stack_bonus(wdata, plan, player_index) - deprio + prefer + set_bonus  # in-set verified
 	var type_ok = plan["weapon_type"] == "any" or weapon_type_str(wdata) == plan["weapon_type"]
 	if not type_ok:
 		return -1.0   # a typed plan never fills a slot with the wrong damage type
-	return NEW_WEAPON_MATCH + float(wdata.tier) * 3.0 + hitrate_bonus(wdata, plan) + scaling_score(wdata, plan) + stack_bonus(wdata, plan, player_index) - deprio + prefer
+	return NEW_WEAPON_MATCH + float(wdata.tier) * 3.0 + hitrate_bonus(wdata, plan) + scaling_score(wdata, plan) + stack_bonus(wdata, plan, player_index) - deprio + prefer + set_bonus
 
 # For economy-starved / thin-spread plans (Fisherman), completing a 3-of-a-kind to
 # tier a weapon UP is far better than a 6th distinct tier-1 that can never combine.

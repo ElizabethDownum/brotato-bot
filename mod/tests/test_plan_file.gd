@@ -48,6 +48,14 @@ func test_merge_keeps_base_keys_and_deep_merges_stats():
 	_assert_dict_eq(base.stats, {"a": 1, "b": 2}, "base not mutated")
 
 
+func test_prefer_sets_merges_one_level_and_is_a_number_map():
+	var m = PlanFile.merge({"prefer_sets": {"set_a": 6.0}}, {"prefer_sets": {"set_blunt": 12.0}})
+	_assert_dict_eq(m.prefer_sets, {"set_a": 6.0, "set_blunt": 12.0}, "prefer_sets merged one level deep")
+	assert_true(PlanFile.value_ok("prefer_sets", {"set_blunt": 12.0}), "number map accepted")
+	assert_false(PlanFile.value_ok("prefer_sets", {"set_blunt": "x"}), "non-number rejected")
+	assert_false(PlanFile.value_ok("prefer_sets", ["set_blunt"]), "non-dictionary rejected")
+
+
 func test_target_challenge_prefers_plan_then_config():
 	var cfg = {"target_challenge": "chal_cfg"}
 	assert_eq(PlanFile.target_id({"target_challenge": "chal_plan"}, cfg), "chal_plan", "plan wins")
