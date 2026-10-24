@@ -631,3 +631,31 @@ Report: `.superpowers/sdd/2026-10-24-steering-audit/sol-report.md` (brief beside
   tree telemetry at the next routine mod sync and run a separate Well Rounded
   comparison; implement a narrow tree policy before a run only if that run's target
   needs it.
+
+## 2026-10-24 implemented: mod sync 2 (crate rule, per-weapon sets, value and tree telemetry)
+
+- **Crates:** items use the shop's `stat_score + item_bonus`; take at score >= 0,
+  recycle below 0. Weapons retain `score_weapon >= 0` as the take rule. The `crate`
+  event still records only an accepted action with its score; run 4's -16 Beanie
+  would now be recycled. This scene branch is inspection-only here.
+- **Sets:** `prefer_sets[set_id]` is added as is for each weapon's sets; the `/ 6`
+  is removed. Old's Blunt value 20 therefore adds 20 to each Blunt weapon.
+  All other weapon scoring is unchanged.
+- **Materials:** snapshot `mats` is now `{floor, floor_value, unattached, bag, nearest}`.
+  `floor_value` sums the same pickups' `.value`; `unattached` counts those with no
+  `attracted_by`. Attracted pickups remain in floor/value/nearest. `wave_end` adds
+  `materials: {floor_count, floor_value, bag_before, bag_after}` and `collected_value`
+  (wave-end wallet minus wave-start wallet, before harvesting; net in-wave income).
+  Optimized cleanup supplies `bag_after` immediately after cleanup. Animated cleanup
+  supplies it on the first frame of the next wave, before material spawns debit it;
+  that wave-end line is delayed and retains the completed wave's explicit `wave`.
+  Closing the run before observation writes null for `bag_after`, never a guessed
+  value. The bag reflects pickup effects/conversions, not just raw floor value.
+- **Trees:** `wave_end.trees: {spawned, felled, alive}` counts the initial living
+  neutrals plus each later spawn (including pooled respawns), combat deaths and
+  living trees before cleanup. Cleanup deaths do not count as felled.
+- **Scope and checks:** mod version 0.1.3; pure recorder builders/lifecycle and
+  per-weapon set values have headless tests. Scene extensions are read-checked;
+  no game launch or sync. `arb.pick`/`arb.threat` are omitted because `last_scores`
+  carries totals only. `collect.py` rendering of these fields and its interpretation
+  of delayed wave-end lines are follow-ups. Steering and ask rules are unchanged.

@@ -344,7 +344,7 @@ Common `plan` keys. This table is the full set. The header comment in
 | `prefer_weapons`, `ban_items` | lists of weapon / item ids |
 | `ask_on` | ids that always trigger a `pivot` decision when offered |
 | `phase_boost` | `{"until_wave": N, "stats": {stat key → multiplier}}`; before wave N the named stats' weights are multiplied (`build_plans.gd:40-42`); `{}` disables |
-| `prefer_sets` | `{set id → per-weapon score value}`, written by `proposal shape` when a set's full bonus covers at least a quarter of the character's remaining goal need. Value = full goal-stat bonus / 6 / tier-1 stat unit × absolute shaped goal weight × `SET_WEAPON_FACTOR` 3, capped at 30. The mod contract adds it as is for each of a weapon's sets, to a new weapon and a combine alike; the next mod sync removes the old division by 6. Merged one level deep like `item_bonus`; accepted in a sidecar `plan_patch`. Shaping then sets `weapon_type` to `"any"`. It is not the hard `weapon_set` gate |
+| `prefer_sets` | `{set id → per-weapon score value}`, written by `proposal shape` when a set's full bonus covers at least a quarter of the character's remaining goal need. Value = full goal-stat bonus / 6 / tier-1 stat unit × absolute shaped goal weight × `SET_WEAPON_FACTOR` 3, capped at 30. The mod adds it as is for each of a weapon's sets, to a new weapon and a combine alike (since 0.1.3). Merged one level deep like `item_bonus`; accepted in a sidecar `plan_patch`. Shaping then sets `weapon_type` to `"any"`. It is not the hard `weapon_set` gate |
 | `weapon_set` (string), `deprioritize_weapons` (list of ids), `unique_weapons`, `stack_combine`, `hitrate_pref`, `spend_surplus` (booleans) | per-character shop tweaks read by `shop_advisor.gd` and `base_shop.gd` |
 
 `ask_on` is matched against shop offers (item and weapon ids, e.g.
@@ -451,12 +451,12 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    | `header` | `character_id`, `danger`, `plan_id`, `profile_id`, `game_version`, `mod_version`, `start_wave`, `run_id` | first line |
    | `bot_state` | `state` (`acting`, `idle`, `halted`, `complete`), `reason` (`enabled`, `toggle_off`, `main_menu`, `run_start`, or the halt reason) | Shift+Space on or off, a halt, the main menu, and right after the header (the bot's state when the file opened) |
    | `launch` | `token`, `character_id`, `starting_weapon`, `danger` | wave 1 of a launched run, before the bot is enabled |
-   | `snapshot` | position, heading, threats, `mats`, ... (`mats`: `{floor` = material pickups on the floor, `bag` = `RunData.bonus_gold`, `nearest` = distance from the potato to the nearest pickup, -1 when none`}`) | about 1 Hz, only while the bot is enabled |
+   | `snapshot` | position, heading, threats, `mats`, ... (`mats`: `floor` = material pickup count, `floor_value` = sum of their material values, `unattached` = count not yet attracted, `bag` = `RunData.bonus_gold`, `nearest` = distance to the nearest floor pickup, -1 when none; floor/value/nearest include attracted pickups) | about 1 Hz, only while the bot is enabled |
    | `damage`, `dash`, `bullet_hell` | — | only while the bot is enabled |
    | `death` | `wave`, `position`, `killer`, `last_threats`, `build`, `dmg_w` | player 0 dies |
-   | `wave_end` | `wave`, `hp`, `gold`, `damage_taken`, `kills`, `stats` (the `stat_*` map the state export carries) | every wave end |
+   | `wave_end` | `wave`, `hp`, `gold`, `damage_taken`, `kills`, `stats` (the state export's `stat_*` map), `materials: {floor_count, floor_value, bag_before, bag_after}`, `collected_value` (wallet at wave end minus wallet at wave start, before harvesting), `trees: {spawned, felled, alive}` (initial living trees plus subsequent spawns, combat deaths, living at wave end; cleanup deaths excluded) | every completed wave; emitted when `bag_after` is observed (see below) |
    | `offer` | `wave`, `view` (1-based per shop visit; a reroll starts the next), `gold`, `items` (`id`, `tier`, `price`, `score`, `locked`) | every shop board the bot sees: the first view and after each reroll |
-   | `crate` | `wave`, `item_id`, `action` (`take`, `recycle`), `score` | the bot takes or recycles a crate item (telemetry only; the rule is unchanged) |
+   | `crate` | `wave`, `item_id`, `action` (`take`, `recycle`), `score` | accepted bot crate action: take when score >= 0, recycle below 0; items use stat score plus plan item bonus, weapons use weapon score |
    | `build` | `weapons` (ids), `items` (ids) | the run ends, win or death, just before `end` |
    | `warning` | `reason`, or `message` | `reason`: refused enable; `pause_on_focus_lost is true`. `message`: `sidecar timeouts; asking disabled for this run` |
    | `halt` | `reason` (`human input`, `wrong profile`) | the bot halts |
@@ -469,6 +469,20 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    | `checkpoint` | `id`, `action`, `applied`, `reason` | the target checkpoint |
    | `complete` | `outcome` (`win`, `death`), `wave`, `extra` (`killer` on death) | the run ends while the bot plays |
    | `end` | `outcome` (`won`, `death`, `abandoned`, `quit`), `wave`, `hp`, `gold` | always the last line (`abandoned`: the main menu, or a new run started over an open file) |
+
+   `wave_end` captures all fields except `materials.bag_after` in the wave-end
+   signal handler, before harvesting and cleanup. Optimized cleanup supplies the
+   outgoing bag immediately after cleanup; animated cleanup supplies it on the
+   first frame of the next wave, before new drops can debit it. The event is held
+   until then: use its explicit `wave`, since its line and `t` can follow that
+   wave's shop/checkpoint events. If the run closes before that observation,
+   `bag_after` is null and the pending event is written before `end`. Bag values
+   are observed balances, including the game's pickup effects and conversions;
+   they need not equal `bag_before + floor_value`. `collected_value` is net wallet
+   gain, including in-wave income/spending, rather than a pickup counter.
+   The arbiter exposes total candidate scores only, so `arb.pick`/`arb.threat`
+   are omitted. Rendering these new fields and handling delayed wave-end lines
+   in `collect.py` are follow-ups.
 
 7. **`DECIDING: <kind>`** (`shop`, `levelup`, `pivot` or `checkpoint`).
    - The bot has written a request and **paused the game**. It polls
