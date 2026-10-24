@@ -515,7 +515,7 @@ func _auto_shop_player(pi) -> void:
 					target = null
 				var target_score = ask.scores[oi] if target != null else null
 				var applied = "rule"
-				var rulings_missing = 0
+				var rulings_missing = null
 				if act == "buy" and target != null and int(target.value) <= gold:
 					tried[target.get_instance_id()] = true
 					if target.locked:

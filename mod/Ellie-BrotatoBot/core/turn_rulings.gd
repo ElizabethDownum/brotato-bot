@@ -36,8 +36,8 @@ static func crate_fallback(item_id, ask_on: Array, score: float) -> String:
 
 
 # Record a fresh shop answer against the ORIGINAL board, even after a reroll.
-# Explicit rulings apply even if the primary action cannot land. Missing review
-# verdicts default to decline only after an applied answer. Missing counts are
+# A validated answer covers the board even if the primary action cannot land.
+# Missing review verdicts default to decline. Missing counts are
 # measured before action overrides. Return original indices for decline effects.
 func shop_rulings(wave, pi, ids: Array, ask_on: Array, response: Dictionary,
 		decision_id: String, applied: String) -> Dictionary:
@@ -47,13 +47,13 @@ func shop_rulings(wave, pi, ids: Array, ask_on: Array, response: Dictionary,
 		by_index[entry.option_index] = entry.verdict
 	var missing = ids.size() - by_index.size()
 	print("BOTLOG SHOP rulings_missing=%d decision=%s" % [missing, decision_id])
-	# The store is keyed by id: for conflicting copies decline wins, except
-	# that an applied buy/pass wins for every copy of its target id.
+	# The store is keyed by id: conflicting copies decline. An applied action
+	# settles its own target ruling, but cannot approve another explicitly declined copy.
 	var verdicts = {}
 	var indices = {}
 	for i in ids.size():
 		var verdict = by_index.get(i, "")
-		if verdict == "" and applied != "rule" and ask_on.has(ids[i]):
+		if verdict == "" and ask_on.has(ids[i]):
 			verdict = "decline"
 		if verdict == "":
 			continue
@@ -61,14 +61,20 @@ func shop_rulings(wave, pi, ids: Array, ask_on: Array, response: Dictionary,
 		if not verdicts.has(id) or (verdict == "decline" and verdicts[id] == "approve"):
 			verdicts[id] = verdict
 			indices[id] = i
-	if applied in ["buy", "pass"] and oi >= 0 and oi < ids.size():
+	if applied in ["buy", "lock", "pass"] and oi >= 0 and oi < ids.size():
 		var target_id = ids[oi]
-		var action_verdict = "approve" if applied == "buy" else "decline"
-		if (by_index.has(oi) and by_index[oi] != action_verdict) \
-				or (verdicts.has(target_id) and verdicts[target_id] != action_verdict):
-			print("BOTLOG SHOP ruling contradiction item=%s action=%s wins decision=%s" % [target_id, applied, decision_id])
+		var action_verdict = "decline" if applied == "pass" else "approve"
+		if by_index.has(oi) and by_index[oi] != action_verdict:
+			print("BOTLOG SHOP ruling contradiction item=%s action=%s overrides target ruling decision=%s" % [target_id, applied, decision_id])
 		verdicts[target_id] = action_verdict
 		indices[target_id] = oi
+		if action_verdict == "approve":
+			for i in ids.size():
+				if i != oi and ids[i] == target_id and by_index.get(i, "") == "decline":
+					verdicts[target_id] = "decline"
+					indices[target_id] = i
+					print("BOTLOG SHOP ruling duplicate veto item=%s action=%s decline wins decision=%s" % [target_id, applied, decision_id])
+					break
 	var ruled = for_player(wave, pi)
 	var declined = []
 	for id in verdicts:

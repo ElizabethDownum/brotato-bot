@@ -21,14 +21,14 @@ func test_shop_automatic_declines_for_each_applied_action():
 		var store = TurnRulings.new()
 		var r = {"action": act, "option_index": 0}
 		var result = store.shop_rulings(5, 0, ids, ["item_ghost", "weapon_review"], r, "run-001", act)
-		assert_eq(result.declined, [2] if act == "buy" else [0, 2], "automatic review declines: " + act)
+		assert_eq(result.declined, [2] if act in ["buy", "lock"] else [0, 2], "automatic review declines: " + act)
 		assert_eq(result.missing, 3, "missing counted before action override")
 		var answer = store.answer(5, 0, "weapon_review")
 		assert_eq(answer.verdict, "decline", "recorded verdict")
 		assert_eq(answer.decision_id, "run-001", "decision provenance")
 		assert_eq(answer.screen, "shop", "screen provenance")
-		if act == "buy":
-			assert_eq(store.answer(5, 0, "item_ghost").verdict, "approve", "applied buy signs off target")
+		if act in ["buy", "lock"]:
+			assert_eq(store.answer(5, 0, "item_ghost").verdict, "approve", "applied acquisition signs off target")
 		assert_true(store.answer(5, 0, "ordinary").empty(), "ordinary option needs explicit decline")
 
 
@@ -50,14 +50,22 @@ func test_shop_pass_declines_ordinary_target_and_review_items():
 	assert_false(TurnRulings.rule_allowed("ordinary", [], store.for_player(5, 0)), "pass binds rules")
 
 
-func test_shop_unapplied_answer_does_not_implicitly_decline():
-	var store = TurnRulings.new()
+func test_shop_validated_answer_declines_unruled_review_even_when_action_fails():
 	for act in ["buy", "lock", "reroll", "pass", "revise_plan"]:
+		var store = TurnRulings.new()
 		var result = store.shop_rulings(5, 0, ["a", "b"], ["a", "b"],
 			{"action": act, "option_index": 0}, "run-001", "rule")
-		assert_eq(result.declined, [], "failed action: " + act)
+		assert_eq(result.declined, [0, 1], "answered board despite failed action: " + act)
 		assert_eq(result.missing, 2, "failed action still reports missing")
-	assert_true(store.for_player(5, 0).empty(), "a later board may ask again")
+		assert_eq(store.answer(5, 0, "a").verdict, "decline", "failed target gets review default")
+		assert_eq(store.answer(5, 0, "b").decision_id, "run-001", "board answer provenance")
+		var ruled = store.for_player(5, 0)
+		var board = DecisionClient.shop_options([
+			{"node": "new_b", "id": "b", "kind": "item", "price": 1, "score": 20.0},
+			{"node": "c", "id": "c", "kind": "item", "price": 1, "score": 10.0}], 100, ruled)
+		assert_eq(board.ids, ["c"], "a rerolled copy of the answered review id is excluded")
+		assert_eq(DecisionClient.should_ask(board.scores, board.affordable, {}, board.ids,
+			["b"], 6.0, 100, board.prices, 0, ruled), "", "answered review id cannot pivot again")
 
 
 func test_shop_complete_rulings_record_approve_and_decline_with_action_precedence():
@@ -79,8 +87,8 @@ func test_shop_explicit_declines_apply_even_when_primary_action_cannot_land():
 	var result = store.shop_rulings(5, 0, ["a", "b", "c"], ["a"],
 		{"action": "buy", "option_index": 0, "rulings": [
 			{"option_index": 1, "verdict": "decline"}, {"option_index": 2, "verdict": "approve"}]}, "run-001", "rule")
-	assert_eq(result.declined, [1], "explicit verdicts are independent")
-	assert_true(store.answer(5, 0, "a").empty(), "failed buy gives no implicit verdict")
+	assert_eq(result.declined, [0, 1], "explicit and default verdicts are independent of action success")
+	assert_eq(store.answer(5, 0, "a").verdict, "decline", "failed buy still defaults unruled review target")
 	assert_eq(store.answer(5, 0, "c").verdict, "approve", "approval applies even when buy fails")
 
 
@@ -97,15 +105,51 @@ func test_shop_fresh_rulings_replace_old_verdict_and_provenance():
 	assert_eq(store.answer(5, 0, "a").decision_id, "shop-003", "every fresh ruling records its decision")
 
 
-func test_shop_duplicate_ids_share_action_precedence_and_one_decline():
+func test_shop_duplicate_explicit_decline_wins_over_buy_or_lock_and_one_decline():
 	for act in ["buy", "pass", "lock", "skip"]:
 		var store = TurnRulings.new()
 		var result = store.shop_rulings(5, 0, ["a", "a", "b", "b"], ["a", "b"],
 			{"action": act, "option_index": 0, "rulings": [
 				{"option_index": 0, "verdict": "approve"}, {"option_index": 1, "verdict": "decline"},
 				{"option_index": 2, "verdict": "decline"}, {"option_index": 3, "verdict": "approve"}]}, "run-001", act)
-		assert_eq(result.declined, [2] if act == "buy" else ([0, 2] if act == "pass" else [1, 2]), "one pass per id; action wins")
-		assert_eq(store.answer(5, 0, "a").verdict, "approve" if act == "buy" else "decline", "conflicting copies decline unless buy wins")
+		assert_eq(result.declined, [0, 2] if act == "pass" else [1, 2], "one pass per id; declined duplicate retained")
+		assert_eq(store.answer(5, 0, "a").verdict, "decline", "declined duplicate vetoes further copies")
+		assert_false(TurnRulings.rule_allowed("a", ["a", "b"], store.for_player(5, 0)), "rules cannot acquire declined duplicate")
+		assert_eq(store.answer(5, 0, "a").decision_id, "run-001", "duplicate veto provenance")
+
+
+func test_shop_duplicate_review_default_does_not_undo_applied_acquisition():
+	for act in ["buy", "lock"]:
+		var store = TurnRulings.new()
+		var result = store.shop_rulings(5, 0, ["a", "a"], ["a"],
+			{"action": act, "option_index": 0}, "run-001", act)
+		assert_eq(result.declined, [], "only an explicit duplicate decline vetoes action approval")
+		assert_eq(result.missing, 2, "action approval does not hide missing rulings")
+		assert_eq(store.answer(5, 0, "a").verdict, "approve", "applied action approves target id")
+
+
+func test_shop_declined_duplicate_before_action_target_also_wins():
+	for act in ["buy", "lock"]:
+		var store = TurnRulings.new()
+		var result = store.shop_rulings(5, 0, ["a", "b", "a"], [],
+			{"action": act, "option_index": 2, "rulings": [
+				{"option_index": 0, "verdict": "decline"}, {"option_index": 2, "verdict": "approve"}]}, "run-001", act)
+		assert_eq(result.declined, [0], "duplicate veto does not depend on option order or ask_on")
+		assert_eq(store.answer(5, 0, "a").verdict, "decline", "ordinary duplicate veto binds")
+
+
+func test_shop_duplicate_disagreement_is_not_a_target_contradiction():
+	for act in ["buy", "lock", "pass"]:
+		var store = TurnRulings.new()
+		var result = store.shop_rulings(5, 0, ["logging_copy", "y", "logging_copy"], [],
+			{"action": act, "option_index": 0, "rulings": [
+				{"option_index": 0, "verdict": "decline" if act == "pass" else "approve"},
+				{"option_index": 1, "verdict": "approve"},
+				{"option_index": 2, "verdict": "approve" if act == "pass" else "decline"}]}, "log-001", act)
+		assert_eq(result.declined, [0] if act == "pass" else [2], "decline source is the proper copy")
+		assert_eq(store.answer(5, 0, "logging_copy").verdict, "decline", "duplicate remains vetoed")
+		# The captured suite log must contain no contradiction for logging_copy:
+		# its target ruling agrees for buy, lock and pass despite conflicting copies.
 
 
 func test_shop_partial_duplicate_invalid_rulings_default_only_review_ids():
@@ -122,14 +166,16 @@ func test_shop_partial_duplicate_invalid_rulings_default_only_review_ids():
 	assert_true(store.answer(5, 0, "bad").empty(), "bad verdict on ordinary gives no verdict")
 
 
-func test_shop_buy_decline_contradiction_and_lock_decline_are_binding():
+func test_shop_buy_and_lock_override_their_own_contradictory_ruling():
 	for act in ["buy", "lock"]:
 		var store = TurnRulings.new()
 		var result = store.shop_rulings(5, 0, ["a"], ["a"], {"action": act, "option_index": 0,
 			"rulings": [{"option_index": 0, "verdict": "decline"}]}, "run-001", act)
 		assert_eq(result.missing, 0, "contradiction isn't missing")
-		assert_eq(result.declined, [] if act == "buy" else [0], "lock does not override decline")
-		assert_eq(store.answer(5, 0, "a").verdict, "approve" if act == "buy" else "decline", "buy wins; lock follows verdict")
+		assert_eq(result.declined, [], "applied action overrides own contradictory ruling")
+		assert_eq(store.answer(5, 0, "a").verdict, "approve", "buy and lock approve target")
+		assert_eq(store.answer(5, 0, "a").decision_id, "run-001", "action approval provenance")
+		assert_true(store.answer(6, 0, "a").empty(), "lock approval expires next wave")
 
 
 func test_shop_fully_answered_board_cannot_ask_again_this_turn():

@@ -352,6 +352,35 @@ def test_usable_shop_action_with_bad_rulings_is_normalized_without_retry(raw):
     assert out.decision == {**VALID, "rulings": []}
 
 
+@pytest.mark.parametrize(
+    "rulings,normalized",
+    [
+        ([], []),
+        ([{"option_index": 1, "verdict": "approve"}], [{"option_index": 1, "verdict": "approve"}]),
+        ([{"option_index": 0, "verdict": "approve"}] * 3, []),
+    ],
+)
+def test_actual_cli_schema_allows_imperfect_coverage_without_retry(rulings, normalized):
+    response = {**VALID, "action": "buy", "option_index": 0, "rulings": rulings}
+    calls = []
+
+    def runner(cmd, **kwargs):
+        data = json.loads(cmd[cmd.index("--json-schema") + 1])
+        assert "rulings" in data["required"]
+        field = data["properties"]["rulings"]
+        assert not {"minItems", "maxItems", "uniqueItems", "allOf", "contains"} & field.keys()
+        assert field["items"]["properties"]["option_index"]["enum"] == [0, 1]
+        calls.append(cmd)
+        return subprocess.CompletedProcess(
+            cmd, 0, stdout=json.dumps({"structured_output": response}), stderr=""
+        )
+
+    request = {**REQUEST, "options": [{"index": 0}, {"index": 1}]}
+    out = decide.decide(request, "PROMPT", CFG, run=_run_with(runner))
+    assert out.source == "haiku" and len(calls) == len(out.attempts) == 1
+    assert out.decision == {**response, "rulings": normalized}
+
+
 @pytest.mark.parametrize("screen", ["shop", "levelup", "crate", "checkpoint"])
 def test_cli_and_both_system_prompts_use_the_same_screen_schema(screen):
     from pathlib import Path

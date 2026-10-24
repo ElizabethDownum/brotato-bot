@@ -735,6 +735,47 @@ def test_collect_joins_rulings_missing_and_reports_pass_without_counting_a_buy()
     assert "approve 1, decline 1, missing 1" in render.run_report(summary)
 
 
+@pytest.mark.parametrize("source", ["timeout", "invalid"])
+@pytest.mark.parametrize("rulings", [[], [{"option_index": 0, "verdict": "approve"}]])
+def test_unanswered_decision_has_no_missing_count_in_collection_or_report(source, rulings):
+    summary = collect.summarize(
+        [
+            {
+                "kind": "decision",
+                "id": "d-1",
+                "request_kind": "shop",
+                "source": source,
+                "response": {"action": "skip", "rulings": rulings},
+            },
+            {"kind": "decision_applied", "id": "d-1", "applied": "rule", "rulings_missing": None},
+        ]
+    )
+    row = RunSummary.model_validate_json(summary.model_dump_json()).decisions[0]
+    assert row.rulings_missing is None
+    report = render.run_report(summary)
+    assert "missing 0" not in report and "missing ?" not in report
+    assert ("missing -" in report) == bool(rulings)
+    if not rulings:
+        assert f"| shop | skip | {source} | - | - |" in report
+
+
+def test_answered_board_with_failed_primary_action_keeps_missing_count():
+    summary = collect.summarize(
+        [
+            {
+                "kind": "decision",
+                "id": "d-1",
+                "request_kind": "shop",
+                "source": "haiku",
+                "response": {"action": "buy", "option_index": 0},
+            },
+            {"kind": "decision_applied", "id": "d-1", "applied": "rule", "rulings_missing": 2},
+        ]
+    )
+    assert summary.decisions[0].rulings_missing == 2
+    assert "missing 2" in render.run_report(summary)
+
+
 @pytest.mark.parametrize("rulings", [None, "1", 1, {}, [None, True, "bad", 1.5]])
 def test_invalid_rulings_response_does_not_break_collection(rulings):
     summary = collect.summarize(

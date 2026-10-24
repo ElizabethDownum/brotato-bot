@@ -16,7 +16,8 @@ def test_shop_prompt_requires_binding_vetoes_for_rejected_items():
     assert '"verdict": "approve" | "decline"' in shop
     assert "goal, held items and weapons, and survival" in shop
     assert "The rules may buy anything you approve this turn and none of what you decline" in shop
-    assert "A `lock` target\nalso needs a ruling" in shop
+    assert "Your `buy` and `lock` targets must be approved" in shop
+    assert "An explicit decline on another copy of the same id still wins" in shop
     assert "requires `rulings`" in prompt.ANSWER_FORMAT
 
 

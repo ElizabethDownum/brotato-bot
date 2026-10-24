@@ -147,7 +147,7 @@ def run_report(summary: RunSummary, outcomes: dict[str, str] | None = None) -> s
                 (
                     f"approve {sum(r.get('verdict') == 'approve' for r in d.rulings)}, "
                     f"decline {sum(r.get('verdict') == 'decline' for r in d.rulings)}, "
-                    f"missing {d.rulings_missing if d.rulings_missing is not None else '?'}"
+                    f"missing {d.rulings_missing if d.rulings_missing is not None else '-'}"
                 )
                 if d.rulings or d.rulings_missing is not None
                 else None,

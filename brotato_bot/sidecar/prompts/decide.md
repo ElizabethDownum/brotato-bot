@@ -42,10 +42,11 @@ Every shop or shop-pivot answer must include `rulings`, one entry per offered op
 exactly once. Judge each option against the goal, held items and weapons, and survival.
 The rules may buy anything you approve this turn and none of what you decline,
 subject to their normal score and gold checks. Decline unlocks all copies and releases
-any gold reserved for that item. Your `buy` target must be approved and your `pass`
-target declined; if they contradict the rulings, the action wins. A `lock` target
-also needs a ruling; a decline releases its lock and reserve. All rulings expire
-next wave. Omit `rulings` on level-ups, crates and checkpoints.
+any gold reserved for that item. Your `buy` and `lock` targets must be approved and
+your `pass` target declined; an applied action overrides its target's own contradictory
+ruling. An explicit decline on another copy of the same id still wins for that id,
+preventing further buys and releasing any lock and reserve. All rulings expire next
+wave. Omit `rulings` on level-ups, crates and checkpoints.
 
 # Crates
 

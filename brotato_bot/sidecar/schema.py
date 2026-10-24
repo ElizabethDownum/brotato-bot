@@ -172,21 +172,10 @@ def schema_for(request: dict) -> dict:
             if isinstance(o, dict) and isinstance(o.get("index"), int)
         ]
         rulings = data["properties"]["rulings"]
-        rulings["minItems"] = rulings["maxItems"] = len(indexes)
-        rulings["items"]["properties"]["option_index"]["enum"] = indexes
-        # With exactly N entries, containing every index enforces one per option.
+        # Let incomplete/duplicate rulings reach runtime normalization instead
+        # of spending CLI turns repairing an otherwise usable action.
         if indexes:
-            rulings["allOf"] = [
-                {
-                    "contains": {
-                        "properties": {"option_index": {"const": i}},
-                        "required": ["option_index"],
-                    }
-                }
-                for i in indexes
-            ]
-        else:
-            rulings["items"]["properties"]["option_index"].pop("enum")
+            rulings["items"]["properties"]["option_index"]["enum"] = indexes
     else:
         del data["properties"]["rulings"]
     return data

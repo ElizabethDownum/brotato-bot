@@ -101,7 +101,7 @@ def test_published_contract_requires_complete_unique_in_range_rulings():
 
 
 @pytest.mark.parametrize("kind,screen", [("shop", "shop"), ("pivot", "shop"), ("pivot", None)])
-def test_shop_structured_schema_requires_complete_unique_board(kind, screen):
+def test_shop_structured_schema_leaves_coverage_to_runtime(kind, screen):
     request = {**SHOP, "kind": kind}
     if screen:
         request["screen"] = screen
@@ -110,10 +110,15 @@ def test_shop_structured_schema_requires_complete_unique_board(kind, screen):
     data = schema.schema_for(request)
     assert "rulings" in data["required"]
     field = data["properties"]["rulings"]
-    assert field["minItems"] == field["maxItems"] == 2
+    assert not {"minItems", "maxItems", "uniqueItems", "allOf", "contains"} & field.keys()
     assert field["items"]["properties"]["option_index"]["enum"] == [0, 1]
-    assert [r["contains"]["properties"]["option_index"]["const"] for r in field["allOf"]] == [0, 1]
     assert data["properties"]["action"]["enum"] == list(schema.SCREEN_ACTIONS["shop"])
+
+
+def test_empty_shop_structured_schema_has_no_invalid_empty_enum():
+    data = schema.schema_for({"screen": "shop", "options": []})
+    assert "rulings" in data["required"]
+    assert "enum" not in data["properties"]["rulings"]["items"]["properties"]["option_index"]
 
 
 @pytest.mark.parametrize("screen", ["crate", "levelup", "checkpoint"])

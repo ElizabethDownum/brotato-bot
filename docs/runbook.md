@@ -485,7 +485,7 @@ Example for Well Rounded. The `plan` values repeat the built-in ones, except
    | `halt` | `reason` (`human input`, `wrong profile`) | the bot halts |
    | `export` | `export_kind`, `path`, `seq` | every state export (F9 or a decision) |
    | `decision` | `request_kind`, `id`, `wave`, `source`, `response` | every decision request. `source` is `haiku` (valid answer), `invalid`, `timeout`, `interrupted` or `busy`. |
-   | `decision_applied` | `id`, `action`, `option_index`, `applied`, `rulings_missing` | shop only, after a decision. `applied` is `buy`, `lock`, `pass`, `reroll`, `skip`, `revise_plan` or `rule`. `rulings_missing` counts options without a valid ruling before action overrides (0 on timeout). |
+   | `decision_applied` | `id`, `action`, `option_index`, `applied`, `rulings_missing` | shop only, after a decision. `applied` is `buy`, `lock`, `pass`, `reroll`, `skip`, `revise_plan` or `rule`. `rulings_missing` counts options without a valid ruling before action overrides (null when no validated shop answer was processed, including timeout). |
    | `shop` | `wave`, `action` (`buy`, `reroll`, `lock`, `pass`, `ban`, `go`), `item_id`, `price`, `score`, `source` (`rule`, `haiku`), `gold_after` | every bot shop action. `item_id` is null for `reroll` and `go`; `price` is the reroll's cost (0 when free) and null for `go`; `score` is null for `reroll`, `ban` and `go` |
    | `levelup` | `wave`, `id` (the decision's id, `""` when not asked), `picked`, `alternatives`, `source` (`haiku`, `rule`, `timeout`) | every bot level-up pick that landed |
    | `challenge` | `id`, `is_target` | a challenge completes for the first time on this profile |
@@ -623,25 +623,30 @@ All files are under `%APPDATA%\Brotato\brotato-bot\` (`user://brotato-bot`).
   bars the id for the turn, unlocks every active copy, releases a matching saved-gold
   reserve, and writes one `shop` event per id with `action: "pass", source: "haiku"`.
   Every fresh verdict records this decision id, replacing older verdict provenance.
-  Rulings refer to the original board even after a reroll. Applied `buy` and `pass`
-  force approve and decline for their target id respectively, logging contradictions
-  in BOTLOG. Lock has no exemption: a declined lock target is unlocked and released.
-  When copies of one id have conflicting verdicts, decline wins except for the
-  applied buy/pass target id, whose action wins for every copy.
+  Rulings refer to the original board even after a reroll. Applied `buy` and `lock`
+  approve their target; `pass` declines its target. The action overrides its target's
+  own contradictory ruling, logging only that contradiction in BOTLOG. An explicit
+  decline on another copy of the same id still wins for that id, blocks further
+  buys, and releases every lock and reserve for it. This duplicate veto gets its
+  own BOTLOG line; it is not a contradiction when the target's own ruling agrees.
+  Lock approval expires next wave, so a carried review-list lock needs fresh sign-off.
 
   Missing/malformed `rulings` never invalidate an otherwise usable shop action.
   Bad entries, out-of-range indices and bad verdicts are ignored; duplicate indices
-  invalidate every entry for that option. After an applied answer, unruled `ask_on`
+  invalidate every entry for that option. After a validated answer, unruled `ask_on`
   options default to decline; other unruled options get no fresh verdict and stay
-  with the rules. Explicit valid rulings apply even if the primary action fails.
-  Timeout, invalid/missing answers and failed primary actions create no automatic
-  declines. The BOTLOG `rulings_missing` count and the same field on `decision_applied`
+  with the rules. Both explicit rulings and automatic review declines apply even
+  if the primary action fails (unaffordable or rejected). Timeout and invalid/missing
+  answers create no automatic declines. The BOTLOG `rulings_missing` count and the
+  same field on `decision_applied`
   count all unruled options before action overrides or automatic review declines.
-  The Decisions table reports response approve/decline counts and this missing count.
-  Complete well-formed rulings remain required by the published schema and prompts;
-  sidecar runtime normalization implements this tolerance rather than retrying a
-  usable action solely for bad rulings. The sidecar specializes the structured-output
-  schema per request screen (shop pivots use shop); checkpoint skip/revise_plan
+  The Decisions table reports response approve/decline counts and this missing count;
+  an unknown count displays as `-`. Complete well-formed rulings remain required by
+  the strict contract check and prompts. The per-request CLI schema requires the
+  rulings array and in-range option indices but permits incomplete or duplicate
+  coverage so runtime normalization can preserve a usable action without retries.
+  The sidecar specializes the structured-output schema per request screen (shop
+  pivots use shop); checkpoint skip/revise_plan
   omit rulings despite sharing action names. Level-ups and crates are unchanged.
 
   Rules may buy, lock or save for an `ask_on` id only while the turn store holds
