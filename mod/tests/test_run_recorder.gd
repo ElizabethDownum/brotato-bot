@@ -204,11 +204,74 @@ func test_crate_and_build_events():
 
 
 func test_mats_counts_floor_and_finds_nearest():
-	var m = RunRecorder.mats([Vector2(100, 0), Vector2(30, 40), Vector2(-300, 0)], Vector2(0, 0), 12)
+	var m = RunRecorder.mats([
+		{"position": Vector2(100, 0), "value": 1, "unattached": true},
+		{"position": Vector2(30, 40), "value": 4, "unattached": false},
+		{"position": Vector2(-300, 0), "value": 2, "unattached": true},
+	], Vector2(0, 0), 12.0)
 	assert_eq(m.floor, 3, "floor")
+	assert_eq(m.floor_value, 7, "value differs from object count")
+	assert_eq(m.unattached, 2, "attracted material stays in floor/value/nearest")
 	assert_eq(m.bag, 12, "bag")
 	assert_eq(m.nearest, 50, "nearest is the 3-4-5 pickup")
+	assert_eq(m.keys().size(), 5, "exact snapshot shape")
 	var none = RunRecorder.mats([], Vector2(5, 5), 0)
 	assert_eq(none.floor, 0, "no pickups")
+	assert_eq(none.floor_value, 0, "no floor value")
+	assert_eq(none.unattached, 0, "none unattached")
+	assert_eq(none.bag, 0, "empty bag")
 	assert_eq(none.nearest, -1, "nearest -1 when none")
+
+
+func test_wave_materials_and_trees_have_exact_integer_shapes():
+	var m = RunRecorder.wave_materials(3.0, 7.0, 2.0, 9.0)
+	assert_eq(m.floor_count, 3, "count")
+	assert_eq(m.floor_value, 7, "value")
+	assert_eq(m.bag_before, 2, "bag before cleanup")
+	assert_eq(m.bag_after, 9, "bag after cleanup")
+	assert_eq(m.keys().size(), 4, "exact materials shape")
+	assert_eq(RunRecorder.wave_materials(1, 2, 0, null).bag_after, null, "unknown is not zero")
+	var trees = RunRecorder.wave_trees(5.0, 3.0, 2.0)
+	assert_eq(trees.spawned, 5, "spawned lives, including pooled respawns")
+	assert_eq(trees.felled, 3, "combat deaths")
+	assert_eq(trees.alive, 2, "before cleanup")
+	assert_eq(trees.keys().size(), 3, "exact trees shape")
+
+
+func test_wave_end_waits_for_observed_bag_and_writes_once():
+	var root = _make_root()
+	var rec = RunRecorder.new(root)
+	var rid = rec.start_run(HEADER)
+	var data = {"wave": 1, "collected_value": 19,
+		"materials": RunRecorder.wave_materials(3, 7, 2, null),
+		"trees": RunRecorder.wave_trees(5, 3, 2)}
+	rec.begin_wave_end(data)
+	data.materials.floor_value = 999
+	var path = root.plus_file("runs").plus_file(rid + ".jsonl")
+	assert_eq(_read_lines(path).size(), 1, "not emitted before bag observed")
+	rec.finish_wave_end(9.0)
+	rec.finish_wave_end(20)
+	rec.end_run({"outcome": "won"})
+	var lines = _read_lines(path)
+	assert_eq(lines.size(), 3, "header, one wave_end, end")
+	assert_eq(lines[1].kind, "wave_end", "event")
+	assert_eq(int(lines[1].materials.floor_value), 7, "captured before cleanup; independent copy")
+	assert_eq(int(lines[1].materials.bag_after), 9, "observed bag")
+	assert_eq(int(lines[1].collected_value), 19, "wallet gain preserved")
+	assert_eq(int(lines[1].trees.alive), 2, "cleanup does not rewrite live count")
+	_remove_tree(root)
+
+
+func test_run_close_flushes_unobserved_wave_end_before_end():
+	var root = _make_root()
+	var rec = RunRecorder.new(root)
+	var rid = rec.start_run(HEADER)
+	rec.begin_wave_end({"wave": 1, "materials": RunRecorder.wave_materials(2, 4, 1, null)})
+	rec.end_run({"outcome": "quit"})
+	var lines = _read_lines(root.plus_file("runs").plus_file(rid + ".jsonl"))
+	assert_eq(lines.size(), 3, "pending wave retained")
+	assert_eq(lines[1].kind, "wave_end", "wave before end")
+	assert_eq(lines[1].materials.bag_after, null, "unknown bag on terminal wave or early exit")
+	assert_eq(lines[2].kind, "end", "end remains last")
+	_remove_tree(root)
 

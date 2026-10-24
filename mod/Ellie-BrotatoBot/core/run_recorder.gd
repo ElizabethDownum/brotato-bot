@@ -21,6 +21,8 @@ var header = {}   # the open run's header line ({} when none)
 var _root_dir = ""
 var _file = null
 var _start_ms = 0
+# Animated cleanup cannot supply bag_after until the next wave's first frame.
+var _pending_wave_end = null
 
 
 func _init(root_dir):
@@ -79,11 +81,13 @@ func snapshot(data):
 func end_run(outcome):
 	if _file == null:
 		return
+	finish_wave_end()
 	event("end", outcome)
 	_close()
 
 
 func _close():
+	finish_wave_end()
 	_file.close()
 	_file = null
 	header = {}
@@ -139,16 +143,47 @@ static func build_event(weapons, items) -> Dictionary:
 	return {"weapons": weapons, "items": items}
 
 
-# The snapshot's mats block: floor = material pickups on the floor (positions),
-# bag = RunData.bonus_gold, nearest = distance from origin to the nearest one
-# (-1 when none).
-static func mats(positions: Array, origin: Vector2, bag) -> Dictionary:
+# The snapshot's mats block. Each pickup is {position: Vector2, value: int,
+# unattached: bool}; floor and nearest include already-attracted pickups too.
+static func mats(pickups: Array, origin: Vector2, bag) -> Dictionary:
 	var nearest = -1
-	for p in positions:
-		var d = int(origin.distance_to(p))
+	var floor_value = 0
+	var unattached = 0
+	for p in pickups:
+		var d = int(origin.distance_to(p.position))
 		if nearest < 0 or d < nearest:
 			nearest = d
-	return {"floor": positions.size(), "bag": int(bag), "nearest": nearest}
+		floor_value += int(p.value)
+		if p.unattached:
+			unattached += 1
+	return {"floor": pickups.size(), "floor_value": floor_value, "unattached": unattached,
+		"bag": int(bag), "nearest": nearest}
+
+
+static func wave_materials(floor_count, floor_value, bag_before, bag_after) -> Dictionary:
+	return {"floor_count": int(floor_count), "floor_value": int(floor_value),
+		"bag_before": int(bag_before), "bag_after": null if bag_after == null else int(bag_after)}
+
+
+static func wave_trees(spawned, felled, alive) -> Dictionary:
+	return {"spawned": int(spawned), "felled": int(felled), "alive": int(alive)}
+
+
+# Capture all pre-cleanup fields now; emit when the outgoing bag is observed.
+# Finish a previous pending wave as unknown rather than silently replacing it.
+func begin_wave_end(data: Dictionary):
+	finish_wave_end()
+	_pending_wave_end = data.duplicate(true)
+
+
+# Called after optimized cleanup or before the next wave can spawn materials.
+# If the run closes first, null explicitly means the bag was not observed.
+func finish_wave_end(bag_after = null):
+	if _pending_wave_end == null:
+		return
+	_pending_wave_end.materials.bag_after = null if bag_after == null else int(bag_after)
+	event("wave_end", _pending_wave_end)
+	_pending_wave_end = null
 
 
 # The launch event (spec: the launcher consumed launch.json): which launch the

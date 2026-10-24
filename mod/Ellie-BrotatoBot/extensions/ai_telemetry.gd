@@ -285,18 +285,24 @@ func _tick():
 			"anc": anc, "us": us, "hop": hop, "stand": stand,
 			"ticks": hs[5], "breaks": hs[6]}
 
-	# Materials: main._active_golds holds the pickups on the floor (decompiled main.gd:29,
-	# pushed at 772, erased on pick-up at 832); RunData.bonus_gold is the bag.
-	var gold_positions = []
-	for g in main._active_golds:
-		if is_instance_valid(g) and not g.already_picked_up:
-			gold_positions.append(g.position)
-	snap.mats = RunRecorder.mats(gold_positions, player.position, RunData.bonus_gold)
+	snap.mats = materials(player.position)
 
 	rec.snapshot(snap)
 	var rt = get_node_or_null("/root/BotRuntime")
 	if rt != null:
 		rt.push_snapshot(snap)
+
+
+# main._active_golds includes attracted pickups until on_gold_picked_up erases
+# them (.decompiled/main.gd:772,832). Match world_view's attracted_by exclusion
+# for unattached only; count/value/nearest still describe the whole floor.
+func materials(origin: Vector2) -> Dictionary:
+	var pickups = []
+	for g in get_parent()._active_golds:
+		if is_instance_valid(g) and not g.already_picked_up:
+			pickups.append({"position": g.position, "value": g.value,
+				"unattached": g.attracted_by == null})
+	return RunRecorder.mats(pickups, origin, RunData.bonus_gold)
 
 
 # Called by main.gd from _on_player_died, synchronously, before the game cleans

@@ -20,6 +20,9 @@ var coop_focus_hud
 var _bot_kills_this_wave = 0
 # Killer id written into player 0's death event ("" until player 0 dies).
 var _bot_killer = ""
+var _bot_gold_at_wave_start = 0
+var _bot_trees_spawned = 0
+var _bot_trees_felled = 0
 
 
 # Godot 3 runs the base main.gd _ready first, so RunData is populated here.
@@ -31,6 +34,8 @@ func _ready():
 	coop_focus_hud = CoopFocusHud.new()
 	add_child(coop_focus_hud)
 	_bot_start_recording()
+	_bot_gold_at_wave_start = RunData.get_player_gold(0)
+	_bot_trees_spawned = _bot_living_trees()
 	_bot_run_guards()
 	_bot_launch_start()
 	var _e = connect("end_of_the_wave", self, "_bot_on_end_of_the_wave")
@@ -52,6 +57,8 @@ func _bot_start_recording():
 	# open file's header names (final review I2).
 	if open and RunData.current_wave > 1 \
 			and rt.recorder.continues(ProgressData.current_profile_id, character_id):
+		# First frame, before any physics/spawns can debit the incoming bag.
+		rt.recorder.finish_wave_end(RunData.bonus_gold)
 		return
 	if open:
 		# Wave 1 again, or a different profile/character: the open run was left.
@@ -153,15 +160,51 @@ func _bot_on_end_of_the_wave():
 	var rec = _bot_recorder()
 	if rec != null:
 		var p = _bot_player0()
-		rec.event("wave_end", {
+		var mats = ai_telemetry.materials(Vector2.ZERO)
+		rec.begin_wave_end({
 			"wave": RunData.current_wave,
 			"hp": int(p.current_stats.health) if p != null else 0,
 			"gold": RunData.get_player_gold(0),
 			"damage_taken": ai_telemetry.damage_taken_this_wave(),
 			"kills": _bot_kills_this_wave,
 			"stats": StateExport.stats(RunData, get_tree().root, 0),
+			"materials": RunRecorder.wave_materials(mats.floor, mats.floor_value, mats.bag, null),
+			"collected_value": int(RunData.get_player_gold(0) - _bot_gold_at_wave_start),
+			"trees": RunRecorder.wave_trees(_bot_trees_spawned, _bot_trees_felled, _bot_living_trees()),
 		})
 	_bot_checkpoint()
+
+
+# Optimized cleanup folds value synchronously (main.gd:1031-1042). Animated
+# cleanup only attracts the pickups (1043-1047): its bag is observed next wave.
+# No pending wave_end exists on death; run closure flushes unknown bags as null.
+func clean_up_room() -> void:
+	.clean_up_room()
+	var rec = _bot_recorder()
+	if rec != null and (ProgressData.settings.optimize_end_waves or _active_golds.empty()):
+		rec.finish_wave_end(RunData.bonus_gold)
+
+
+func _bot_living_trees() -> int:
+	var alive = 0
+	for neutral in _entity_spawner.neutrals:
+		if is_instance_valid(neutral) and not neutral.dead and not neutral._pending_die:
+			alive += 1
+	return alive
+
+
+# respawned fires for pooled trees too, after insertion into neutrals
+# (entity_spawner.gd:413-415); spawned alone misses pooled lives.
+func _on_EntitySpawner_neutral_respawned(neutral: Neutral) -> void:
+	._on_EntitySpawner_neutral_respawned(neutral)
+	if not _cleaning_up:
+		_bot_trees_spawned += 1
+
+
+func _on_neutral_died(neutral: Neutral, args: Entity.DieArgs) -> void:
+	if not _cleaning_up:
+		_bot_trees_felled += 1
+	._on_neutral_died(neutral, args)
 
 
 # Target checkpoint: decides here whether it is due (Checkpoint.due: once
