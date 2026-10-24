@@ -25,7 +25,7 @@ from typing import Any
 
 from brotato_bot import cli, paths
 from brotato_bot.fsutil import read_json
-from brotato_bot.run import prepare, shape, stagnation
+from brotato_bot.run import fit, prepare, shape, stagnation
 
 SECTIONS = ("## Target", "## Next run", "## Plan", "## Why", "## Risk", "## Stagnation check")
 _NAME = re.compile(r"\d{4}-\d{2}-\d{2}-(\d+)\.md")
@@ -288,6 +288,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     shp = sub.add_parser("shape", help="rewrite a proposal's plan around its target's goal")
     shp.add_argument("file", metavar="FILE")
     shp.set_defaults(func=_shape)
+    fit.register(sub)
 
 
 cli.COMMANDS["proposal"] = register

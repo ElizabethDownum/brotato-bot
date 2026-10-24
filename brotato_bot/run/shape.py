@@ -228,6 +228,37 @@ def _sum_on(effects: Any, stat: str) -> float:
     )
 
 
+def bonus_on(rows: Any, stat: str, key: str) -> float | None:
+    """The ``key`` value of the entry for ``stat`` in a character's bonus list, else None."""
+    for r in rows or []:
+        if isinstance(r, dict) and r.get("stat") == stat:
+            return _num(r.get(key))
+    return None
+
+
+def character_goal_fit(character: dict | None, goal: Goal) -> dict:
+    """What a character's start supplies toward a stat goal.
+
+    ``start`` is the flat bonus on the goal stat, scaled by the character's gain modifier on
+    it (a documented simplification: the game applies gain modifiers to gains, not to the
+    flat start); ``veto`` when that modifier is -100% or lower (Chunky's speed: changes are
+    nullified); ``base`` is ``start`` with the goal's sign (a -10 speed start on a -20 goal
+    is +10, a +5 start is -5); ``need`` is what items, sets and level-ups must still supply,
+    in the goal's direction."""
+    character = character or {}
+    start = bonus_on(character.get("flat_bonuses"), goal.stat, "value") or 0.0
+    pct = bonus_on(character.get("gain_modifiers"), goal.stat, "pct")
+    veto = pct is not None and pct <= -100
+    scaled = start if pct is None or veto else start * (1 + pct / 100)
+    return {
+        "start": scaled,
+        "gain_pct": pct,
+        "veto": veto,
+        "base": scaled * goal.sign + 0.0,  # + 0.0 turns -0.0 into 0.0
+        "need": (goal.value - scaled) * goal.sign,
+    }
+
+
 def goal_data(goal: Goal, dataset: dict) -> dict:
     """Every item and weapon-set bonus in ``dataset`` that moves ``goal.stat`` the goal's way."""
     out: dict = {"items": [], "sets": []}
