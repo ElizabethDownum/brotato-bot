@@ -32,10 +32,18 @@ would replace the row's own bans.
 A ``chal_difficulty_<n>`` target raises ``## Next run`` ``- danger:`` to ``n``. A target with
 neither a stat nor a difficulty number leaves the file unchanged.
 
-Shaping never selects a weapon set (the owner's call, 2026-10-22). The goal data, meaning
-every item and every weapon-set bonus that moves the goal stat, is surfaced instead:
-``goal_data`` collects it and ``brief_lines`` words it for the proposal writer
-(``proposal shape`` prints it) and for the in-run model (the decision prompt's Objective).
+Shaping may prefer a weapon set (the owner's rulings, 2026-10-23, replacing the 2026-10-22
+"never selects a set" hold, which was a complexity hold and not a principle). When a set's
+full bonus (at 6 weapons) moves the goal stat by at least ``PREFER_SET_SHARE`` of the
+character's ``need`` (what items and level-ups must still supply after the character's flat
+start, ``character_goal_fit``), the plan gains ``prefer_sets: {set_id: bonus}``, the bonus
+being the set's contribution in goal units times ``ITEM_BONUS_PER_POINT`` (capped at
+``ITEM_BONUS_CAP``), and ``weapon_type`` becomes ``any`` so the set's weapons are not typed
+out. ``weapon_set``, the hard all-or-nothing gate, is never set by shaping. ``prefer_sets`` is
+a soft score term for the mod. The goal data, meaning every item and every weapon-set bonus
+that moves the goal stat, is also surfaced: ``goal_data`` collects it and ``brief_lines``
+words it for the proposal writer (``proposal shape`` prints it) and for the in-run model (the
+decision prompt's Objective).
 """
 
 from __future__ import annotations
@@ -50,6 +58,8 @@ ITEM_BONUS_PER_POINT = 1.5
 ITEM_BONUS_CAP = 30.0
 DOMINANT_MARGIN = 4.0
 MIN_BUY_UNDER_GOAL = 6.0  # calibrated 2026-10-23 with `brotato_bot score`; see docs/observations.md
+FULL_SET = 6  # weapon slots: the set bonus at six weapons is the most a build can hold
+PREFER_SET_SHARE = 0.25  # a set must cover this share of the character's need to be preferred
 MIN_STATS = 4  # weights besides the goal stat a plan's ``stats`` must carry
 _DIFFICULTY = re.compile(r"chal_difficulty_(\d+)")
 _FENCED_JSON = re.compile(r"```json[ \t]*\n(.*?)```", re.DOTALL)
@@ -95,8 +105,29 @@ def goal_slug(target: str) -> str:
     return target.removeprefix("chal_").replace("_", "-")
 
 
-def shape_plan(plan: dict, goal: Goal, items: list[dict]) -> dict:
-    """A deep copy of ``plan`` shaped for ``goal``; unchanged when the goal has no stat."""
+def full_set_bonus(by_count: dict[int, float], sign: int) -> float:
+    """The set's goal-stat bonus at ``FULL_SET`` weapons (the highest count not above it) in
+    goal units, positive when it moves the stat toward the goal."""
+    counts = [c for c in by_count if c <= FULL_SET]
+    return by_count[max(counts)] * sign if counts else 0.0
+
+
+def preferred_sets(goal: Goal, dataset: dict, character: dict | None) -> dict[str, float]:
+    """``{set_id: bonus}`` for sets worth at least ``PREFER_SET_SHARE`` of the character's need."""
+    need = character_goal_fit(character, goal)["need"]
+    out: dict[str, float] = {}
+    for s in goal_data(goal, dataset)["sets"]:
+        bonus = full_set_bonus(s["by_count"], goal.sign)
+        if need > 0 and bonus >= PREFER_SET_SHARE * need:
+            out[s["id"]] = min(ITEM_BONUS_CAP, round(ITEM_BONUS_PER_POINT * bonus, 1))
+    return out
+
+
+def shape_plan(plan: dict, goal: Goal, items: list[dict], dataset: dict | None = None) -> dict:
+    """A deep copy of ``plan`` shaped for ``goal``; unchanged when the goal has no stat.
+
+    With ``dataset`` the plan's character (``plan["character_id"]``) and the weapon sets
+    are factored in: see ``preferred_sets``."""
     out = json.loads(json.dumps(plan))
     if not goal.stat:
         return out
@@ -124,11 +155,22 @@ def shape_plan(plan: dict, goal: Goal, items: list[dict]) -> dict:
     if not family.endswith(suffix):
         family += suffix
     body["min_buy"] = max(float(body.get("min_buy", 0)), MIN_BUY_UNDER_GOAL)
+    if dataset is not None:
+        character = next(
+            (c for c in dataset.get("characters") or [] if c.get("id") == out.get("character_id")),
+            None,
+        )
+        prefer = preferred_sets(goal, dataset, character)
+        if prefer:
+            body["prefer_sets"] = prefer
+            body["weapon_type"] = "any"
     out["plan_id"] = f"{family}-v{version}"
     return out
 
 
-def shape_markdown(markdown: str, goal: Goal | None, items: list[dict]) -> tuple[str, list[str]]:
+def shape_markdown(
+    markdown: str, goal: Goal | None, items: list[dict], dataset: dict | None = None
+) -> tuple[str, list[str]]:
     """``markdown`` with its ``## Plan`` block and ``- danger:`` bullet shaped for ``goal``.
 
     Returns the new text and the list of changes made (empty when nothing changed).
@@ -140,7 +182,7 @@ def shape_markdown(markdown: str, goal: Goal | None, items: list[dict]) -> tuple
     changes: list[str] = []
     text = markdown.replace("\r\n", "\n")
     plan = proposal.extract_plan(text)
-    shaped = shape_plan(plan, goal, items)
+    shaped = shape_plan(plan, goal, items, dataset)
     if shaped != plan:
         body = proposal._section(text, "## Plan")
         assert body is not None
@@ -157,6 +199,11 @@ def shape_markdown(markdown: str, goal: Goal | None, items: list[dict]) -> tuple
             changes.append(f"{len(shaped['plan'].get('ban_items', []))} banned items")
         if shaped["plan"]["min_buy"] != plan["plan"].get("min_buy"):
             changes.append(f"min_buy {shaped['plan']['min_buy']:g}")
+        if shaped["plan"].get("prefer_sets") != plan["plan"].get("prefer_sets"):
+            sets = ", ".join(f"{k} {v:g}" for k, v in shaped["plan"]["prefer_sets"].items())
+            changes.append(f"prefer_sets {sets}")
+        if shaped["plan"].get("weapon_type") != plan["plan"].get("weapon_type"):
+            changes.append(f"weapon_type {shaped['plan']['weapon_type']}")
         if shaped["plan_id"] != plan["plan_id"]:
             changes.append(f"plan_id {shaped['plan_id']}")
     if goal.danger is not None:
@@ -178,6 +225,15 @@ def goal_errors(plan: dict | None, run: dict, unlock_state: dict) -> list[str]:
             f"## Next run: target {goal.target} needs danger {goal.danger}, not {run['danger']}"
         )
     if goal.stat and plan is not None:
+        prefer = plan.get("plan", {}).get("prefer_sets", {})
+        if not isinstance(prefer, dict) or any(
+            isinstance(v, bool) or not isinstance(v, int | float) or not 0 < v <= ITEM_BONUS_CAP
+            for v in prefer.values()
+        ):
+            errors.append(
+                f"## Plan: prefer_sets must map set ids to bonuses above 0 and at most "
+                f"{ITEM_BONUS_CAP:g}"
+            )
         stats = plan.get("plan", {}).get("stats", {})
         w = stats.get(goal.stat)
         hint = f"run proposal shape FILE (goal {goal.stat} {goal.value:+g})"
@@ -340,7 +396,9 @@ def brief_lines(goal: Goal, data: dict) -> list[str]:
     return lines
 
 
-def shape_file(path: Path, unlock_state: dict, items: list[dict]) -> list[str]:
+def shape_file(
+    path: Path, unlock_state: dict, items: list[dict], dataset: dict | None = None
+) -> list[str]:
     """Shape the proposal at ``path`` in place; returns the changes made."""
     from brotato_bot.fsutil import atomic_write_text
     from brotato_bot.run import proposal
@@ -348,7 +406,7 @@ def shape_file(path: Path, unlock_state: dict, items: list[dict]) -> list[str]:
     markdown = Path(path).read_text(encoding="utf-8-sig")
     run = proposal.next_run(markdown)
     goal = goal_for(run["target"], unlock_state)
-    text, changes = shape_markdown(markdown, goal, items)
+    text, changes = shape_markdown(markdown, goal, items, dataset)
     if changes:
         atomic_write_text(Path(path), text)
     return changes

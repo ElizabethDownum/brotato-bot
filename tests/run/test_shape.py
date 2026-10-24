@@ -418,3 +418,79 @@ def test_cli_shape_prints_the_goal_data_after_the_shaped_line(tmp_path, monkeypa
         "item_couch -20 (tier 3, price 90), item_slug -5 (tier 1, price 20)",
         "set_blunt (melee): 2 weapons -2, 6 weapons -10",
     ]
+
+
+def _blunt_dataset(six=-10.0, character=None):
+    set_blunt = {
+        "id": "set_blunt",
+        "name": "Blunt",
+        "bonuses": [
+            {"count": 2, "effects": [{"key": "stat_speed", "value": -2}]},
+            {"count": 6, "effects": [{"key": "stat_speed", "value": six}]},
+        ],
+    }
+    return {
+        "items": ITEMS,
+        "sets": [set_blunt],
+        "characters": [character or {"id": CHARACTER, "flat_bonuses": []}],
+    }
+
+
+def test_shape_prefers_a_set_that_covers_a_quarter_of_the_need():
+    goal = shape.goal_for("chal_slow", SLOW)
+    shaped = shape.shape_plan(_plan(), goal, ITEMS, _blunt_dataset())
+    body = shaped["plan"]
+    assert body["prefer_sets"] == {"set_blunt": 15.0}  # 10 goal units * 1.5 per unit
+    assert body["weapon_type"] == "any"
+    assert body["weapon_set"] == ""  # the hard gate stays unset
+    # exactly at the threshold: need 20, 25% is 5
+    at = shape.shape_plan(_plan(), goal, ITEMS, _blunt_dataset(six=-5.0))
+    assert at["plan"]["prefer_sets"] == {"set_blunt": 7.5}
+
+
+def test_shape_does_not_prefer_a_set_below_a_quarter_of_the_need():
+    goal = shape.goal_for("chal_slow", SLOW)
+    shaped = shape.shape_plan(_plan(), goal, ITEMS, _blunt_dataset(six=-4.0))
+    assert "prefer_sets" not in shaped["plan"]
+    assert shaped["plan"]["weapon_type"] == "ranged"
+    assert "prefer_sets" not in shape.shape_plan(_plan(), goal, ITEMS)["plan"]  # no dataset
+
+
+def test_the_characters_start_lowers_the_need_and_so_the_threshold():
+    goal = shape.goal_for("chal_slow", SLOW)
+    old = {"id": CHARACTER, "flat_bonuses": [{"stat": "stat_speed", "value": -10}]}
+    # need 10, threshold 2.5: a -4 set now qualifies; with a +5 start (need 25) it does not
+    assert (
+        "prefer_sets" in shape.shape_plan(_plan(), goal, ITEMS, _blunt_dataset(-4.0, old))["plan"]
+    )
+    slow_start = {"id": CHARACTER, "flat_bonuses": [{"stat": "stat_speed", "value": 5}]}
+    assert (
+        "prefer_sets"
+        not in shape.shape_plan(_plan(), goal, ITEMS, _blunt_dataset(-6.0, slow_start))["plan"]
+    )
+
+
+def test_prefer_sets_bonus_is_capped():
+    goal = shape.goal_for("chal_slow", SLOW)
+    shaped = shape.shape_plan(_plan(), goal, ITEMS, _blunt_dataset(six=-30.0))
+    assert shaped["plan"]["prefer_sets"] == {"set_blunt": shape.ITEM_BONUS_CAP}
+
+
+def test_shape_markdown_reports_the_set_and_is_idempotent():
+    goal = shape.goal_for("chal_slow", SLOW)
+    dataset = _blunt_dataset()
+    text, changes = shape.shape_markdown(_proposal("chal_slow"), goal, ITEMS, dataset)
+    assert "prefer_sets set_blunt 15" in changes and "weapon_type any" in changes
+    plan = proposal.extract_plan(text)["plan"]
+    assert plan["prefer_sets"] == {"set_blunt": 15.0} and plan["weapon_type"] == "any"
+    again, changes = shape.shape_markdown(text, goal, ITEMS, dataset)
+    assert changes == [] and again == text
+
+
+def test_goal_errors_accepts_prefer_sets_and_rejects_a_bad_one():
+    goal = shape.goal_for("chal_slow", SLOW)
+    run = {"target": "chal_slow", "danger": 0}
+    shaped = shape.shape_plan(_plan(), goal, ITEMS, _blunt_dataset())
+    assert shape.goal_errors(shaped, run, SLOW) == []
+    shaped["plan"]["prefer_sets"] = {"set_blunt": 99}
+    assert any("prefer_sets" in e for e in shape.goal_errors(shaped, run, SLOW))

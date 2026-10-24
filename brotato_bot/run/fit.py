@@ -24,7 +24,6 @@ from brotato_bot import paths
 from brotato_bot.run import proposal, shape
 
 BUILD_PLANS = Path("mod") / "Ellie-BrotatoBot" / "shopping" / "build_plans.gd"
-FULL_SET = 6  # weapon slots: the set bonus at six weapons is the most a build can hold
 _STAT_WEIGHT = re.compile(r'"(\w+)":\s*(-?\d+(?:\.\d+)?)')
 
 
@@ -113,9 +112,7 @@ def rank_weapons(
     known = isinstance(lists, list)
     set_bonus: dict[str, float] = {}
     for s in shape.goal_data(goal, dataset)["sets"]:
-        counts = [c for c in s["by_count"] if c <= FULL_SET]
-        if counts:
-            set_bonus[s["name"]] = s["by_count"][max(counts)] * goal.sign
+        set_bonus[s["name"]] = shape.full_set_bonus(s["by_count"], goal.sign)
     by_name: dict[str, dict] = {}
     for w in dataset.get("weapons") or []:
         if isinstance(w, dict) and isinstance(w.get("id"), str):
@@ -179,7 +176,9 @@ def fit_lines(
         return [*lines, f"unknown character {chosen}"]
     row = plan_row(source, chosen)
     weapons, known = rank_weapons(goal, dataset, unlock_state, record, row)
-    header = f"Starting weapons for {chosen} (set goal bonus at {FULL_SET} weapons, type, scaling)"
+    header = (
+        f"Starting weapons for {chosen} (set goal bonus at {shape.FULL_SET} weapons, type, scaling)"
+    )
     if not known:
         header += "; unlock state lacks weapons_unlocked, treating all as unlocked"
     lines.append(header + ":")

@@ -317,7 +317,7 @@ def _shape(args: argparse.Namespace) -> int:
         items = [i for i in dataset.get("items") or [] if isinstance(i, dict)]
         markdown = Path(args.file).read_text(encoding="utf-8-sig")
         goal = shape.goal_for(next_run(markdown)["target"], unlock_state)
-        changes = shape.shape_file(Path(args.file), unlock_state, items)
+        changes = shape.shape_file(Path(args.file), unlock_state, items, dataset)
     except (OSError, ValueError) as exc:
         print(f"proposal: {exc}")
         return 1
