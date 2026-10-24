@@ -878,8 +878,9 @@ Ellie, watching runs, during run 8 (proposal 9):
   The bot was 12 px from the map edge. HP was 67/78.
 - Speed weight held: speed went 5 → 11 → 20 → 22, with no collapse like run 7's 6→2. Run 7 died at wave 13.
 - Survival stats drifted down late: armor 0 → -3 and regen +1 → -3 between waves 14 and 18
-  (Sunglasses, Gummy Berserker x2, Broken Mouth x2, Fresh Meat). Harvesting reached 66,
-  past the plan's harvest_cap of 40.
+  (Sunglasses, Gummy Berserker x2, Broken Mouth x2, Fresh Meat). Harvesting reached 66, but
+  harvesting grows about 5% per wave on its own (owner reminder), so passing the plan's
+  harvest_cap of 40 is expected late, not a buying failure.
 - Review worked where Haiku used the action. At waves 8 and 9, pivot asks on Weird Ghost
   answered `reroll` and the ghost was not bought.
 - **Gap: a veto written only in the rationale is not binding.** Wave 15, pivot on Weird Ghost:
